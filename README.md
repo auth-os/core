@@ -1,4 +1,3 @@
-# beta
 ![auth_os](https://media.discordapp.net/attachments/376127621940903958/418225246559272981/auth_os-Logo-Authio.png)
 
 ### Description:
