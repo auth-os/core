@@ -1,5 +1,6 @@
 let Registry = artifacts.require('./mock/RegistryMock')
 let RegistryStorage = artifacts.require('./mock/RegistryStorageMock')
+let LibFuncImpl = artifacts.require('./mock/LibFuncImplMock')
 
 let registry // test subject
 let storage // test subject's initialized abstract storage impl
@@ -174,7 +175,47 @@ contract('Registry', function(accounts) {
   })
 
   describe('#addVersionFunctions', async () => {
-    // ...
+    let libFuncImpl
+
+    beforeEach(async () => {
+      libFuncImpl = await LibFuncImpl.new()
+      await registry.registerApp('prvd', '...')
+      await registry.registerVersion('prvd', '0.0.1', 'Pre-alpha')
+    })
+
+    context('when an empty function list is provided', async () => {
+      it('should reject the attempted function list registration tx', async () => {
+        await registry.addVersionFunctions('prvd', '0.0.1', [], [], []).should.be.rejectedWith(exports.EVM_ERR_REVERT);
+      })
+    })
+
+    // FIXME-- the following function needs hardening in Registry.sol to pass
+    // context('when an invalid function signature is provided in the function list', async () => {
+    //   it('should reject the attempted function list registration tx', async () => {
+    //     await registry.addVersionFunctions('prvd', '0.0.1', ['123'], ['hmm...'], [libFuncImpl.address]).should.be.rejectedWith(exports.EVM_ERR_REVERT);
+    //   })
+    // })
+
+    // FIXME-- the following function needs hardening in Registry.sol to pass
+    // context('when a non-contract address is provided as the function impl location', async () => {
+    //   it('should reject the attempted function list registration tx', async () => {
+    //     await registry.addVersionFunctions('prvd', '0.0.1', ['mockLibraryFunc()'], ['no-op'], [accounts[accounts.length - 1]]).should.be.rejectedWith(exports.EVM_ERR_REVERT);
+    //   })
+    // })
+
+    context('when valid function, description and impl location lists are provided', async () => {
+      let funcStorage
+
+      beforeEach(async () => {
+        await registry.addVersionFunctions.call('prvd', '0.0.1', ['mockLibraryFunc()'], ['no-op'], [libFuncImpl.address]).then(async (response) => {
+          funcStorage = response[0]
+        })
+      })
+
+      it('should return the app- and version-namespaced true storage location for the function list', async () => {
+        funcStorage.should.not.be.eq(null)
+      })
+    })
   })
 
   describe('#getVerInfo', async () => {
@@ -242,6 +283,52 @@ contract('Registry', function(accounts) {
   })
 
   describe('#getFuncInfo', async () => {
-    // ...
+    let funcInfo
+    let libFuncImpl
+
+    beforeEach(async () => {
+      await registry.registerApp('prvd', '...')
+      await registry.registerVersion('prvd', '0.0.1', 'Pre-alpha').then(async (response) => {
+        verStorage = response[0]
+        descStorage = response[1]
+      })
+
+      libFuncImpl = await LibFuncImpl.new()
+      await registry.addVersionFunctions('prvd', '0.0.1', ['mockLibraryFunc()'], ['no-op'], [libFuncImpl.address])
+    })
+
+    context('when the requested function has been registered', async () => {
+      beforeEach(async () => {
+        funcInfo = await registry.getFuncInfo('prvd', '0.0.1', 'mockLibraryFunc()')
+      })
+
+      it('should return the true storage location for the function in slot 0', async () => {
+        let trueLocation = funcInfo[0]
+        trueLocation.should.not.be.eq(null)
+      })
+
+      it('should return the function signature in slot 1', async () => {
+        let funcsig = funcInfo[1]
+        funcsig.should.not.be.eq(null)
+        web3.toUtf8(funcsig).should.be.deep.eq('mockLibraryFunc()')
+      })
+
+      it('should return the function description in slot 2', async () => {
+        let description = funcInfo[2]
+        description.should.not.be.eq(null)
+        web3.toUtf8(description).should.be.deep.eq('no-op')
+      })
+
+      it('should return the true storage location for the function implementation in slot 3', async () => {
+        let trueLocation = funcInfo[3]
+        trueLocation.should.not.be.eq(null)
+      })
+
+      it('should return the index of the function in the function list in slot 4', async () => {
+        let idx = funcInfo[4]
+        idx.should.not.be.eq(null)
+        web3.toDecimal(idx).should.eq(0)
+      })
+    })
   })
 })
