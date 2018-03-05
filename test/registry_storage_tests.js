@@ -25,12 +25,49 @@ contract('RegistryStorage', function(accounts) {
   })
 
   describe('#write', async () => {
-    context('when the data is valid bytes32', async () => {
-      it('should write data at the given storage location', async () => {
-        let location = await storage.write('storageloc', 'valid bytes 32')
-        let read = await storage.read('storageloc')
-        read.should.not.be.eq(null)
+    it('should deterministically return the true location of the data in storage', async () => {
+      let location0 = await storage.write.call('storageloc', '...')
+      let location1 = await storage.write.call('storageloc', '...')
+      location0.should.not.be.eq(null)
+      location1.should.not.be.eq(null)
+      location0.should.be.deep.eq(location1)
+    })
+
+    context('when the given storage location and bytes32 data are valid', async () => {
+      [
+        ['address', 0x0000000000000000000000000000000000000000],
+        ['tx hash', 0xc9f7b1968534162e7507ac7e3471c5fbf64d1eea9a2cd062b216e98a9a3d733e],
+        ['string', 'valid bytes 32 string'],
+        ['unsigned int', 123],
+      ].forEach(async (tuple) => {
+        it('should write ' + tuple[0] + ' at the given storage location', async () => {
+          await storage.write('storageloc', tuple[1])
+
+          let data = await storage.read('storageloc')
+          data.should.not.be.eq(null)
+        })
+      });
+
+      context('when the given data exceeds 32 bytes', async () => {
+        context('when the given data is a string exceeding 32 bytes', async () => {
+          it('should write the first 32 bytes of the string at the given storage location', async () => {
+            await storage.write('storageloc', '12345678901234 67890123456789012this is truncated')
+
+            let data = await storage.read('storageloc')
+            web3.toUtf8(data).should.be.deep.eq('12345678901234 67890123456789012')
+          })
+        })
       })
+    })
+
+    context('when the given data is invalid bytes32', async () => {
+      [
+        ['signed int', -123],
+      ].forEach(async (tuple) => {
+        it('should reject the attempted ' + tuple[0] + ' write tx', async () => {
+          await storage.write('storageloc', tuple[1]).should.be.rejectedWith(exports.EVM_ERR_REVERT);
+        })
+      });
     })
   })
 
