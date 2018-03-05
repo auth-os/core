@@ -152,12 +152,25 @@ contract('Registry', function(accounts) {
     })
   })
 
-  describe('#initVersion', async () => {
-    // ...
-  })
-
   describe('#registerVersion', async () => {
-    // ...
+    let verStorage
+    let descStorage
+  
+    beforeEach(async () => {
+      await registry.registerApp('prvd', '...')
+      await registry.registerVersion.call('prvd', '0.0.1', 'Pre-alpha').then(async (response) => {
+        verStorage = response[0]
+        descStorage = response[1]
+      })
+    })
+  
+    it('should return the app-namespaced version storage location', async () => {
+      verStorage.should.not.be.eq(null)
+    })
+
+    it('should return the app-namespaced version description storage location', async () => {
+      descStorage.should.not.be.eq(null)
+    })
   })
 
   describe('#addVersionFunctions', async () => {
@@ -165,7 +178,67 @@ contract('Registry', function(accounts) {
   })
 
   describe('#getVerInfo', async () => {
-    // ...
+    let verInfo
+
+    beforeEach(async () => {
+      await registry.registerApp('prvd', '...')
+      await registry.registerVersion('prvd', '0.0.1', 'Pre-alpha').then(async (response) => {
+        verStorage = response[0]
+        descStorage = response[1]
+      })
+    })
+
+    context('when the requested app version has been registered', async () => {
+      beforeEach(async () => {
+        verInfo = await registry.getVerInfo('prvd', '0.0.1')
+      })
+
+      it('should return the true storage location for the app version in slot 0', async () => {
+        let trueLocation = verInfo[0]
+        trueLocation.should.not.be.eq(null)
+      })
+
+      it('should return the version description in slot 1', async () => {
+        let description = verInfo[1]
+        description.should.not.be.eq(null)
+        web3.toUtf8(description).should.be.deep.eq('Pre-alpha')
+      })
+
+      it('should return the version name in slot 2', async () => {
+        let version = verInfo[2]
+        version.should.not.be.eq(null)
+        web3.toUtf8(version).should.be.deep.eq('0.0.1')
+      })
+  
+      it('should return the length in bytes of the version description in slot 3', async () => {
+        let len = verInfo[3]
+        len.should.not.be.eq(null)
+        web3.toDecimal(len).should.be.deep.eq('Pre-alpha'.length)
+      })
+
+      it('should return the initialization status of the version in slot 4', async () => {
+        let initialized = verInfo[4]
+        initialized.should.not.be.eq(null)
+        web3.toDecimal(initialized).should.eq(0)
+      })
+
+      it('should return the index of the version in the app version list in slot 5', async () => {
+        let idx = verInfo[5]
+        idx.should.not.be.eq(null)
+        web3.toDecimal(idx).should.eq(0)
+      })
+
+      it('should return the number of functions for the version in slot 6', async () => {
+        let numFuncs = verInfo[6]
+        numFuncs.should.not.be.eq(null)
+        web3.toDecimal(numFuncs).should.eq(0)
+      })
+  
+      it('should return the true storage location of the version function list in slot 7', async () => {
+        let trueLocation = verInfo[7]
+        trueLocation.should.not.be.eq(null)
+      })
+    })
   })
 
   describe('#getFuncInfo', async () => {
