@@ -183,37 +183,60 @@ contract('Registry', function(accounts) {
       await registry.registerVersion('prvd', '0.0.1', 'Pre-alpha')
     })
 
-    context('when an empty function list is provided', async () => {
-      it('should reject the attempted function list registration tx', async () => {
-        await registry.addVersionFunctions('prvd', '0.0.1', [], [], []).should.be.rejectedWith(exports.EVM_ERR_REVERT);
+    context('when the given version has not yet been deployed', async () => {
+      context('when an empty function list is provided', async () => {
+        it('should reject the attempted function list registration tx', async () => {
+          await registry.addVersionFunctions('prvd', '0.0.1', [], [], []).should.be.rejectedWith(exports.EVM_ERR_REVERT);
+        })
+      })
+  
+      // FIXME-- the following function needs hardening in Registry.sol to pass
+      // context('when an invalid function signature is provided in the function list', async () => {
+      //   it('should reject the attempted function list registration tx', async () => {
+      //     await registry.addVersionFunctions('prvd', '0.0.1', ['123'], ['hmm...'], [libFuncImpl.address]).should.be.rejectedWith(exports.EVM_ERR_REVERT);
+      //   })
+      // })
+  
+      // FIXME-- the following function needs hardening in Registry.sol to pass
+      // context('when a non-contract address is provided as the function impl location', async () => {
+      //   it('should reject the attempted function list registration tx', async () => {
+      //     await registry.addVersionFunctions('prvd', '0.0.1', ['mockLibraryFunc()'], ['no-op'], [accounts[accounts.length - 1]]).should.be.rejectedWith(exports.EVM_ERR_REVERT);
+      //   })
+      // })
+  
+      context('when valid function, description and impl location lists are provided', async () => {
+        let funcStorage
+  
+        beforeEach(async () => {
+          await registry.addVersionFunctions.call('prvd', '0.0.1', ['mockLibraryFunc()'], ['no-op'], [libFuncImpl.address]).then(async (response) => {
+            funcStorage = response[0]
+          })
+        })
+  
+        it('should return the app- and version-namespaced true storage location for the function list', async () => {
+          funcStorage.should.not.be.eq(null)
+        })
       })
     })
 
-    // FIXME-- the following function needs hardening in Registry.sol to pass
-    // context('when an invalid function signature is provided in the function list', async () => {
-    //   it('should reject the attempted function list registration tx', async () => {
-    //     await registry.addVersionFunctions('prvd', '0.0.1', ['123'], ['hmm...'], [libFuncImpl.address]).should.be.rejectedWith(exports.EVM_ERR_REVERT);
-    //   })
-    // })
-
-    // FIXME-- the following function needs hardening in Registry.sol to pass
-    // context('when a non-contract address is provided as the function impl location', async () => {
-    //   it('should reject the attempted function list registration tx', async () => {
-    //     await registry.addVersionFunctions('prvd', '0.0.1', ['mockLibraryFunc()'], ['no-op'], [accounts[accounts.length - 1]]).should.be.rejectedWith(exports.EVM_ERR_REVERT);
-    //   })
-    // })
-
-    context('when valid function, description and impl location lists are provided', async () => {
-      let funcStorage
-
-      beforeEach(async () => {
-        await registry.addVersionFunctions.call('prvd', '0.0.1', ['mockLibraryFunc()'], ['no-op'], [libFuncImpl.address]).then(async (response) => {
-          funcStorage = response[0]
+    describe('#initVersion', async () => {
+      context('when the given version has an empty function list', async () => {
+        it('should reject the attempted version deployment tx', async () => {
+          await registry.initVersion('prvd', '0.0.1').should.be.rejectedWith(exports.EVM_ERR_REVERT);
         })
       })
 
-      it('should return the app- and version-namespaced true storage location for the function list', async () => {
-        funcStorage.should.not.be.eq(null)
+      context('when the given version has been deployed', async () => {
+        beforeEach(async () => {
+          await registry.addVersionFunctions('prvd', '0.0.1', ['mockLibraryFunc()'], ['no-op'], [libFuncImpl.address])
+          await registry.initVersion('prvd', '0.0.1')
+        })
+  
+        context('when valid function, description and impl location lists are provided', async () => {
+          it('should reject the attempted function list registration tx', async () => {
+            await registry.addVersionFunctions('prvd', '0.0.1', ['mockLibraryFunc()'], ['no-op'], [libFuncImpl.address]).should.be.rejectedWith(exports.EVM_ERR_REVERT);
+          })
+        })
       })
     })
   })
