@@ -83,11 +83,73 @@ contract('Registry', function(accounts) {
   })
 
   describe('#registerApp', async () => {
-    // ...
+    let appStorage
+    let descStorage
+
+    context('when the caller is the acting registry moderator', async () => {
+      beforeEach(async () => {
+        await registry.registerApp.call('prvd inbound oracle', 'turnkey smart contract oracle for storing and verifying real-world data on-chain').then(async (response) => {
+          appStorage = response[0]
+          descStorage = response[1]
+        })
+      })
+
+      it('should return the namespaced app storage location', async () => {
+        appStorage.should.not.be.eq(null)
+      })
+
+      it('should return the namespaced app description storage location', async () => {
+        descStorage.should.not.be.eq(null)
+      })
+    })
   })
 
   describe('#getAppInfo', async () => {
-    // ...
+    let appInfo
+
+    beforeEach(async () => {
+      await registry.registerApp('prvd inbound oracle', 'turnkey smart contract oracle for storing and verifying real-world data on-chain')
+    })
+
+    context('when the requested app has been registered', async () => {
+      beforeEach(async () => {
+        appInfo = await registry.getAppInfo('prvd inbound oracle')
+      })
+
+      it('should successfully find and return the requested app', async () => {
+        appInfo.should.not.be.eq(null)
+        appInfo.length.should.be.eq(5)
+      })
+
+      it('should return the true storage location for the app in slot 0', async () => {
+        let trueLocation = appInfo[0]
+        trueLocation.should.not.be.eq(null)
+      })
+
+      it('should return the app description in slot 1', async () => {
+        let description = appInfo[1]
+        description.should.not.be.eq(null)
+        web3.toUtf8(description).should.be.deep.eq('turnkey smart contract oracle for storing and verifying real-world data on-chain')
+      })
+
+      it('should return the app name in slot 2', async () => {
+        let app = appInfo[2]
+        app.should.not.be.eq(null)
+        web3.toUtf8(app).should.be.deep.eq('prvd inbound oracle')
+      })
+
+      it('should return the length in bytes of the app description in slot 3', async () => {
+        let len = appInfo[3]
+        len.should.not.be.eq(null)
+        web3.toDecimal(len).should.eq('turnkey smart contract oracle for storing and verifying real-world data on-chain'.length)
+      })
+
+      it('should return the number of app versions available in slot 4', async () => {
+        let numVersions = appInfo[4]
+        numVersions.should.not.be.eq(null)
+        numVersions.toNumber(10).should.be.eq(0)
+      })
+    })
   })
 
   describe('#initVersion', async () => {
