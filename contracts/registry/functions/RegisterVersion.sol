@@ -21,7 +21,7 @@ library RegisterVersion {
   /// VERSION STORAGE ///
 
   // Version namespace - all version and function info is mapped here
-  // [PROVIDERS][$provider_id][APPS][$app_hash][VERSIONS][$ver_hash] = uint $app_ver_list_index
+  // [PROVIDERS][$provider_id][APPS][$app_hash][VERSIONS]
   bytes32 public constant VERSIONS = keccak256("versions");
 
   // Version description location - (bytes array)
@@ -146,7 +146,7 @@ library RegisterVersion {
       if iszero(ret) { revert (0, 0) }
       // Copy returned values to sel_ptr ([app_storage][app_ver_list_len][ver_storage])
       returndatacopy(sel_ptr, 0x40, sub(returndatasize, 0x40))
-      // Check that application is registered
+      // Check that the application name in storage is the same as the passed-in name
       if iszero(eq(mload(sel_ptr), _app_name)) { revert (0, 0) }
       // Check that version name is unique
       if gt(mload(add(0x40, sel_ptr)), 0) { revert (0, 0) }
