@@ -50,9 +50,9 @@ contract RegistryScriptExec {
         // Get space for return data
         return_data := add(0x20, msize)
         // Set length of return data
-        mstore(return_data, sub(returndatasize, 0x20))
+        mstore(return_data, returndatasize)
         // Copy returned data and return
-        returndatacopy(add(0x20, return_data), 0x20, sub(returndatasize, 0x20))
+        returndatacopy(add(0x20, return_data), 0, returndatasize)
       }
       // Check that the returned data is a storage request. If so, forward request to storage interface
       if eq(mload(ret_cmd), request_storage) {
@@ -71,10 +71,10 @@ contract RegistryScriptExec {
         // Load data read offset into calldata
         mstore(add(0x64, sel_ptr), 0x80)
         // Copy data from logic address return into calldata
-        returndatacopy(add(0x84, sel_ptr), 0x20, sub(returndatasize, 0x20))
+        returndatacopy(add(0x84, sel_ptr), 0x40, sub(returndatasize, 0x40))
 
         // Forward returned data to storage interface
-        ret := call(gas, _storage_interface, 0, sel_ptr, add(0x84, sub(returndatasize, 0x20)), 0, 0)
+        ret := call(gas, _storage_interface, 0, sel_ptr, add(0x84, sub(returndatasize, 0x40)), 0, 0)
         // Read return value - if zero, call failed: revert
         if iszero(ret) { revert (0, 0) }
         // Get return value
@@ -82,7 +82,7 @@ contract RegistryScriptExec {
         // Set return size
         mstore(return_data, returndatasize)
         // Copy returned data and return
-        returndatacopy(return_data, 0, returndatasize)
+        returndatacopy(add(0x20, return_data), 0, returndatasize)
       }
     }
   }
