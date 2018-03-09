@@ -61,7 +61,8 @@ library RegisterApp {
   @param _provider: The address registering the app
   @param _app_name: The name of the application to be registered
   @param _app_desc: The description of the application
-  @return: 'writeMulti' storage request, returned to script exec, which requests storage from the storage interface
+  @return request_storage: Signals that the script executor should store the returned data
+  @return store_data: 'writeMulti' storage request, returned to script exec, which requests storage from the storage interface
   */
   function registerApp(address _storage_interface, address _abs_storage, bytes32 _exec_id, address _provider, bytes32 _app_name, bytes _app_desc) public view
   returns (bytes32 request_storage, bytes32[] store_data) {
@@ -118,9 +119,9 @@ library RegisterApp {
       mstore(add(0x40, store_data), _app_name)
       // Loop over description and add to calldata in "writeMulti" format: [location][data]...
       for { let offset := 0x00 } lt(offset, add(0x20, mload(_app_desc))) { offset := add(0x20, offset) } {
-        // Store location (desc_storage[offset]) in calldata
+        // Store location (desc_storage[offset]) in return request
         mstore(add(add(0x60, mul(2, offset)), store_data), add(offset, mload(add(0x40, app_reg))))
-        // Store description chunk in calldata
+        // Store description chunk in return request
         mstore(add(add(0x80, mul(2, offset)), store_data), mload(add(offset, _app_desc)))
       }
     }
@@ -138,19 +139,18 @@ library RegisterApp {
   }
 
   /*
-  Returns simple information on a registered application
+  Returns basic information on a registered application
 
   @param _storage_interface: The contract to send read requests to, which acts as an interface to application storage
   @param _abs_storage: The storage address for this application
   @param _exec_id: The id of the registry application being used
   @param _provider: The address registering the app
   @param _app_name: Plaintext name of the application to look up
+  @return const_return: Signals that the script executor should not store the returned data
   @return true_location_app: The true storage location of the application namespace
-  @return app_name: The name of the application, pulled from storage
-  @return num_versions: The number of versions in the application
   @return description: Bytes of description
   */
-  function getAppInfo(address _storage_interface, address _abs_storage, bytes32 _exec_id, address _provider, bytes32 _app_name) public view
+  function getAppBasicInfo(address _storage_interface, address _abs_storage, bytes32 _exec_id, address _provider, bytes32 _app_name) public view
   returns (bytes32 const_return, bytes32 true_location_app, bytes description) {
     // Set up struct to hold multiple variables in memory
     AppInfo memory app_info = AppInfo({
@@ -230,7 +230,7 @@ library RegisterApp {
       // Store app storage location in calldata
       mstore(add(0x84, sel_ptr), mload(add(0x60, app_info)))
       // For each slot in the description, get its storage location and add it to calldata
-      for { let offset := 0x00 } lt(offset, add(1, mul(0x20, sub(input_length, 1)))) { offset := add(0x20, offset) } {
+      for { let offset := 0x00 } lt(offset, add(0x20, mul(0x20, sub(input_length, 1)))) { offset := add(0x20, offset) } {
         mstore(add(add(offset, 0xa4), sel_ptr), add(offset, mload(add(0x80, app_info))))
       }
       // Staticcall storage interface

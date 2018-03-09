@@ -1,6 +1,6 @@
 pragma solidity ^0.4.20;
 
-import "../storage/AbstractStorage.sol";
+import "../../storage/AbstractStorage.sol";
 
 /*
 Registry abstract storage contract -
