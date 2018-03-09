@@ -48,8 +48,7 @@ contract AbstractStorage {
       if iszero(mload(_input)) { revert (0, 0) }
 
       // Loop over input
-      let offset := 0x20
-      for { } lt(offset, mul(0x20, mload(_input))) { offset := add(0x40, offset) } {
+      for { let offset := 0x20 } lt(offset, mul(0x20, mload(_input))) { offset := add(0x40, offset) } {
         // Get location from input
         let location := mload(add(offset, _input))
         // Get data from input
@@ -62,7 +61,7 @@ contract AbstractStorage {
         sstore(true_storage_location, data)
       }
       // Get number of writes performed (uint)
-      num_writes := sub(div(offset, 0x20), 0x20)
+      num_writes := div(mload(_input), 2)
     }
   }
 
