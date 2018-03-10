@@ -194,6 +194,108 @@ library RegisterVersion {
     request_storage = REQUEST_STORAGE;
   }
 
+  struct VerFinalize {
+    bytes4 rd_multi_sel;
+    bytes32 app_storage;
+    bytes32 ver_storage;
+    bytes32 ver_func_list_storage;
+    bytes32 ver_is_finalized_storage;
+  }
+
+  /*
+  Finalizes a version, locking its implementation. Once a version is finalized, instances can be deployed and used
+
+  @param _storage_interface: The contract to send read requests to, which acts as an interface to application storage
+  @param _abs_storage: The storage address for this application
+  @param _exec_id: The id of the registry application being used
+  @param _provider: The address registering the app
+  @param _app_name: The name of the application under which the version is registered
+  @param _ver_name: The name of the version to finalized
+  @return request_storage: Signals that the script executor should store the returned data
+  @return store_data: 'writeMulti' storage request, returned to script exec, which requests storage from the storage interface
+  */
+  function finalizeVersion(address _storage_interface, address _abs_storage, bytes32 _exec_id, address _provider, bytes32 _app_name, bytes32 _ver_name) public view
+  returns (bytes32 request_storage, bytes32[] store_data) {
+    // Ensure valid app and version names, and valid version description length
+    require(_app_name != bytes32(0));
+    require(_ver_name != bytes32(0));
+
+    // Set up struct to hold multiple variables in memory
+    VerFinalize memory ver_reg = VerFinalize({
+      // Place 'readMulti' function selector in memory
+      rd_multi_sel: RD_MULTI_SEL,
+      // Place app storage location in memory
+      app_storage: keccak256(keccak256(_provider), PROVIDERS),
+      // Place version storage location in memory
+      ver_storage: 0,
+      // Place version function list storage location in memory
+      ver_func_list_storage: 0,
+      // Place version 'is finalized' storage location in memory
+      ver_is_finalized_storage: 0
+    });
+
+    // Get app storage location - mapped to the provider's location
+    ver_reg.app_storage = keccak256(APPS, ver_reg.app_storage);
+    ver_reg.app_storage = keccak256(keccak256(_app_name), ver_reg.app_storage);
+    // Get version storage location
+    ver_reg.ver_storage = keccak256(VERSIONS, ver_reg.app_storage);
+    ver_reg.ver_storage = keccak256(keccak256(_ver_name), ver_reg.ver_storage);
+    // Get version function list storage location
+    ver_reg.ver_func_list_storage = keccak256(VER_FUNCTION_LIST, ver_reg.ver_storage);
+    // Get version 'is finalized' storage location
+    ver_reg.ver_is_finalized_storage = keccak256(VER_IS_FINALIZED, ver_reg.ver_storage);
+
+    assembly {
+      // Ensure application and version are registered, and get version function list length
+
+      // Get free-memory pointer to hold calldata
+      let sel_ptr := mload(0x40)
+      // Place 'readMulti' function selector at pointer
+      mstore(sel_ptr, mload(ver_reg))
+      // Place abstract storage address in calldata
+      mstore(add(0x04, sel_ptr), _abs_storage)
+      // Place exec id in calldata
+      mstore(add(0x24, sel_ptr), _exec_id)
+      // Place data read offset in calldata
+      mstore(add(0x44, sel_ptr), 0x60)
+      // Place input length in calldata (3 read locations)
+      mstore(add(0x64, sel_ptr), 3)
+      // Place app storage location in calldata
+      mstore(add(0x84, sel_ptr), mload(add(0x20, ver_reg)))
+      // Place version storage location in calldata
+      mstore(add(0xa0, sel_ptr), mload(add(0x40, ver_reg)))
+      // Place version function list storage location in calldata
+      mstore(add(0xc0, sel_ptr), mload(add(0x60, ver_reg)))
+      // Staticcall storage interface
+      let ret := staticcall(gas, _storage_interface, sel_ptr, 0xe4, 0, 0)
+      // Check return value - if zero, read failed: revert
+      if iszero(ret) { revert (0, 0) }
+      // Copy returned data to sel_ptr
+      returndatacopy(sel_ptr, 0x40, sub(returndatasize, 0x40))
+      // Check that returned app name matches passed-in app name
+      if iszero(eq(mload(sel_ptr), _app_name)) { revert (0, 0) }
+      // Check that returned version name matches passed-in version name
+      if iszero(eq(mload(add(0x20, sel_ptr)), _ver_name)) { revert (0, 0) }
+      // Get version function list length
+      let ver_func_list_len := mload(add(0x40, sel_ptr))
+      // If there are no registered functions, version cannot be finalized: revert
+      if iszero(ver_func_list_len) { revert (0, 0) }
+
+      // Version can be finalized - return storage request
+
+      // Get free space for return storage request
+      store_data := add(0x20, msize)
+      // Set storage request length
+      mstore(store_data, 2)
+      // Place version 'is finalized' location in storage request
+      mstore(add(0x20, store_data), mload(add(0x80, ver_reg)))
+      // Place '1' in storage request - signifying that the version is finalized
+      mstore(add(0x40, store_data), 1)
+    }
+    // Set storage marker for return data
+    request_storage = REQUEST_STORAGE;
+  }
+
   struct VerInfo {
     bytes4 rd_sel;
     bytes4 rd_multi_sel;
@@ -321,6 +423,84 @@ library RegisterVersion {
       description := add(0x20, msize)
       // Copy version description from returned data to return array
       returndatacopy(description, 0x60, sub(returndatasize, 0x60))
+    }
+    // Set constant marker for return data
+    const_return = CONST_RETURN;
+  }
+
+  struct VerIndAndStatus {
+    bytes4 rd_multi_sel;
+    bytes32 app_storage;
+    bytes32 ver_storage;
+    bytes32 ver_is_finalized_storage;
+    bytes32 ver_index_storage;
+  }
+
+  /*
+  Returns version index in app version list, and whether the version has been finalized
+
+  @param _storage_interface: The contract to send read requests to, which acts as an interface to application storage
+  @param _abs_storage: The storage address for this application
+  @param _exec_id: The id of the registry application being used
+  @param _provider: The address registering the app
+  @param _app_name: Plaintext name of the application under which the version is registered
+  @param _ver_name: Plaintext name of the version to look up
+  @return const_return: Signals that the script executor should not store the returned data
+  @return ver_index: The index of the version in the application version list
+  @return ver_is_finalized: Whether the version is finalized
+  */
+  function getVersionIndexAndStatus(address _storage_interface, address _abs_storage, bytes32 _exec_id, address _provider, bytes32 _app_name, bytes32 _ver_name) public view
+  returns (bytes32 const_return, uint ver_index, bool ver_is_finalized) {
+    // Set up struct to hold multiple variables in memory
+    VerIndAndStatus memory ver_info = VerIndAndStatus({
+      // Place 'readMulti' function selector in memory
+      rd_multi_sel: RD_MULTI_SEL,
+      // Place app storage location in memory
+      app_storage: keccak256(keccak256(_provider), PROVIDERS),
+      // Place version storage location in memory
+      ver_storage: 0,
+      // Place version 'is finalized' storage location in memory
+      ver_is_finalized_storage: 0,
+      // Place version index storage location in memory
+      ver_index_storage: 0
+    });
+
+    // Get app storage location - mapped to the provider's location
+    ver_info.app_storage = keccak256(APPS, ver_info.app_storage);
+    ver_info.app_storage = keccak256(keccak256(_app_name), ver_info.app_storage);
+    // Get version storage locations
+    ver_info.ver_storage = keccak256(VERSIONS, ver_info.app_storage);
+    ver_info.ver_storage = keccak256(keccak256(_ver_name), ver_info.ver_storage);
+    // Get version 'is finalized' storage location, and version index location
+    ver_info.ver_is_finalized_storage = keccak256(VER_IS_FINALIZED, ver_info.ver_storage);
+    ver_info.ver_index_storage = keccak256(APP_VER_INDEX, ver_info.ver_storage);
+
+    assembly {
+      // Get version 'is finalized' and version index -
+
+      // Get free-memory pointer to store calldata in
+      let sel_ptr := mload(0x40)
+      // Store 'readMulti' function selector at pointer
+      mstore(sel_ptr, mload(ver_info))
+      // Store abstract storage address in calldata
+      mstore(add(0x04, sel_ptr), _abs_storage)
+      // Store exec id in calldata
+      mstore(add(0x24, sel_ptr), _exec_id)
+      // Store data read offset in calldata
+      mstore(add(0x44, sel_ptr), 0x60)
+      // Store input size in calldata (2 locations to read from)
+      mstore(add(0x64, sel_ptr), 2)
+      // Store version 'is finalized' location in calldata
+      mstore(add(0x84, sel_ptr), mload(add(0x60, ver_info)))
+      // Store version index location in calldata
+      mstore(add(0xa4, sel_ptr), mload(add(0x80, ver_info)))
+      // Staticcall storage interface and store return at sel_ptr
+      let ret := staticcall(gas, _storage_interface, sel_ptr, 0xc4, sel_ptr, 0x80)
+      // Check return alue - if zero, read failed: revert
+      if iszero(ret) { revert (0, 0) }
+      // Assign return values
+      ver_index := mload(add(0x60, sel_ptr))
+      ver_is_finalized := mload(add(0x40, sel_ptr))
     }
     // Set constant marker for return data
     const_return = CONST_RETURN;

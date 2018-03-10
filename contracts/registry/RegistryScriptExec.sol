@@ -30,7 +30,7 @@ contract RegistryScriptExec {
   @param _script: The script to execute - contains a target address, calldata size, and calldata in this format -
   [target_address][calldata size][calldata]
   */
-  function execAndStore(bytes32 _app_id, address _storage_interface, address _abs_storage, address _target, bytes _script) public returns (bytes return_data) {
+  function exec(bytes32 _app_id, address _storage_interface, address _abs_storage, address _target, bytes _script) public returns (bytes return_data) {
     // Place 'writeMulti' selector in memory
     bytes4 wr_multi_sel = WR_MULTI_SEL;
     // Place return data commands in memory

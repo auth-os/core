@@ -87,7 +87,7 @@ library ImplementVersion {
     bytes32 app_storage;
     bytes32 ver_storage;
     bytes32 ver_is_finalized_storage;
-    bytes32 ver_func_list_location;
+    bytes32 ver_func_list_storage;
     bytes32 func_storage;
     bytes32 func_desc_storage;
     bytes32 func_impl_storage;
@@ -127,7 +127,7 @@ library ImplementVersion {
       // Place version 'is finalized' storage location in memory
       ver_is_finalized_storage: 0,
       // Place version function list storage location in memory
-      ver_func_list_location: 0,
+      ver_func_list_storage: 0,
       // Place function storage seed in memory
       func_storage: 0,
       // Place function description storage seed in memory
@@ -145,7 +145,7 @@ library ImplementVersion {
     func_reg.ver_storage = keccak256(VERSIONS, func_reg.app_storage);
     func_reg.ver_storage = keccak256(keccak256(_ver_name), func_reg.ver_storage);
     // Get version 'is finalized' and function list storage locations
-    func_reg.ver_func_list_location = keccak256(VER_FUNCTION_LIST, func_reg.ver_storage);
+    func_reg.ver_func_list_storage = keccak256(VER_FUNCTION_LIST, func_reg.ver_storage);
     func_reg.ver_is_finalized_storage = keccak256(VER_IS_FINALIZED, func_reg.ver_storage);
     // Get function storage seed
     func_reg.func_storage = keccak256(FUNCTIONS, func_reg.ver_storage);
@@ -270,11 +270,9 @@ library ImplementVersion {
   @param _storage_information: A 96-byte array containing, in order, storage interface address, abstract storage address, and exec id
   @param _provider: The address registering the app
   @param _app_name: The name of the application under which the version is registered
-  @param _ver_name: The name of the version under which to register the functions
-  @param _func_sels: An array of plaintext function selectors to register (ex: 'transfer(address,uint256)')
-  @param _func_descs: An array of function descriptions, corresponding to indices in _func_sels
-  @param _func_impls: An array of addresses which implement the corresponding function selectors
-  @return request_storage: Signals that the script executor should store the returned data
+  @param _ver_name: The name of the version under which the function is registered
+  @param _func_sel: The plaintext function selector registered under the provided version
+  @return const_return: Signals that the script executor should not store the returned data
   @return store_data: 'writeMulti' storage request, returned to script exec, which requests storage from the storage interface
   */
   function getFunctionBasicInfo(bytes _storage_information, address _provider, bytes32 _app_name, bytes32 _ver_name, bytes32 _func_sel) public view
@@ -360,6 +358,78 @@ library ImplementVersion {
       func_description := mload(add(0x20, sel_ptr))
       // Get implementing address from returned data
       impl_address := mload(add(0x40, sel_ptr))
+    }
+    // Set constant marker for return data
+    const_return = CONST_RETURN;
+  }
+
+  struct FuncIndexInfo {
+    bytes4 rd_sel;
+    bytes32 app_storage;
+    bytes32 ver_storage;
+    bytes32 func_storage;
+    bytes32 func_index_storage;
+  }
+
+  /*
+  Gets the function index in its version's function list
+
+  @param _storage_information: A 96-byte array containing, in order, storage interface address, abstract storage address, and exec id
+  @param _provider: The address registering the app
+  @param _app_name: The name of the application under which the version is registered
+  @param _ver_name: The name of the version under which the function is registered
+  @param _func_sel: The plaintext function selector registered under the provided version
+  @return const_return: Signals that the script executor should not store the returned data
+  @return func_index: The index of the function selector in the version's function list
+  */
+  function getFunctionIndex(bytes _storage_information, address _provider, bytes32 _app_name, bytes32 _ver_name, bytes32 _func_sel) public view
+  returns (bytes32 const_return, uint func_index) {
+    // Set up struct to hold multiple variables in memory
+    FuncIndexInfo memory func_info = FuncIndexInfo({
+      // Place 'read' function selector in memory
+      rd_sel: RD_SEL,
+      // Place app storage location in memory
+      app_storage: keccak256(keccak256(_provider), PROVIDERS),
+      // Place version storage location in memory
+      ver_storage: 0,
+      // Place function storage location in memory
+      func_storage: 0,
+      // Place function index storage location in memory
+      func_index_storage: 0
+    });
+
+    // Get app storage location - mapped to the provider's location
+    func_info.app_storage = keccak256(APPS, func_info.app_storage);
+    func_info.app_storage = keccak256(keccak256(_app_name), func_info.app_storage);
+    // Get version storage location
+    func_info.ver_storage = keccak256(VERSIONS, func_info.app_storage);
+    func_info.ver_storage = keccak256(keccak256(_ver_name), func_info.ver_storage);
+    // Get function storage location
+    func_info.func_storage = keccak256(FUNCTIONS, func_info.ver_storage);
+    func_info.func_storage = keccak256(keccak256(_func_sel), func_info.func_storage);
+    // Get function index storage location
+    func_info.func_index_storage = keccak256(VER_FUNC_INDEX, func_info.func_storage);
+
+    assembly {
+      // Get function index -
+
+      // Get free-memory pointer to store calldata in
+      let sel_ptr := mload(0x40)
+      // Store 'read' function selector at pointer
+      mstore(sel_ptr, mload(func_info))
+      // Store abstract storage address in calldata
+      mstore(add(0x04, sel_ptr), mload(add(0x40, _storage_information)))
+      // Store exec id in calldata
+      mstore(add(0x24, sel_ptr), mload(add(0x60, _storage_information)))
+      // Store function index storage location in calldata
+      mstore(add(0x44, sel_ptr), mload(add(0x80, func_info)))
+      // Staticcall storage interface, and store return at pointer
+      let ret := staticcall(gas, mload(add(0x20, _storage_information)), sel_ptr, 0x64, sel_ptr, 0x20)
+      // Check return value - if zero, read failed: revert
+      if iszero(ret) { revert (0, 0) }
+      // Assign return value for true_location_func
+      func_index := mload(sel_ptr)
+
     }
     // Set constant marker for return data
     const_return = CONST_RETURN;
