@@ -4,15 +4,23 @@
 
 **auth_os** is a framework for creating, managing, and using applications on the EVM securely. Applications are modular, upgradable, extensible, and highly secure by design: using abstract storage of application data, application logic libraries define standard interfaces through which to interact with storage. The entire system is designed around a premise of creating the "most general, most abstract" approach to application development and use - allowing for unparalleled flexibility and interoperability between applications.
 
-This repository contains the initial commits for a script Registry, as well as its storage contract.
+This repository contains the beta version of a script registry application - the foundation for a larger network of applications.
 
 ### Explanation - Contracts and Functions:
 
-##### Registry.sol:
+##### RegistryScriptExec.sol:
 
-The Registry contract implements the logic required for application developers to create, publish, and build on named applications. 
+The RegistryScriptExec contract implements logic for executing storage read and write requests from allowed sources. These allowed sources can be defined on a per-application basis using the 'initRegistryApp' function, which provides the caller with a unique 'exec id,' which seeds all storage requests for the given application.
 
-* Applications are stored in ```/APPS/sha(app_name)/```, and the following fields:
+The 'exec' function forwards input calldata ('script' parameter) to a target address. The target address returns data, designated by either a 'const_return' field (data is not stored, and is returned for the user to view), or a 'request_storage' field. If a 'request_storage' value is returned, the script exec contract expects another parameter - a bytes32[], with abstract storage 'writeMulti' format. This array is passed to the storage interface contract (PermissionedRegStorage), which determines whether the sender has permissions to write to the given exec id storage, and then executes the storage request.
+
+Future versions of this contract will include capability to string together multiple exec calls, for more dynamic, extendable application interactions.
+
+##### /registry/RegisterApp.sol:
+
+The RegisterApp contract implements the logic required for application developers to create named applications, for which implementation details can be supplied.
+
+* Applications are stored in ```/PROVIDERS/sha(provider_addr)/APPS/sha(app_name)/```, and have the following fields:
 
   * ```Name```: The name of an application. Serves as the basis for an application's storage: description, and version information.
     * Read size: 32 bytes
@@ -27,7 +35,11 @@ The Registry contract implements the logic required for application developers t
     * Storage type: ```bytes32[]```
     * Storage location: ```/APPS/sha(app_name)/APP_VERSIONS_LIST/```
 
-* Versions are stored in ```/APPS/sha(app_name)/VERSIONS/sha(ver_name)/```, and have the following fields:
+##### /registry/RegisterVersion.sol:
+
+The RegisterVersion contract implements the logic required for application developers to extend and upgrade registered applications, as well as define application implementation details. Future versions will include explicit fields where application upgrade and initialization behavior can occur.
+
+* Versions are stored in ```/PROVIDERS/sha(provider_addr)/APPS/sha(app_name)/VERSIONS/sha(ver_name)/```, and have the following fields:
 
   * ```Name```: The name of the version. Serves as the basis for an application's storage: description, functions, and more.
     * Read size: 32 bytes
@@ -50,9 +62,13 @@ The Registry contract implements the logic required for application developers t
     * Storage type: ```uint256```
     * Storage location: ```/VERSIONS/sha(ver_name)/APP_VER_INDEX/```
 
+##### /registry/ImplementVersion.sol:
+
+The ImplementVersion contract contains the logic required for application developers to define application implementation details - including function signatures, function descriptions, and addresses which implement said functions.
+
 * Functions are stored in ```/APPS/sha(app_name)/VERSIONS/sha(ver_name)/FUNCTIONS/sha(func_sig)```, and have the following fields:
 
-  * ```Signature```: The plaintext signature of the function. Used to derive bytes4 function signature, as well as function parameters.
+  * ```Signature```: The plaintext signature of the function. Used to derive bytes4 function selector, as well as function parameters.
     * Read size: 32 bytes
     * Storage type: ```bytes32```
     * Storage location: ```/FUNCTIONS/sha(func_sig)/```
@@ -69,11 +85,11 @@ The Registry contract implements the logic required for application developers t
     * Storage type: ```uint256```
     * Storage location: ```/FUNCTIONS/sha(func_sig)/VER_FUNC_INDEX```
 
-##### RegistryStorage.sol:
+##### /storage/PermissionedRegStorage.sol:
 
-Registry storage is a simple abstract storage contract. Any address can request storage, but storage locations are seeded with the hash of the sender, preventing over-writes. Theoretically, a single abstract storage contract could store all the data from every contract running on the network. In practice, this may prove to be unsafe in many situations.
+Registry storage uses a simple abstract storage contract, which is interacted with through the PermissionedRegStorage contract. PermissionedRegStorage implements storage permissions, which are tied to unique 'exec ids,' a list of 'allowed' addresses, and a script executor. Any address can request storage, but storage locations are seeded with the hash of the sender (and exec id), preventing over-writes. Theoretically, a single abstract storage contract could store all the data from every contract running on the network. In practice, this may prove to be unsafe in many situations.
 
-Abstract storage defines the following functions for writing to storage:
+Abstract storage defines the following functions for writing to storage (which PermissionedRegStorage mirrors, adding storage address and exec id parameters):
 
 * ```write(bytes32 _location, bytes32 _data)```: Used to write to a single slot in storage.
   * Calldata size: 68 bytes (64-byte arguments, plus signature)
@@ -116,51 +132,3 @@ The following utility functions are defined:
   * Returns: True storage location, hashed with the passed-in address
   * Returndata size: 32 bytes
   * Return type: ```bytes32```
-  
-### Sample Inputs:
-
-Below is a collection of sample inputs for a handful of Registry functions, along with explanations of their purpose.
-
-* ```registerApp(bytes32 _app_name, bytes _app_desc)```:
-  * Arguments:
-    * ```_app_name```: "erc20basic"
-    * ```_app_desc```: "A very basic erc20 application. Defines only the transfer and approve functions"
-  * Purpose: Allows a developer to register an application name, similar to a 'repository' on github. Versions will be pushed into the application's storage namespace.
-* ```registerVersion(bytes32 _app_name, bytes32 _ver_name, bytes _ver_desc)```:
-  * Arguments:
-    * ```_app_name```: "erc20basic"
-    * ```_ver_name```: "v1.0"
-    * ```_ver_desc```: "Initial version: implements transfer and approve"
-  * Purpose: Allows a developer to register a named version with an existing application. Following version registry, the developer can provide implementation details, and release it for deployment.
-* ```addVersionFunctions(bytes32 _app_name, bytes32 _ver_name, bytes32[] _func_sigs, bytes32[] _func_descs, address[] _func_impls)```:
-  * Arguments:
-    * ```_app_name```: "erc20basic"
-    * ```_ver_name```: "v1.0"
-    * ```_func_sigs```: ["transfer(address,uint256)", "approve(address,uint256)"]
-    * ```_func_descs```: ["transfers tokens", "approves a spender"]
-    * ```_func_impls```: ["0xabc", "0xdef"]
-  * Purpose: Allows a developer to provide implementation details for a version, by providing function signatures, function descriptions, and implementing addresses. This function can be called repeatedly on one version to add more implementation details, but cannot be used after a version is initialized.
-* ```initVersion(bytes32 _app_name, bytes32 _ver_name)```:
-  * Arguments:
-    * ```_app_name```: "erc20basic"
-    * ```_ver_name```: "v1.0"
-  * Purpose: Allows a developer to finalize a version, locking its implementation details and signifying that it is ready to be deployed and used. 
-  
-### Future Improvements:
-
-The version presented here is fairly rough. Deployment cost for the Registry contract is high, and the onlyMod modifier limits use of the Registry structure to one party. Improving the Registry application will involve a few steps. Below is a list of a few preliminary ideas:
-
-1. Implementation of Registry application using a library-interface structure:
-  * Benefit: Lack of storage means that execution is truly dynamic, and more more in the spirit of the overall platform. Presumably, the user interacting with the Registry will provide the address of the storage contract they want to use, allowing for alternate storage addresses to be used with the same logic. Opening the system more means that anyone is free to develop and improve on the system.
-  * Challenge: Using a library-interface structure means that the interfacing address will delegate calls to the Registry library logic, as well as call the storage contract directly to read/write data. This structure requires that the user keep track of more addresses, but this will hopefully be alleviated by application metadata contracts in the future.
-2. Splitting the Registry application library logic into several different addresses:
-  * Benefit: Allows for much more upgradability and extensibility, as smaller portions of the code can be upgraded at a time.
-  * Challenge: Extending applications will require a much more involved permissioned read/write system than is currently implemented.
-3. Creation of "fork" logic for developers:
-  * Benefit: Allows developers to more easily build on top of other's work, by referencing parent applications and versions built by other developers.
-  * Challenge: Requires some thought put into cross-seed reads and writes, so that forking is able to be done easily and efficiently.
-4. Creation of a complimentary DNS-esque system:
-  * Benefit: Creating a system where developers are able to register themselves, build and fork applications, and build identities within the network allows for much simpler collaboration between users of the network.
-  * Challenge: Building this system requires a good amount of storage re-mapping, to accomodate DNS-based identities within applications
-
-There are several other improvements and iterations to be made, but many involve the creation of other systems and applications. The important thing is to keep Registry (and platform) applications agile - so that when new standards and ideas are implemented, applications are not left obsolete.
