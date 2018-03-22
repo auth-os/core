@@ -73,7 +73,7 @@ contract AbstractStorage {
   @return exec_id: The unique exec id to be used by this application
   */
   function initAppInstance(address _updater, bool _is_payable, address _init, bytes _init_calldata, address[] _allowed) public returns (bytes32 exec_id) {
-    exec_id = keccak256(++nonce, address(this));
+    exec_id = keccak256(++nonce);
 
     uint size;
     // Execute application init call
