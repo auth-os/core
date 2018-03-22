@@ -165,7 +165,7 @@ library VersionConsole {
       // App is registered, version name is unique - register version:
 
       // Get return write size -
-      let size := add(10, div(mload(_ver_desc), 0x20))
+      let size := add(10, mul(2, div(mload(_ver_desc), 0x20)))
       if gt(mod(mload(_ver_desc), 0x20), 0) { size := add(2, size) }
 
       // Allocate space for return storage request
@@ -288,7 +288,7 @@ library VersionConsole {
       // App and version are registered, and version is ready to be finalized -
 
       // Get return write size -
-      let size := add(8, div(mload(_init_description), 0x20))
+      let size := add(8, mul(2, div(mload(_init_description), 0x20)))
       if gt(mod(mload(_init_description), 0x20), 0) { size := add(2, size) }
 
       // Allocate space for return storage request

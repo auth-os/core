@@ -296,7 +296,7 @@ library ImplementationConsole {
       // App and version are registered, and version has not been finalized: store function description -
 
       // Get return write size -
-      let size := add(2, div(mload(_function_description), 0x20))
+      let size := add(2, mul(2, div(mload(_function_description), 0x20)))
       if gt(mod(mload(_function_description), 0x20), 0) { size := add(2, size) }
 
       // Allocate space for return storage request

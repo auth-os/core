@@ -119,7 +119,7 @@ library AppConsole {
       // Application is unregistered - register application
 
       // Get return write size -
-      let size := add(10, div(mload(_app_desc), 0x20))
+      let size := add(10, mul(2, div(mload(_app_desc), 0x20)))
       if gt(mod(mload(_app_desc), 0x20), 0) { size := add(2, size) }
 
       // Allocate space for return storage request
