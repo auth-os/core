@@ -24,6 +24,18 @@ contract AbstractStorage {
   // Maps execution ids to an array of allowed addresses
   mapping (bytes32 => address[]) public allowed_addr_list;
 
+  /// EVENTS ///
+
+  // GENERAL //
+
+  event ApplicationInitialized(bytes32 indexed execution_id, address indexed init_address, address script_exec, address updater);
+  event ApplicationFinalization(bytes32 indexed execution_id, address indexed init_address);
+  event ApplicationExecution(bytes32 indexed execution_id, address indexed script_exec);
+
+  // EXCEPTION HANDLING //
+
+  event ApplicationException(address indexed application_address, bytes32 indexed execution_id, bytes32 indexed message); // Target execution address has emitted an exception, and reverted state
+
   // Modifier - ensures an application is not paused or inactive, and that the sender matches the script exec address
   // If value was sent, ensures the application is marked as payable
   modifier validState(bytes32 _exec_id) {
@@ -44,6 +56,86 @@ contract AbstractStorage {
   modifier onlyUpdate(bytes32 _exec_id) {
     require(app_info[_exec_id].is_paused && app_info[_exec_id].updater == msg.sender);
     _;
+  }
+
+  /// APPLICATION EXECUTION ///
+
+  /*
+  ** Application execution follows a standard pattern: applications are
+  ** forwarded passed-in calldata as a static call (no state changes). The
+  ** application reads from storage and generates return data, formatted as a
+  ** storage request. Storage requests are handled by storeReturned.
+  **
+  ** 'getter' functions which do not wish to modify state should not be set as
+  ** permissioned storage addresses (they will store data), and instead called
+  ** through 'execView'
+  **
+  ** 'payable' functions should be executed through 'execPayable'
+  */
+
+  /*
+  Executes an initialized application under a given execution id, with given logic target and calldata
+
+  @param _target: The logic address for the application to execute. Passed-in calldata is forwarded here as a static call, and the return value is treated as a storage request. More information on return format in storeReturned
+  @param _exec_id: The application execution id under which storage requests for this application are made
+  @param _calldata: The calldata to forward to the application. Typically, this is created in the script exec contract and contains information about the original sender's address and execution id
+  @mod validState(_exec_id): Ensures the application is active and unpaused, and that the sender is the script exec contract. Also ensures that if wei was sent, the app is registered as payable
+  @return success: Whether the targeted application's call succeeded
+  @return amount_written: The storage slots written to in this call
+  @return ret_data: If the app is payable, returns payment information and storage slots written to
+  */
+  function exec(address _target, bytes32 _exec_id, bytes _calldata) public payable validState(_exec_id) returns (bool success, uint amount_written, bytes ret_data) {
+    // Ensure valid input and input size - minimum 4 bytes
+    require(_calldata.length >= 4 && _target != address(0) && _exec_id != bytes32(0));
+
+    // Ensure sender is script executor for this exec id
+    require(msg.sender == app_info[_exec_id].script_exec);
+
+    // Ensure app logic address has been approved for this exec id
+    require(allowed_addresses[_exec_id][_target] != 0);
+
+    // Script executor and passed-in request are valid. Execute application and store return to this application's storage
+    assembly {
+      // Forward passed-in calldata to target contract
+      success := staticcall(gas, _target, add(0x20, _calldata), mload(_calldata), 0, 0)
+    }
+    // If the call to the application failed, handle the exception and return
+    if (!success) {
+      handleException(_target, _exec_id);
+      return(success, 0, new bytes(0));
+    }
+
+    // If value was sent, store returned data and get returned payment information
+    if (msg.value > 0) {
+      uint amount_paid;
+      address paid_to;
+      // Stores returned data and returns payment information and number of storage slots written to, to script exec contract
+      (amount_paid, paid_to, amount_written) = storePayable(_exec_id);
+
+      // Sanity check payment information
+      assert(paid_to != address(0) && amount_paid != 0 && amount_paid <= msg.value && paid_to != address(this));
+
+      // Forward payment to destination address - do not forward gas
+      address(paid_to).transfer(amount_paid);
+
+      // Return unspent wei to sender
+      address(msg.sender).transfer(msg.value - amount_paid);
+
+      assembly {
+        ret_data := add(0x20, msize)
+        mstore(ret_data, 0x40) // Set return size
+        // Add amount paid and payment destination address written to to return data
+        mstore(add(0x20, ret_data), amount_paid)
+        mstore(add(0x40, ret_data), paid_to)
+      }
+    } else {
+      // Store returned data, and return amount of storage slots written to
+      amount_written = storeReturned(_exec_id);
+    }
+    // Emit event
+    emit ApplicationExecution(_exec_id, _target);
+    // If execution reaches this point, call should have succeeded -
+    assert(success);
   }
 
   /// APPLICATION INITIALIZATION ///
@@ -73,7 +165,7 @@ contract AbstractStorage {
   @return exec_id: The unique exec id to be used by this application
   */
   function initAppInstance(address _updater, bool _is_payable, address _init, bytes _init_calldata, address[] _allowed) public returns (bytes32 exec_id) {
-    exec_id = keccak256(++nonce);
+    exec_id = keccak256(++nonce, address(this));
 
     uint size;
     // Execute application init call
@@ -107,6 +199,8 @@ contract AbstractStorage {
       allowed_addr_list[exec_id].push(_allowed[i]);
     }
 
+    // emit Event
+    emit ApplicationInitialized(exec_id, _init, msg.sender, _updater);
     // Sanity check - ensure valid exec id
     assert(exec_id != bytes32(0));
   }
@@ -142,6 +236,8 @@ contract AbstractStorage {
       && app_info[_exec_id].is_paused == true
     );
 
+    // Emit event
+    emit ApplicationFinalization(_exec_id, msg.sender);
     // Set application status as active and unpaused
     app_info[_exec_id].is_paused = false;
     app_info[_exec_id].is_active = true;
@@ -248,75 +344,25 @@ contract AbstractStorage {
     }
   }
 
-  /// APPLICATION EXECUTION ///
-
   /*
-  ** Application execution follows a standard pattern: applications are
-  ** forwarded passed-in calldata as a static call (no state changes). The
-  ** application reads from storage and generates return data, formatted as a
-  ** storage request. Storage requests are handled by storeReturned.
-  **
-  ** 'getter' functions which do not wish to modify state should not be set as
-  ** permissioned storage addresses (they will store data), and instead called
-  ** through 'execView'
-  **
-  ** 'payable' functions should be executed through 'execPayable'
+  Handles an exception thrown by a deployed application - if the application provided a message, return the message
+  If ether was sent, return the ether to the sender
+
+  @param _application: The address which triggered the exception
+  @param _execution_id: The execution id specified by the sender
   */
-
-  /*
-  Executes an initialized application under a given execution id, with given logic target and calldata
-
-  @param _target: The logic address for the application to execute. Passed-in calldata is forwarded here as a static call, and the return value is treated as a storage request. More information on return format in storeReturned
-  @param _exec_id: The application execution id under which storage requests for this application are made
-  @param _calldata: The calldata to forward to the application. Typically, this is created in the script exec contract and contains information about the original sender's address and execution id
-  @mod validState(_exec_id): Ensures the application is active and unpaused, and that the sender is the script exec contract. Also ensures that if wei was sent, the app is registered as payable
-  @return amount_written: The storage slots written to in this call
-  @return ret_data: If the app is payable, returns payment information and storage slots written to
-  */
-  function exec(address _target, bytes32 _exec_id, bytes _calldata) public payable validState(_exec_id) returns (uint amount_written, bytes ret_data) {
-    // Ensure valid input and input size - minimum 4 bytes
-    require(_calldata.length >= 4 && _target != address(0) && _exec_id != bytes32(0));
-
-    // Ensure sender is script executor for this exec id
-    require(msg.sender == app_info[_exec_id].script_exec);
-
-    // Ensure app logic address has been approved for this exec id
-    require(allowed_addresses[_exec_id][_target] != 0);
-
-    // Script executor and passed-in request are valid. Execute application and store return to this application's storage
+  function handleException(address _application, bytes32 _execution_id) internal {
+    // If ether was sent, send it back with returnToSender
+    if (msg.value > 0)
+      address(msg.sender).transfer(msg.value);
+    bytes32 message = bytes32("DefaultException");
     assembly {
-      // Forward passed-in calldata to target contract
-      let ret := staticcall(gas, _target, add(0x20, _calldata), mload(_calldata), 0, 0)
-      // Check return value - if zero, call failed: revert
-      if iszero(ret) { revert (0, 0) }
-    }
-    // If value was sent, store returned data and get returned payment information
-    if (msg.value > 0) {
-      uint amount_paid;
-      address paid_to;
-      // Stores returned data and returns payment information and number of storage slots written to, to script exec contract
-      (amount_paid, paid_to, amount_written) = storePayable(_exec_id);
-
-      // Sanity check payment information
-      assert(paid_to != address(0) && amount_paid != 0 && amount_paid <= msg.value && paid_to != address(this));
-
-      // Forward payment to destination address
-      address(paid_to).transfer(amount_paid);
-
-      // Return unspent wei, with safe transfer
-      address(msg.sender).transfer(msg.value - amount_paid);
-
-      assembly {
-        ret_data := add(0x20, msize)
-        mstore(ret_data, 0x40) // Set return size
-        // Add amount paid and payment destination address written to to return data
-        mstore(add(0x20, ret_data), amount_paid)
-        mstore(add(0x40, ret_data), paid_to)
+      // If returned data exists, get first 32 bytes set message
+      if eq(returndatasize, 0x20) {
+        returndatacopy(message, 0, 0x20)
       }
-    } else {
-      // Store returned data, and return amount of storage slots written to
-      amount_written = storeReturned(_exec_id);
     }
+    emit ApplicationException(_application, _execution_id, message);
   }
 
   /*
@@ -440,7 +486,7 @@ contract AbstractStorage {
       // Ensure correctly-formed returndata. Should be divisible by 64 bytes
       // The first 64 bytes should designate an amount of ether (can be 0) to send to a target address (if ether is nonzero, cannot be 0) [destination][amount]
       // The rest of the data follows 'storeReturned' format.
-      if gt(mod(returndatasize, 0x40), 0) { revert (0, 0) }
+      if gt(mod(returndatasize, 0x20), 0) { revert (0, 0) }
 
       // If returned data is exactly 64 bytes, assume single payment transfer: [destination][amount]
       // Check valid transfer data, and forward funds (with gas stipend). Return rest of funds to sender (script executor address)

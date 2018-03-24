@@ -13,6 +13,7 @@ contract RegistryStorage is AbstractStorage {
   @param _registry_exec_id: The execution id used with this registry app
   @param _app_provider: The id of the provider under which the app is registered
   @param _app_name: The name of the application to get information on
+  @return bool 'is_payable': Whether the application has payable functionality
   @return address 'app_storage_addr': The storage address to be used with the application
   @return bytes32 'latest_version': The name of the latest stable version of the application
   @return address 'app_init_addr': The address containint the application's initialization function, as well as its getters

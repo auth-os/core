@@ -33,6 +33,12 @@ contract ScriptExec {
   // Function selector for app storage "getExecAllowed" - retrieves the allowed addresses for a given application instance
   bytes4 public constant GET_ALLOWED = bytes4(keccak256("getExecAllowed(bytes32)"));
 
+  /// EVENTS ///
+
+  // EXCEPTION HANDLING //
+
+  event StorageException(address indexed storage_addr, bytes32 indexed exec_id, address sender, uint wei_sent);
+
   struct AppInstance {
     address deployer;
     bytes32 app_name;
@@ -78,9 +84,10 @@ contract ScriptExec {
 
   @param _target: The target address, which houses the function being called
   @param _app_calldata: The calldata to forward to the application target address
+  @return failed: Whether execution failed or not
   @return returned_data: Data returned from app storage
   */
-  function exec(address _target, bytes _app_calldata) public payable returns (bytes returned_data) {
+  function exec(address _target, bytes _app_calldata) public payable returns (bool failed, bytes returned_data) {
     address sender;
     bytes32 exec_id;
     // Ensure valid calldata if wei was sent
@@ -107,7 +114,16 @@ contract ScriptExec {
       returned_data := add(0x20, msize)
       mstore(returned_data, returndatasize)
       returndatacopy(add(0x20, returned_data), 0, returndatasize)
+      // If first 32 bytes of returned data are 0, and returndatasize is nonzero call failed
+      if gt(returndatasize, 0x20) {
+        if iszero(mload(add(0x20, returned_data))) {
+          failed := 1
+        }
+      }
     }
+    // If execution failed, emit event
+    if (failed)
+      emit StorageException(default_storage, exec_id, msg.sender, msg.value);
 
     // Transfer any returned wei back to the sender
     address(msg.sender).transfer(address(this).balance);
