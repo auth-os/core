@@ -498,7 +498,7 @@ library InitRegistry {
     cdPush(ptr, bytes32(v_helper.desc_size_norm));
     // Get version description base storage location
     v_helper.temp = keccak256(VER_DESC, v_helper.temp);
-    // Loop over description size and add storage locations to readMuli buffer
+    // Loop over description size and add storage locations to readMulti buffer
     for (uint i = 1; i <= v_helper.desc_size_norm; i++)
       cdPush(ptr, bytes32((32 * i) + uint(v_helper.temp)));
 
@@ -568,7 +568,7 @@ library InitRegistry {
     cdPush(ptr, bytes32(v_helper.desc_size_norm));
     // Get version init description base storage location
     v_helper.temp = keccak256(VER_INIT_DESC, v_helper.temp);
-    // Loop over description size and add storage locations to readMuli buffer
+    // Loop over description size and add storage locations to readMulti buffer
     for (uint i = 1; i <= v_helper.desc_size_norm; i++)
       cdPush(ptr, bytes32((32 * i) + uint(v_helper.temp)));
 
@@ -711,7 +711,7 @@ library InitRegistry {
     cdPush(ptr, bytes32(impl_helper.desc_size_norm));
     // Get version init description base storage location
     impl_helper.temp = keccak256(FUNC_DESC, impl_helper.temp);
-    // Loop over description size and add storage locations to readMuli buffer
+    // Loop over description size and add storage locations to readMulti buffer
     for (uint i = 1; i <= impl_helper.desc_size_norm; i++)
       cdPush(ptr, bytes32((32 * i) + uint(impl_helper.temp)));
 

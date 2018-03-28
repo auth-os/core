@@ -237,7 +237,7 @@ contract AbstractStorage {
     );
 
     // Emit event
-    emit ApplicationFinalization(_exec_id, msg.sender);
+    emit ApplicationFinalization(_exec_id, app_info[_exec_id].init);
     // Set application status as active and unpaused
     app_info[_exec_id].is_paused = false;
     app_info[_exec_id].is_active = true;

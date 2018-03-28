@@ -37,54 +37,229 @@ library TokenTransfer {
     if (_context.length != 96)
       triggerException(ERR_UNKNOWN_CONTEXT);
 
-    // Allocate memory for storage request (2 slots for each balance update) -
-    store_data = new bytes32[](4);
-
-    // Parse context array and get sender address and execution id
     address sender;
     bytes32 exec_id;
+    // Parse context array and get sender address and execution id
     (exec_id, sender, ) = parse(_context);
-    uint sender_bal;
-    uint recipient_bal;
 
-    // Get sender and recipient balance locations in storage -
-    bytes32 sender_loc = keccak256(keccak256(sender), TOKEN_BALANCES);
-    bytes32 recipient_loc = keccak256(keccak256(_to), TOKEN_BALANCES);
+    // Create 'readMulti' calldata buffer in memory
+    uint ptr = cdBuff(RD_MULTI);
+    // Place exec id, data read offset, and read size to calldata
+    cdPush(ptr, exec_id);
+    cdPush(ptr, 0x40);
+    cdPush(ptr, 2);
+    // Place owner and recipient balance storage locations in calldata
+    cdPush(ptr, keccak256(keccak256(sender), TOKEN_BALANCES));
+    cdPush(ptr, keccak256(keccak256(_to), TOKEN_BALANCES));
+    // Read owner and recipient balances from storage
+    bytes32[] memory read_values = readMulti(ptr);
+    // Ensure length of returned data is correct
+    assert(read_values.length == 2);
 
-    // Place 'readMulti' selector in memory
-    bytes4 rd_multi = RD_MULTI;
+    // Read returned values -
+    uint sender_bal = uint(read_values[0]);
+    uint recipient_bal = uint(read_values[1]);
 
-    // Create 'readMulti' calldata, and request sender and recipient balances from storage
-    assembly {
-      let ptr := mload(0x40)
-      // Place 'readMulti' selector at pointer
-      mstore(ptr, rd_multi)
-      // Place exec id, data read offset, and read size in calldata
-      mstore(add(0x04, ptr), exec_id)
-      mstore(add(0x24, ptr), 0x40)
-      mstore(add(0x44, ptr), 2)
-      // Place sender and recipient balance locations in calldata
-      mstore(add(0x64, ptr), sender_loc)
-      mstore(add(0x84, ptr), recipient_loc)
+    // Ensure owner has suffcient balance to send, and recipient balance will not overflow
+    require(sender_bal >= _amt && recipient_bal + _amt > recipient_bal);
 
-      // Read from storage, and ensure call succeeds. Store returned data at pointer.
-      let ret := staticcall(gas, caller, ptr, 0xa4, ptr, 0x80)
-      if iszero(ret) { revert (0, 0) }
-
-      // Get sender and recipient balances
-      sender_bal := mload(add(0x40, ptr))
-      recipient_bal := mload(add(0x60, ptr))
-    }
-
-    // Safely add and subtract from balances, and store in return storage request -
-    require(recipient_bal + _amt > recipient_bal && _amt <= sender_bal);
-    recipient_bal += _amt;
+    // Get updated balances -
     sender_bal -= _amt;
+    recipient_bal += _amt;
 
-    store_data[0] = sender_loc;
-    store_data[1] = bytes32(sender_bal);
-    store_data[2] = recipient_loc;
-    store_data[3] = bytes32(recipient_bal);
+    // Overwrite previous buffer, and create storage return buffer
+    stOverwrite(ptr);
+    // Place payment destination and amount in buffer (0, 0)
+    stPush(ptr, 0);
+    stPush(ptr, 0);
+    // Place owner balance location and updated balance in buffer
+    stPush(ptr, keccak256(keccak256(sender), TOKEN_BALANCES));
+    stPush(ptr, bytes32(sender_bal));
+    // Place recipient balance location and updated balance in buffer
+    stPush(ptr, keccak256(keccak256(_to), TOKEN_BALANCES));
+    stPush(ptr, bytes32(recipient_bal));
+
+    // Get bytes32[] representation of storage buffer
+    store_data = getBuffer(ptr);
+  }
+
+  /*
+  Returns the last value stored in the buffer
+
+  @param _ptr: A pointer to the buffer
+  @return last_val: The final value stored in the buffer
+  */
+  function top(uint _ptr) internal pure returns (bytes32 last_val) {
+    assembly {
+      let len := mload(_ptr)
+      // Add 0x20 to length to account for the length itself
+      last_val := mload(add(0x20, add(len, _ptr)))
+    }
+  }
+
+  /*
+  Creates a buffer for return data storage. Buffer pointer stores the lngth of the buffer
+
+  @return ptr: The location in memory where the length of the buffer is stored - elements stored consecutively after this location
+  */
+  function stBuff() internal pure returns (uint ptr) {
+    assembly {
+      // Get buffer location - free memory
+      ptr := mload(0x40)
+      // Update free-memory pointer - it's important to note that this is not actually free memory, if the pointer is meant to expand
+      mstore(0x40, add(0x20, ptr))
+    }
+  }
+
+  /*
+  Creates a new return data storage buffer at the position given by the pointer. Does not update free memory
+
+  @param _ptr: A pointer to the location where the buffer will be created
+  */
+  function stOverwrite(uint _ptr) internal pure {
+    assembly {
+      // Simple set the initial length - 0
+      mstore(_ptr, 0)
+    }
+  }
+
+  /*
+  Pushes a value to the end of a storage return buffer, and updates the length
+
+  @param _ptr: A pointer to the start of the buffer
+  @param _val: The value to push to the buffer
+  */
+  function stPush(uint _ptr, bytes32 _val) internal pure {
+    assembly {
+      // Get end of buffer - 32 bytes plus the length stored at the pointer
+      let len := add(0x20, mload(_ptr))
+      // Push value to end of buffer (overwrites memory - be careful!)
+      mstore(add(_ptr, len), _val)
+      // Increment buffer length
+      mstore(_ptr, len)
+      // If the free-memory pointer does not point beyond the buffer's current size, update it
+      if lt(mload(0x40), add(add(0x20, _ptr), len)) {
+        mstore(0x40, add(add(0x40, _ptr), len)) // Ensure free memory pointer points to the beginning of a memory slot
+      }
+    }
+  }
+
+  /*
+  Returns the bytes32[] stored at the buffer
+
+  @param _ptr: A pointer to the location in memory where the calldata for the call is stored
+  @return store_data: The return values, which will be stored
+  */
+  function getBuffer(uint _ptr) internal pure returns (bytes32[] store_data){
+    assembly {
+      // If the size stored at the pointer is not evenly divislble into 32-byte segments, this was improperly constructed
+      if gt(mod(mload(_ptr), 0x20), 0) { revert (0, 0) }
+      mstore(_ptr, div(mload(_ptr), 0x20))
+      store_data := _ptr
+    }
+  }
+
+  /*
+  Creates a calldata buffer in memory with the given function selector
+
+  @param _selector: The function selector to push to the first location in the buffer
+  @return ptr: The location in memory where the length of the buffer is stored - elements stored consecutively after this location
+  */
+  function cdBuff(bytes4 _selector) internal pure returns (uint ptr) {
+    assembly {
+      // Get buffer location - free memory
+      ptr := mload(0x40)
+      // Place initial length (4 bytes) in buffer
+      mstore(ptr, 0x04)
+      // Place function selector in buffer, after length
+      mstore(add(0x20, ptr), _selector)
+      // Update free-memory pointer - it's important to note that this is not actually free memory, if the pointer is meant to expand
+      mstore(0x40, add(0x40, ptr))
+    }
+  }
+
+  /*
+  Creates a new calldata buffer at the pointer with the given selector. Does not update free memory
+
+  @param _ptr: A pointer to the buffer to overwrite - will be the pointer to the new buffer as well
+  @param _selector: The function selector to place in the buffer
+  */
+  function cdOverwrite(uint _ptr, bytes4 _selector) internal pure {
+    assembly {
+      // Store initial length of buffer - 4 bytes
+      mstore(_ptr, 0x04)
+      // Store function selector after length
+      mstore(add(0x20, _ptr), _selector)
+    }
+  }
+
+  /*
+  Pushes a value to the end of a calldata buffer, and updates the length
+
+  @param _ptr: A pointer to the start of the buffer
+  @param _val: The value to push to the buffer
+  */
+  function cdPush(uint _ptr, bytes32 _val) internal pure {
+    assembly {
+      // Get end of buffer - 32 bytes plus the length stored at the pointer
+      let len := add(0x20, mload(_ptr))
+      // Push value to end of buffer (overwrites memory - be careful!)
+      mstore(add(_ptr, len), _val)
+      // Increment buffer length
+      mstore(_ptr, len)
+      // If the free-memory pointer does not point beyond the buffer's current size, update it
+      if lt(mload(0x40), add(add(0x20, _ptr), len)) {
+        mstore(0x40, add(add(0x2c, _ptr), len)) // Ensure free memory pointer points to the beginning of a memory slot
+      }
+    }
+  }
+
+  /*
+  Executes a 'readMulti' function call, given a pointer to a calldata buffer
+
+  @param _ptr: A pointer to the location in memory where the calldata for the call is stored
+  @return read_values: The values read from storage
+  */
+  function readMulti(uint _ptr) internal view returns (bytes32[] read_values) {
+    bool success;
+    assembly {
+      // Minimum length for 'readMulti' - 1 location is 0x84
+      if lt(mload(_ptr), 0x84) { revert (0, 0) }
+      // Read from storage
+      success := staticcall(gas, caller, add(0x20, _ptr), mload(_ptr), 0, 0)
+      // If call succeed, get return information
+      if gt(success, 0) {
+        // Ensure data will not be copied beyond the pointer
+        if gt(sub(returndatasize, 0x20), mload(_ptr)) { revert (0, 0) }
+        // Copy returned data to pointer, overwriting it in the process
+        // Copies returndatasize, but ignores the initial read offset so that the bytes32[] returned in the read is sitting directly at the pointer
+        returndatacopy(_ptr, 0x20, sub(returndatasize, 0x20))
+        // Set return bytes32[] to pointer, which should now have the stored length of the returned array
+        read_values := _ptr
+      }
+    }
+    if (!success)
+      triggerException(ERR_READ_FAILED);
+  }
+
+  /*
+  Executes a 'read' function call, given a pointer to a calldata buffer
+
+  @param _ptr: A pointer to the location in memory where the calldata for the call is stored
+  @return read_value: The value read from storage
+  */
+  function readSingle(uint _ptr) internal view returns (bytes32 read_value) {
+    bool success;
+    assembly {
+      // Length for 'read' buffer must be 0x44
+      if iszero(eq(mload(_ptr), 0x44)) { revert (0, 0) }
+      // Read from storage, and store return to pointer
+      success := staticcall(gas, caller, add(0x20, _ptr), mload(_ptr), _ptr, 0x20)
+      // If call succeeded, store return at pointer
+      if gt(success, 0) { read_value := mload(_ptr) }
+    }
+    if (!success)
+      triggerException(ERR_READ_FAILED);
   }
 
   /*
@@ -98,6 +273,7 @@ library TokenTransfer {
       revert(0, 0x20)
     }
   }
+
 
   // Parses context array and returns execution id, sender address, and sent wei amount
   function parse(bytes _context) internal pure returns (bytes32 exec_id, address from, uint wei_sent) {

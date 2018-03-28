@@ -36,6 +36,10 @@ library InitToken {
   // readMulti(bytes32 exec_id, bytes32[] locations)
   bytes4 public constant RD_MULTI = bytes4(keccak256("readMulti(bytes32,bytes32[])"));
 
+  /// EXCEPTION MESSAGES ///
+
+  bytes32 public constant ERR_READ_FAILED = bytes32("StorageReadFailed"); // Read from storage address failed
+
 
   /*
   Initializes a standard token application. Does not check for valid name, symbol, decimals, supply, or owner.
@@ -49,24 +53,25 @@ library InitToken {
   */
   function init(bytes32 _name, bytes32 _symbol, uint _decimals, uint _total_supply, address _owner) public pure
   returns (bytes32[] store_data) {
-    // Allocate space for return value
-    store_data = new bytes32[](12);
+    // Create storage data return buffer in memory
+    uint ptr = stBuff();
+    // Push token name, symbol, and token decimals locations and values to storage buffer
+    stPush(ptr, TOKEN_NAME);
+    stPush(ptr, _name);
+    stPush(ptr, TOKEN_SYMBOL);
+    stPush(ptr, _symbol);
+    stPush(ptr, TOKEN_DECIMALS);
+    stPush(ptr, bytes32(_decimals));
+    // Push total supply, admin address, and initial owner balance to buffer
+    stPush(ptr, TOKEN_TOTAL_SUPPLY);
+    stPush(ptr, bytes32(_total_supply));
+    stPush(ptr, TOKEN_ADMIN);
+    stPush(ptr, bytes32(_owner));
+    stPush(ptr, keccak256(keccak256(_owner), TOKEN_BALANCES));
+    stPush(ptr, bytes32(_total_supply));
 
-    // Store token name, symbol, and decimals
-    store_data[0] = TOKEN_NAME;
-    store_data[1] = _name;
-    store_data[2] = TOKEN_SYMBOL;
-    store_data[3] = _symbol;
-    store_data[4] = TOKEN_DECIMALS;
-    store_data[5] = bytes32(_decimals);
-
-    // Store total supply, admin address, and initial owner balance
-    store_data[6] = TOKEN_TOTAL_SUPPLY;
-    store_data[7] = bytes32(_total_supply);
-    store_data[8] = TOKEN_ADMIN;
-    store_data[9] = bytes32(_owner);
-    store_data[10] = keccak256(keccak256(_owner), TOKEN_BALANCES);
-    store_data[11] = bytes32(_total_supply);
+    // Get bytes32[] storage request array from buffer
+    store_data = getBuffer(ptr);
   }
 
   /// TOKEN GETTERS ///
@@ -81,26 +86,13 @@ library InitToken {
   */
   function balanceOf(address _storage, bytes32 _exec_id, address _owner) public view
   returns (uint owner_balance) {
-    // Place 'read' function selector in memory
-    bytes4 rd_sing = RD_SING;
-
-    // Get owner balance location
-    bytes32 balance_loc = keccak256(keccak256(_owner), TOKEN_BALANCES);
-
-    assembly {
-      // Allocate calldata pointer and store read selector, exec id, and owner balance location
-      let ptr := mload(0x40)
-      mstore(ptr, rd_sing)
-      mstore(add(0x04, ptr), _exec_id)
-      mstore(add(0x24, ptr), balance_loc)
-
-      // Read from storage, and store return at pointer
-      let ret := staticcall(gas, _storage, ptr, 0x44, ptr, 0x20)
-      if iszero(ret) { revert (0, 0) }
-
-      // Get return value
-      owner_balance := mload(ptr)
-    }
+    // Create 'read' calldata buffer in memory
+    uint ptr = cdBuff(RD_SING);
+    // Push exec id and owner balance location to buffer
+    cdPush(ptr, _exec_id);
+    cdPush(ptr, keccak256(keccak256(_owner), TOKEN_BALANCES));
+    // Read from storage
+    owner_balance = uint(readSingleFrom(ptr, _storage));
   }
 
   /*
@@ -114,27 +106,13 @@ library InitToken {
   */
   function allowance(address _storage, bytes32 _exec_id, address _owner, address _spender) public view
   returns (uint allowed) {
-    // Place 'read' function selector in memory
-    bytes4 rd_sing = RD_SING;
-
-    // Get spender allowed amount storage location
-    bytes32 allowance_loc = keccak256(keccak256(_owner), TOKEN_ALLOWANCES);
-    allowance_loc = keccak256(keccak256(_spender), allowance_loc);
-
-    assembly {
-      // Allocate calldata pointer and store read selector, exec id, and owner balance location
-      let ptr := mload(0x40)
-      mstore(ptr, rd_sing)
-      mstore(add(0x04, ptr), _exec_id)
-      mstore(add(0x24, ptr), allowance_loc)
-
-      // Read from storage, and store return at pointer
-      let ret := staticcall(gas, _storage, ptr, 0x44, ptr, 0x20)
-      if iszero(ret) { revert (0, 0) }
-
-      // Get return value
-      allowed := mload(ptr)
-    }
+    // Create 'read' calldata buffer in memory
+    uint ptr = cdBuff(RD_SING);
+    // Push exec id and spender allowance location to buffer
+    cdPush(ptr, _exec_id);
+    cdPush(ptr, keccak256(keccak256(_spender), keccak256(keccak256(_owner), TOKEN_ALLOWANCES)));
+    // Read from storage
+    allowed = uint(readSingleFrom(ptr, _storage));
   }
 
   /*
@@ -146,26 +124,13 @@ library InitToken {
   */
   function decimals(address _storage, bytes32 _exec_id) public view
   returns (uint token_decimals) {
-    // Place 'read' function selector in memory
-    bytes4 rd_sing = RD_SING;
-
-    // Place token decimals location in memory
-    bytes32 decimals_storage = TOKEN_DECIMALS;
-
-    assembly {
-      // Allocate calldata pointer and store read selector, exec id, and decimals storage location
-      let ptr := mload(0x40)
-      mstore(ptr, rd_sing)
-      mstore(add(0x04, ptr), _exec_id)
-      mstore(add(0x24, ptr), decimals_storage)
-
-      // Read from storage, and store return at pointer
-      let ret := staticcall(gas, _storage, ptr, 0x44, ptr, 0x20)
-      if iszero(ret) { revert (0, 0) }
-
-      // Get return value
-      token_decimals := mload(ptr)
-    }
+    // Create 'read' calldata buffer in memory
+    uint ptr = cdBuff(RD_SING);
+    // Push exec id and token decimals storage location to buffer
+    cdPush(ptr, _exec_id);
+    cdPush(ptr, TOKEN_DECIMALS);
+    // Read from storage
+    token_decimals = uint(readSingleFrom(ptr, _storage));
   }
 
   /*
@@ -177,26 +142,13 @@ library InitToken {
   */
   function totalSupply(address _storage, bytes32 _exec_id) public view
   returns (uint total_supply) {
-    // Place 'read' function selector in memory
-    bytes4 rd_sing = RD_SING;
-
-    // Place token totalsupply location in memory
-    bytes32 total_supply_storage = TOKEN_TOTAL_SUPPLY;
-
-    assembly {
-      // Allocate calldata pointer and store read selector, exec id, and total supply storage location
-      let ptr := mload(0x40)
-      mstore(ptr, rd_sing)
-      mstore(add(0x04, ptr), _exec_id)
-      mstore(add(0x24, ptr), total_supply_storage)
-
-      // Read from storage, and store return at pointer
-      let ret := staticcall(gas, _storage, ptr, 0x44, ptr, 0x20)
-      if iszero(ret) { revert (0, 0) }
-
-      // Get return value
-      total_supply := mload(ptr)
-    }
+    // Create 'read' calldata buffer in memory
+    uint ptr = cdBuff(RD_SING);
+    // Push exec id and token total supply storage location to buffer
+    cdPush(ptr, _exec_id);
+    cdPush(ptr, TOKEN_TOTAL_SUPPLY);
+    // Read from storage
+    total_supply = uint(readSingleFrom(ptr, _storage));
   }
 
   /*
@@ -207,26 +159,13 @@ library InitToken {
   @return token_name: The name of the token
   */
   function name(address _storage, bytes32 _exec_id) public view returns (bytes32 token_name) {
-    // Place 'read' function selector in memory
-    bytes4 rd_sing = RD_SING;
-
-    // Place token name location in memory
-    bytes32 name_storage = TOKEN_NAME;
-
-    assembly {
-      // Allocate calldata pointer and store read selector, exec id, and name storage location
-      let ptr := mload(0x40)
-      mstore(ptr, rd_sing)
-      mstore(add(0x04, ptr), _exec_id)
-      mstore(add(0x24, ptr), name_storage)
-
-      // Read from storage, and store return at pointer
-      let ret := staticcall(gas, _storage, ptr, 0x44, ptr, 0x20)
-      if iszero(ret) { revert (0, 0) }
-
-      // Get return value
-      token_name := mload(ptr)
-    }
+    // Create 'read' calldata buffer in memory
+    uint ptr = cdBuff(RD_SING);
+    // Push exec id and token name storage location to buffer
+    cdPush(ptr, _exec_id);
+    cdPush(ptr, TOKEN_NAME);
+    // Read from storage
+    token_name = readSingleFrom(ptr, _storage);
   }
 
   /*
@@ -237,26 +176,13 @@ library InitToken {
   @return token_symbol: The token's ticker symbol
   */
   function symbol(address _storage, bytes32 _exec_id) public view returns (bytes32 token_symbol) {
-    // Place 'read' function selector in memory
-    bytes4 rd_sing = RD_SING;
-
-    // Place token ticker symbol location in memory
-    bytes32 symbol_storage = TOKEN_SYMBOL;
-
-    assembly {
-      // Allocate calldata pointer and store read selector, exec id, and symbol storage location
-      let ptr := mload(0x40)
-      mstore(ptr, rd_sing)
-      mstore(add(0x04, ptr), _exec_id)
-      mstore(add(0x24, ptr), symbol_storage)
-
-      // Read from storage, and store return at pointer
-      let ret := staticcall(gas, _storage, ptr, 0x44, ptr, 0x20)
-      if iszero(ret) { revert (0, 0) }
-
-      // Get return value
-      token_symbol := mload(ptr)
-    }
+    // Create 'read' calldata buffer in memory
+    uint ptr = cdBuff(RD_SING);
+    // Push exec id and token symbol storage location to buffer
+    cdPush(ptr, _exec_id);
+    cdPush(ptr, TOKEN_SYMBOL);
+    // Read from storage
+    token_symbol = readSingleFrom(ptr, _storage);
   }
 
   struct TokenInfo {
@@ -279,38 +205,217 @@ library InitToken {
   */
   function getTokenInfo(address _storage, bytes32 _exec_id) public view
   returns (bytes32 token_name, bytes32 token_symbol, uint token_decimals, uint total_supply) {
+    // Create 'readMulti' calldata buffer in memory
+    uint ptr = cdBuff(RD_MULTI);
+    // Push exec id, data read offset, and read size to buffer
+    cdPush(ptr, _exec_id);
+    cdPush(ptr, 0x40);
+    cdPush(ptr, 4);
+    // Place token name, symbol, decimals, and total supply storage locations in buffer
+    cdPush(ptr, TOKEN_NAME);
+    cdPush(ptr, TOKEN_SYMBOL);
+    cdPush(ptr, TOKEN_DECIMALS);
+    cdPush(ptr, TOKEN_TOTAL_SUPPLY);
 
-    // Create struct in memory to hold variables
-    TokenInfo memory token_info = TokenInfo({
-      rd_multi: RD_MULTI,
-      name_storage: TOKEN_NAME,
-      symbol_storage: TOKEN_SYMBOL,
-      decimals_storage: TOKEN_DECIMALS,
-      total_supply_storage: TOKEN_TOTAL_SUPPLY
-    });
+    // Read from storage
+    bytes32[] memory read_values = readMultiFrom(ptr, _storage);
+    // Get return values -
+    token_name = read_values[0];
+    token_symbol = read_values[1];
+    token_decimals = uint(read_values[2]);
+    total_supply = uint(read_values[3]);
+  }
 
+  /*
+  Returns the last value stored in the buffer
+
+  @param _ptr: A pointer to the buffer
+  @return last_val: The final value stored in the buffer
+  */
+  function top(uint _ptr) internal pure returns (bytes32 last_val) {
     assembly {
-      // Allocate calldata pointer and store readMulti selector, exec id, data read offset and read size
-      let ptr := mload(0x40)
-      mstore(ptr, mload(token_info))
-      mstore(add(0x04, ptr), _exec_id)
-      mstore(add(0x24, ptr), 0x40)
-      mstore(add(0x44, ptr), 4)
-      // Place token name, symbol, decimal, and total supply storage locatios in calldata
-      mstore(add(0x64, ptr), mload(add(0x20, token_info)))
-      mstore(add(0x84, ptr), mload(add(0x40, token_info)))
-      mstore(add(0xa4, ptr), mload(add(0x60, token_info)))
-      mstore(add(0xc4, ptr), mload(add(0x80, token_info)))
+      let len := mload(_ptr)
+      // Add 0x20 to length to account for the length itself
+      last_val := mload(add(0x20, add(len, _ptr)))
+    }
+  }
 
-      // Read from storage, and store return at pointer
-      let ret := staticcall(gas, _storage, ptr, 0xe4, ptr, 0xc0)
-      if iszero(ret) { revert (0, 0) }
+  /*
+  Creates a buffer for return data storage. Buffer pointer stores the lngth of the buffer
 
-      // Get return values
-      token_name := mload(add(0x40, ptr))
-      token_symbol := mload(add(0x60, ptr))
-      token_decimals := mload(add(0x80, ptr))
-      total_supply := mload(add(0xa0, ptr))
+  @return ptr: The location in memory where the length of the buffer is stored - elements stored consecutively after this location
+  */
+  function stBuff() internal pure returns (uint ptr) {
+    assembly {
+      // Get buffer location - free memory
+      ptr := mload(0x40)
+      // Update free-memory pointer - it's important to note that this is not actually free memory, if the pointer is meant to expand
+      mstore(0x40, add(0x20, ptr))
+    }
+  }
+
+  /*
+  Creates a new return data storage buffer at the position given by the pointer. Does not update free memory
+
+  @param _ptr: A pointer to the location where the buffer will be created
+  */
+  function stOverwrite(uint _ptr) internal pure {
+    assembly {
+      // Simple set the initial length - 0
+      mstore(_ptr, 0)
+    }
+  }
+
+  /*
+  Pushes a value to the end of a storage return buffer, and updates the length
+
+  @param _ptr: A pointer to the start of the buffer
+  @param _val: The value to push to the buffer
+  */
+  function stPush(uint _ptr, bytes32 _val) internal pure {
+    assembly {
+      // Get end of buffer - 32 bytes plus the length stored at the pointer
+      let len := add(0x20, mload(_ptr))
+      // Push value to end of buffer (overwrites memory - be careful!)
+      mstore(add(_ptr, len), _val)
+      // Increment buffer length
+      mstore(_ptr, len)
+      // If the free-memory pointer does not point beyond the buffer's current size, update it
+      if lt(mload(0x40), add(add(0x20, _ptr), len)) {
+        mstore(0x40, add(add(0x40, _ptr), len)) // Ensure free memory pointer points to the beginning of a memory slot
+      }
+    }
+  }
+
+  /*
+  Returns the bytes32[] stored at the buffer
+
+  @param _ptr: A pointer to the location in memory where the calldata for the call is stored
+  @return store_data: The return values, which will be stored
+  */
+  function getBuffer(uint _ptr) internal pure returns (bytes32[] store_data){
+    assembly {
+      // If the size stored at the pointer is not evenly divislble into 32-byte segments, this was improperly constructed
+      if gt(mod(mload(_ptr), 0x20), 0) { revert (0, 0) }
+      mstore(_ptr, div(mload(_ptr), 0x20))
+      store_data := _ptr
+    }
+  }
+
+  /*
+  Creates a calldata buffer in memory with the given function selector
+
+  @param _selector: The function selector to push to the first location in the buffer
+  @return ptr: The location in memory where the length of the buffer is stored - elements stored consecutively after this location
+  */
+  function cdBuff(bytes4 _selector) internal pure returns (uint ptr) {
+    assembly {
+      // Get buffer location - free memory
+      ptr := mload(0x40)
+      // Place initial length (4 bytes) in buffer
+      mstore(ptr, 0x04)
+      // Place function selector in buffer, after length
+      mstore(add(0x20, ptr), _selector)
+      // Update free-memory pointer - it's important to note that this is not actually free memory, if the pointer is meant to expand
+      mstore(0x40, add(0x40, ptr))
+    }
+  }
+
+  /*
+  Creates a new calldata buffer at the pointer with the given selector. Does not update free memory
+
+  @param _ptr: A pointer to the buffer to overwrite - will be the pointer to the new buffer as well
+  @param _selector: The function selector to place in the buffer
+  */
+  function cdOverwrite(uint _ptr, bytes4 _selector) internal pure {
+    assembly {
+      // Store initial length of buffer - 4 bytes
+      mstore(_ptr, 0x04)
+      // Store function selector after length
+      mstore(add(0x20, _ptr), _selector)
+    }
+  }
+
+  /*
+  Pushes a value to the end of a calldata buffer, and updates the length
+
+  @param _ptr: A pointer to the start of the buffer
+  @param _val: The value to push to the buffer
+  */
+  function cdPush(uint _ptr, bytes32 _val) internal pure {
+    assembly {
+      // Get end of buffer - 32 bytes plus the length stored at the pointer
+      let len := add(0x20, mload(_ptr))
+      // Push value to end of buffer (overwrites memory - be careful!)
+      mstore(add(_ptr, len), _val)
+      // Increment buffer length
+      mstore(_ptr, len)
+      // If the free-memory pointer does not point beyond the buffer's current size, update it
+      if lt(mload(0x40), add(add(0x20, _ptr), len)) {
+        mstore(0x40, add(add(0x2c, _ptr), len)) // Ensure free memory pointer points to the beginning of a memory slot
+      }
+    }
+  }
+
+  /*
+  Executes a 'readMulti' function call, given a pointer to a calldata buffer
+
+  @param _ptr: A pointer to the location in memory where the calldata for the call is stored
+  @param _storage: The storage address from which to read
+  @return read_values: The values read from storage
+  */
+  function readMultiFrom(uint _ptr, address _storage) internal view returns (bytes32[] read_values) {
+    bool success;
+    assembly {
+      // Minimum length for 'readMulti' - 1 location is 0x84
+      if lt(mload(_ptr), 0x84) { revert (0, 0) }
+      // Read from storage
+      success := staticcall(gas, _storage, add(0x20, _ptr), mload(_ptr), 0, 0)
+      // If call succeed, get return information
+      if gt(success, 0) {
+        // Ensure data will not be copied beyond the pointer
+        if gt(sub(returndatasize, 0x20), mload(_ptr)) { revert (0, 0) }
+        // Copy returned data to pointer, overwriting it in the process
+        // Copies returndatasize, but ignores the initial read offset so that the bytes32[] returned in the read is sitting directly at the pointer
+        returndatacopy(_ptr, 0x20, sub(returndatasize, 0x20))
+        // Set return bytes32[] to pointer, which should now have the stored length of the returned array
+        read_values := _ptr
+      }
+    }
+    if (!success)
+      triggerException(ERR_READ_FAILED);
+  }
+
+  /*
+  Executes a 'read' function call, given a pointer to a calldata buffer
+
+  @param _ptr: A pointer to the location in memory where the calldata for the call is stored
+  @param _storage: The storage address from which to read
+  @return read_value: The value read from storage
+  */
+  function readSingleFrom(uint _ptr, address _storage) internal view returns (bytes32 read_value) {
+    bool success;
+    assembly {
+      // Length for 'read' buffer must be 0x44
+      if iszero(eq(mload(_ptr), 0x44)) { revert (0, 0) }
+      // Read from storage, and store return to pointer
+      success := staticcall(gas, _storage, add(0x20, _ptr), mload(_ptr), _ptr, 0x20)
+      // If call succeeded, store return at pointer
+      if gt(success, 0) { read_value := mload(_ptr) }
+    }
+    if (!success)
+      triggerException(ERR_READ_FAILED);
+  }
+
+  /*
+  Reverts state changes, but passes message back to caller
+
+  @param _message: The message to return to the caller
+  */
+  function triggerException(bytes32 _message) internal pure {
+    assembly {
+      mstore(0, _message)
+      revert(0, 0x20)
     }
   }
 }

@@ -95,14 +95,14 @@ contract ScriptExec {
       // Ensure execution id and sender make up the calldata's first 64 bytes, after the function selector
       // Ensure the next 32 bytes is equal to msg.value
       uint wei_sent;
-      (sender, exec_id, wei_sent) = parsePayable(_app_calldata);
+      (exec_id, sender, wei_sent) = parse(_app_calldata);
       require(sender == msg.sender && wei_sent == msg.value);
 
       // Call target with calldata
       require(default_storage.call.value(msg.value)(APP_EXEC, _target, exec_id, uint(96), uint(_app_calldata.length), _app_calldata));
     } else {
       // Otherwise, ensure valid calldata - execution id and sender make up the calldata's first 64 bytes, after the function selector
-      (sender, exec_id) = parse(_app_calldata);
+      (exec_id, sender, ) = parse(_app_calldata);
       require(sender == msg.sender);
 
       // Call target with calldata
@@ -284,16 +284,8 @@ contract ScriptExec {
 
   /// HELPERS ///
 
-  // Parses app calldata and returns app exec id and sender address
-  function parse(bytes _app_calldata) internal pure returns (address from, bytes32 exec_id) {
-    assembly {
-      exec_id := mload(sub(add(_app_calldata, mload(_app_calldata)), 0x20))
-      from := mload(add(_app_calldata, mload(_app_calldata)))
-    }
-  }
-
   // Parses payable app calldata and returns app exec id, sender address, and wei sent
-  function parsePayable(bytes _app_calldata) internal pure returns (address from, bytes32 exec_id, uint wei_sent) {
+  function parse(bytes _app_calldata) internal pure returns (bytes32 exec_id, address from, uint wei_sent) {
     assembly {
       exec_id := mload(sub(add(_app_calldata, mload(_app_calldata)), 0x40))
       from := mload(sub(add(_app_calldata, mload(_app_calldata)), 0x20))
