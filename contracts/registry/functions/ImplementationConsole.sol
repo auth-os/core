@@ -52,35 +52,31 @@ library ImplementationConsole {
   // readMulti(bytes32 exec_id, bytes32[] locations)
   bytes4 public constant RD_MULTI = bytes4(keccak256("readMulti(bytes32,bytes32[])"));
 
-  /// FUNCTIONS ///
+  /// EXCEPTION MESSAGES ///
 
-  struct FunctionInfo {
-    bytes4 rd_multi;
-    bytes32 app_storage_loc;
-    bytes32 ver_storage_loc;
-    bytes32 ver_status_loc;
-    bytes32 ver_func_list_loc;
-    bytes32 ver_addr_list_loc;
-    bytes32 func_storage_seed;
-    bytes32 func_impl_storage_seed;
-  }
+  bytes32 public constant ERR_UNKNOWN_CONTEXT = bytes32("UnknownContext"); // Malformed '_context' array
+  bytes32 public constant ERR_INSUFFICIENT_PERMISSIONS = bytes32("InsufficientPermissions"); // Action not allowed
+  bytes32 public constant ERR_READ_FAILED = bytes32("StorageReadFailed"); // Read from storage address failed
+
+  /// FUNCTIONS ///
 
   /*
   Adds functions and their implementing addresses to a non-finalized version
 
-  @param _context: A 64-byte array containing execution context for the application. In order:
-    1. Registry application execution id
-    2. Original script sender (address, padded to 32 bytes)
   @param _app: The name of the application under which the version is registered
   @param _version: The name of the version to add functions to
   @param _function_sigs: An array of function selectors the version will implement
   @param _function_addrs: The corresponding addresses which implement the given functions
-  @return store_data: A formatted storage request, which will be interpreted by the sender storage proxy to store version info
+  @param _context: The execution context for this application - a 96-byte array containing (in order):
+    1. Application execution id
+    2. Original script sender (address, padded to 32 bytes)
+    3. Wei amount sent with transaction to storage
+  @return store_data: A formatted storage request - first 64 bytes designate a forwarding address (and amount) for any wei sent
   */
-  function addFunctions(bytes _context, bytes32 _app, bytes32 _version, bytes4[] _function_sigs, address[] _function_addrs) public view
+  function addFunctions(bytes32 _app, bytes32 _version, bytes4[] _function_sigs, address[] _function_addrs, bytes _context) public view
   returns (bytes32[] store_data) {
     // Ensure input is correctly formatted
-    require(_context.length == 64);
+    require(_context.length == 96);
     require(_app != bytes32(0) && _version != bytes32(0));
     require(_function_sigs.length == _function_addrs.length && _function_sigs.length > 0);
 
@@ -88,145 +84,114 @@ library ImplementationConsole {
     bytes32 exec_id;
 
     // Parse context array and get sender address and execution id
-    (provider, exec_id) = parse(_context);
+    (exec_id, provider, ) = parse(_context);
 
-    // Initialize struct in memory to hold values
-    FunctionInfo memory func_info = FunctionInfo({
-      rd_multi: RD_MULTI,
-      app_storage_loc: keccak256(keccak256(provider), PROVIDERS),
-      // Placeholders
-      ver_storage_loc: 0,
-      ver_status_loc: 0,
-      ver_func_list_loc: 0,
-      ver_addr_list_loc: 0,
-      func_storage_seed: 0,
-      func_impl_storage_seed: FUNC_IMPL_ADDR
-    });
+    // Get app base storage location -
+    bytes32 temp = keccak256(keccak256(provider), PROVIDERS);
+    temp = keccak256(keccak256(_app), keccak256(APPS, temp));
 
-    // Get app base storage location
-    func_info.app_storage_loc = keccak256(APPS, func_info.app_storage_loc);
-    func_info.app_storage_loc = keccak256(keccak256(_app), func_info.app_storage_loc);
-    // Get version base storage location
-    func_info.ver_storage_loc = keccak256(VERSIONS, func_info.app_storage_loc);
-    func_info.ver_storage_loc = keccak256(keccak256(_version), func_info.ver_storage_loc);
-    // Get version status, function list, and function address list storage locations
-    func_info.ver_status_loc = keccak256(VER_IS_FINALIZED, func_info.ver_storage_loc);
-    func_info.ver_func_list_loc = keccak256(VER_FUNCTION_LIST, func_info.ver_storage_loc);
-    func_info.ver_addr_list_loc = keccak256(VER_FUNCTION_ADDRESSES, func_info.ver_storage_loc);
-    // Get function storage seed
-    func_info.func_storage_seed = keccak256(FUNCTIONS, func_info.ver_storage_loc);
+    /// Ensure application and version are registered, and version is not finalized
+    /// Additionally, read version function and address list lengths -
 
-    assembly {
-      // Ensure application and version are registered, and that the version is not already finalized.
-      // Additionally, get version function and address list lengths -
+    // Create 'readMulti' calldata buffer in memory
+    uint ptr = cdBuff(RD_MULTI);
+    // Place exec id, data read offset, and read size to calldata
+    cdPush(ptr, exec_id);
+    cdPush(ptr, 0x40);
+    cdPush(ptr, 5);
+    // Push app base storage, version base storage, and version finalization status storage locations to buffer
+    cdPush(ptr, temp);
+    // Get version base storage -
+    temp = keccak256(keccak256(_version), keccak256(VERSIONS, temp));
+    cdPush(ptr, temp);
+    cdPush(ptr, keccak256(VER_IS_FINALIZED, temp));
+    // Push version function and address list length storage locations to calldata
+    cdPush(ptr, keccak256(VER_FUNCTION_LIST, temp));
+    cdPush(ptr, keccak256(VER_FUNCTION_ADDRESSES, temp));
 
-      // Get pointer to store calldata in
-      let ptr := mload(0x40)
-      // Place 'readMulti' selector, registry execution id, data read offset, and read size in calldata
-      mstore(ptr, mload(func_info))
-      mstore(add(0x04, ptr), exec_id)
-      mstore(add(0x24, ptr), 0x40)
-      mstore(add(0x44, ptr), 5)
-      // Place app base storage, version base storage, and version finalization status storage locations in calldata
-      mstore(add(0x64, ptr), mload(add(0x20, func_info)))
-      mstore(add(0x84, ptr), mload(add(0x40, func_info)))
-      mstore(add(0xa4, ptr), mload(add(0x60, func_info)))
-      // Place version function and address list length storage locations in calldata
-      mstore(add(0xc4, ptr), mload(add(0x80, func_info)))
-      mstore(add(0xe4, ptr), mload(add(0xa0, func_info)))
-
-      // Read from storage and check return value. Store returned data at pointer
-      if iszero(
-        staticcall(gas, caller, ptr, 0x0104, ptr, 0xe0)
-      ) { revert (0, 0) }
-
-      // Get returned app storage value - if zero, app is not registered: revert
-      if iszero(mload(add(0x40, ptr))) { revert (0, 0) }
-      // Get returned version storage value - if zero, version is not registered: revert
-      if iszero(mload(add(0x60, ptr))) { revert (0, 0) }
-      // Get returned version status - if nonzero, version is already finalized: revert
-      if gt(mload(add(0x80, ptr)), 0) { revert (0, 0) }
-      // Get version function list length, and compare to address list length. They should always be equal
-      let ver_lists_length := mload(add(0xa0, ptr))
-      if iszero(eq(ver_lists_length, mload(add(0xc0, ptr)))) { revert (0, 0) }
-
-      // App and version are registered, and version has not been finalized: store functions and their addresses -
-
-      // Get return write size -
-      let size := add(4, mul(8, mload(_function_sigs)))
-
-      // Allocate space for return storage request
-      store_data := add(0x20, msize)
-      // Set return length
-      mstore(store_data, size)
-
-      // Set return values -
-
-      // Set new version list lengths
-      mstore(add(0x20, store_data), mload(add(0x80, func_info)))
-      mstore(add(0x40, store_data), add(ver_lists_length, mload(_function_sigs)))
-      mstore(add(0x60, store_data), mload(add(0xa0, func_info)))
-      mstore(add(0x80, store_data), add(ver_lists_length, mload(_function_sigs)))
-      // Loop through functions and addresses - push each to end of their respective version lists
-      let offset := 0x20
-      for { } lt(offset, add(0x20, mul(0x20, mload(_function_sigs)))) { offset := add(0x20, offset) } {
-        // Push function signature and address to lists -
-
-        // Place end of function list length in return request
-        mstore(add(add(0xa0, mul(8, sub(offset, 0x20))), store_data), add(offset, mload(add(0x80, func_info))))
-        // Place function signature in return request
-        mstore(add(add(0xc0, mul(8, sub(offset, 0x20))), store_data), mload(add(offset, _function_sigs)))
-        // Place end of address list in return request
-        mstore(add(add(0xe0, mul(8, sub(offset, 0x20))), store_data), add(offset, mload(add(0xa0, func_info))))
-        // Place function address in return request
-        mstore(add(add(0x0100, mul(8, sub(offset, 0x20))), store_data), mload(add(offset, _function_addrs)))
-
-        // Store function information in function storage -
-
-        // Store function storage seed in temporary space, and hash with function signature
-        mstore(0x20, mload(add(0xc0, func_info)))
-        mstore(0, mload(add(offset, _function_sigs)))
-        mstore(0, keccak256(0, 0x04))
-        // Hash function storage seed and function signature hash to get function storage location
-        mstore(0x20, keccak256(0, 0x40))
-        // Place function storage location and function signature in return request
-        mstore(add(add(0x0120, mul(8, sub(offset, 0x20))), store_data), mload(0x20))
-        mstore(add(add(0x0140, mul(8, sub(offset, 0x20))), store_data), mload(add(offset, _function_sigs)))
-        // Store function implementation address storage seed in temporary space, and hash with function storage seed
-        mstore(0, mload(add(0xe0, func_info)))
-        mstore(0x20, keccak256(0, 0x40))
-        // Place function impl address storage location and function impl address in return request
-        mstore(add(add(0x0160, mul(8, sub(offset, 0x20))), store_data), mload(0x20))
-        mstore(add(add(0x0180, mul(8, sub(offset, 0x20))), store_data), mload(add(offset, _function_addrs)))
-      }
+    // Read from storage and store return in buffer
+    bytes32[] memory read_values = readMulti(ptr);
+    // Check returned values
+    if (
+      read_values[0] == bytes32(0) // Application does not exist
+      || read_values[1] == bytes32(0) // Version does not exist
+      || read_values[2] != bytes32(0) // Version is already finalized
+    ) {
+      triggerException(ERR_INSUFFICIENT_PERMISSIONS);
     }
-  }
+    // Version function selector and address lists should always be equal
+    assert(read_values[3] == read_values[4]);
+    // Get version fucntion and address list lengths
+    uint list_lengths = uint(read_values[3]);
 
-  struct DescribeFunction {
-    bytes4 rd_multi;
-    bytes32 app_storage_loc;
-    bytes32 ver_storage_loc;
-    bytes32 ver_status_loc;
-    bytes32 func_storage_loc;
-    bytes32 func_desc_loc;
+    /// App and version are registered, and version has not been finalized - store function information
+
+    // Overwrite previous read buffer with storage buffer
+    stOverwrite(ptr);
+    // Push payment destination and value to buffer (0, 0)
+    stPush(ptr, 0);
+    stPush(ptr, 0);
+    // Push new version list lengths to storage buffer
+    stPush(ptr, keccak256(VER_FUNCTION_LIST, temp));
+    stPush(ptr, bytes32(list_lengths + _function_sigs.length));
+    stPush(ptr, keccak256(VER_FUNCTION_ADDRESSES, temp));
+    stPush(ptr, bytes32(list_lengths + _function_sigs.length));
+    // Loop through functions and addresses and push each to the end of their respective lists
+    for (uint i = list_lengths; i < _function_sigs.length + list_lengths; i++) {
+      // Place the end of the version function list in the storage buffer
+      stPush(ptr, bytes32(32 + (i * 32) + uint(keccak256(VER_FUNCTION_LIST, temp))));
+      // Place function ssgnature in storage buffer
+      stPush(ptr, bytes32(_function_sigs[i - list_lengths]));
+      // Place end of the version address list in storage buffer
+      stPush(ptr, bytes32(32 + (i * 32) + uint(keccak256(VER_FUNCTION_ADDRESSES, temp))));
+      // Place function implementing address in buffer
+      stPush(ptr, bytes32(_function_addrs[i - list_lengths]));
+
+      // Push function information to buffer -
+
+      // Hash function signature and function storage seed, and push to buffer
+      stPush(
+        ptr,
+        keccak256(
+          keccak256(_function_sigs[i - list_lengths]),
+          keccak256(FUNCTIONS, temp)
+        )
+      );
+      //Place function signature in buffer
+      stPush(ptr, bytes32(_function_sigs[i - list_lengths]));
+      // Hash function signature storage, and function implementation address storage seed, and place in buffer
+      stPush(
+        ptr,
+        keccak256(
+          FUNC_IMPL_ADDR,
+          keccak256(keccak256(_function_sigs[i - list_lengths]), keccak256(FUNCTIONS, temp))
+        )
+      );
+      // Place function address in storage buffer
+      stPush(ptr, bytes32(_function_addrs[i - list_lengths]));
+    }
+
+    // Get bytes32[] representation of storage buffer
+    store_data = getBuffer(ptr);
   }
 
   /*
   Adds a description to an added function
 
-  @param _context: A 64-byte array containing execution context for the application. In order:
-    1. Registry application execution id
-    2. Original script sender (address, padded to 32 bytes)
   @param _app: The name of the application under which the version is registered
   @param _version: The name of the version to add functions to
   @param _function_sig: The function signature to which the description will be added
   @param _function_description: The bytes of a function's description
-  @return store_data: A formatted storage request, which will be interpreted by the sender storage proxy to store version info
+  @param _context: The execution context for this application - a 96-byte array containing (in order):
+    1. Application execution id
+    2. Original script sender (address, padded to 32 bytes)
+    3. Wei amount sent with transaction to storage
+  @return store_data: A formatted storage request - first 64 bytes designate a forwarding address (and amount) for any wei sent
   */
-  function describeFunction(bytes _context, bytes32 _app, bytes32 _version, bytes4 _function_sig, bytes _function_description) public view
+  function describeFunction(bytes32 _app, bytes32 _version, bytes4 _function_sig, bytes _function_description, bytes _context) public view
   returns (bytes32[] store_data) {
     // Ensure input is correctly formatted
-    require(_context.length == 64);
+    require(_context.length == 96);
     require(_app != bytes32(0) && _version != bytes32(0));
     require(_function_sig != bytes4(0) && _function_description.length > 0);
 
@@ -234,95 +199,288 @@ library ImplementationConsole {
     bytes32 exec_id;
 
     // Parse context array and get sender address and execution id
-    (provider, exec_id) = parse(_context);
+    (exec_id, provider, ) = parse(_context);
 
-    // Initialize struct in memory to hold values
-    DescribeFunction memory func_info = DescribeFunction({
-      rd_multi: RD_MULTI,
-      app_storage_loc: keccak256(keccak256(provider), PROVIDERS),
-      // Placeholders
-      ver_storage_loc: 0,
-      ver_status_loc: 0,
-      func_storage_loc: 0,
-      func_desc_loc: 0
-    });
+    // Get app base storage location -
+    bytes32 temp = keccak256(keccak256(provider), PROVIDERS);
+    temp = keccak256(keccak256(_app), keccak256(APPS, temp));
 
-    // Get app base storage location
-    func_info.app_storage_loc = keccak256(APPS, func_info.app_storage_loc);
-    func_info.app_storage_loc = keccak256(keccak256(_app), func_info.app_storage_loc);
-    // Get version base storage location
-    func_info.ver_storage_loc = keccak256(VERSIONS, func_info.app_storage_loc);
-    func_info.ver_storage_loc = keccak256(keccak256(_version), func_info.ver_storage_loc);
-    // Get version status storage location
-    func_info.ver_status_loc = keccak256(VER_IS_FINALIZED, func_info.ver_storage_loc);
+    /// Ensure application and version are registered, and version is not finalized
+    /// Additionally, ensure function exists -
+
+    // Create 'readMulti' calldata buffer in memory
+    uint ptr = cdBuff(RD_MULTI);
+    // Place exec id, data read offset, and read size to calldata
+    cdPush(ptr, exec_id);
+    cdPush(ptr, 0x40);
+    cdPush(ptr, 4);
+    // Push app base storage, version base storage, and version finalization status storage locations to buffer
+    cdPush(ptr, temp);
+    // Get version base storage -
+    temp = keccak256(keccak256(_version), keccak256(VERSIONS, temp));
+    cdPush(ptr, temp);
+    cdPush(ptr, keccak256(VER_IS_FINALIZED, temp));
     // Get function base storage location
-    func_info.func_storage_loc = keccak256(FUNCTIONS, func_info.ver_storage_loc);
-    func_info.func_storage_loc = keccak256(keccak256(_function_sig), func_info.func_storage_loc);
-    // Get function dscription storage location
-    func_info.func_desc_loc = keccak256(FUNC_DESC, func_info.func_storage_loc);
+    temp = keccak256(keccak256(_function_sig), keccak256(FUNCTIONS, temp));
+    // Push function base storage location in calldata buffer
+    cdPush(ptr, temp);
 
+    // Read from storage and store return in buffer
+    bytes32[] memory read_values = readMulti(ptr);
+    // Check returned values
+    if (
+      read_values[0] == bytes32(0) // Application does not exist
+      || read_values[1] == bytes32(0) // Version does not exist
+      || read_values[2] != bytes32(0) // Version is already finalized
+      || read_values[3] == bytes32(0) // Function does not exist
+    ) {
+      triggerException(ERR_INSUFFICIENT_PERMISSIONS);
+    }
+
+    /// App and version are registered, and version has not been finalized - store function description
+
+    // Overwrite previous read buffer with storage buffer
+    stOverwrite(ptr);
+    // Push payment destination and value (0, 0) to buffer
+    stPush(ptr, 0);
+    stPush(ptr, 0);
+    // Add description bytes to storage buffer
+    stPushBytes(ptr, keccak256(FUNC_DESC, temp), _function_description);
+
+    // Get bytes32[] representation of storage buffer
+    store_data = getBuffer(ptr);
+  }
+
+  /*
+  Returns the last value stored in the buffer
+
+  @param _ptr: A pointer to the buffer
+  @return last_val: The final value stored in the buffer
+  */
+  function top(uint _ptr) internal pure returns (bytes32 last_val) {
     assembly {
-      // Ensure application and version are registered, and that the version is not already finalized.
-      // Additionally, ensure function exists -
+      let len := mload(_ptr)
+      // Add 0x20 to length to account for the length itself
+      last_val := mload(add(0x20, add(len, _ptr)))
+    }
+  }
 
-      // Get pointer to store calldata in
-      let ptr := mload(0x40)
-      // Place 'readMulti' selector, registry execution id, data read offset, and read size in calldata
-      mstore(ptr, mload(func_info))
-      mstore(add(0x04, ptr), exec_id)
-      mstore(add(0x24, ptr), 0x40)
-      mstore(add(0x44, ptr), 4)
-      // Place app base storage, version base storage, and version finalization status storage locations in calldata
-      mstore(add(0x64, ptr), mload(add(0x20, func_info)))
-      mstore(add(0x84, ptr), mload(add(0x40, func_info)))
-      mstore(add(0xa4, ptr), mload(add(0x60, func_info)))
-      // Place function storage location in calldataa
-      mstore(add(0xc4, ptr), mload(add(0x80, func_info)))
+  /*
+  Creates a buffer for return data storage. Buffer pointer stores the lngth of the buffer
 
-      // Read from storage and check return value. Store returned data at pointer
-      if iszero(
-        staticcall(gas, caller, ptr, 0xe4, ptr, 0xc0)
-      ) { revert (0, 0) }
+  @return ptr: The location in memory where the length of the buffer is stored - elements stored consecutively after this location
+  */
+  function stBuff() internal pure returns (uint ptr) {
+    assembly {
+      // Get buffer location - free memory
+      ptr := mload(0x40)
+      // Update free-memory pointer - it's important to note that this is not actually free memory, if the pointer is meant to expand
+      mstore(0x40, add(0x20, ptr))
+    }
+  }
 
-      // Get returned app storage value - if zero, app is not registered: revert
-      if iszero(mload(add(0x40, ptr))) { revert (0, 0) }
-      // Get returned version storage value - if zero, version is not registered: revert
-      if iszero(mload(add(0x60, ptr))) { revert (0, 0) }
-      // Get returned version status - if nonzero, version is already finalized: revert
-      if gt(mload(add(0x80, ptr)), 0) { revert (0, 0) }
-      // Get returned function storage location - if zero, function does not exist: revert
-      if iszero(mload(add(0xa0, ptr))) { revert (0, 0) }
+  /*
+  Creates a new return data storage buffer at the position given by the pointer. Does not update free memory
 
-      // App and version are registered, and version has not been finalized: store function description -
+  @param _ptr: A pointer to the location where the buffer will be created
+  */
+  function stOverwrite(uint _ptr) internal pure {
+    assembly {
+      // Simple set the initial length - 0
+      mstore(_ptr, 0)
+    }
+  }
 
-      // Get return write size -
-      let size := add(2, mul(2, div(mload(_function_description), 0x20)))
-      if gt(mod(mload(_function_description), 0x20), 0) { size := add(2, size) }
+  /*
+  Pushes a value to the end of a storage return buffer, and updates the length
 
-      // Allocate space for return storage request
-      store_data := add(0x20, msize)
-      // Set return length
-      mstore(store_data, size)
-
-      // Set return values -
-
-      // Loop through description and place in return request
-      for { let offset := 0x00 } lt(offset, add(0x20, mload(_function_description))) { offset := add(0x20, offset) } {
-        // Place end of description list in calldata -
-        mstore(add(add(0x20, mul(2, offset)), store_data), add(offset, mload(add(0xa0, func_info))))
-        // Place description chunk in calldata
-        mstore(add(add(0x40, mul(2, offset)), store_data), mload(add(offset, _function_description)))
+  @param _ptr: A pointer to the start of the buffer
+  @param _val: The value to push to the buffer
+  */
+  function stPush(uint _ptr, bytes32 _val) internal pure {
+    assembly {
+      // Get end of buffer - 32 bytes plus the length stored at the pointer
+      let len := add(0x20, mload(_ptr))
+      // Push value to end of buffer (overwrites memory - be careful!)
+      mstore(add(_ptr, len), _val)
+      // Increment buffer length
+      mstore(_ptr, len)
+      // If the free-memory pointer does not point beyond the buffer's current size, update it
+      if lt(mload(0x40), add(add(0x20, _ptr), len)) {
+        mstore(0x40, add(add(0x40, _ptr), len)) // Ensure free memory pointer points to the beginning of a memory slot
       }
     }
   }
 
-  // Parses context array and returns sender address and execution id
-  function parse(bytes _context) internal pure returns (address from, bytes32 exec_id) {
+  /*
+  Pushes a bytes array to the storage buffer, including its length. Uses the given base location to get the storage locations for each
+  index in the array
+
+  @param _ptr: A pointer to the start of the buffer
+  @param _base_location: The storage location of the length of the array
+  @param _arr: The bytes array to push
+  */
+  function stPushBytes(uint _ptr, bytes32 _base_location, bytes _arr) internal pure {
+    assembly {
+      // Get end of buffer - 32 bytes plus the length stored at the pointer
+      let len := add(0x20, mload(_ptr))
+      // Loop over bytes array, and push each value to storage buffer, while incrementing the current storage location
+      let offset := 0x00
+      for { } lt(offset, add(0x20, mload(_arr))) { offset := add(0x20, offset) } {
+        // Push incremented location to buffer
+        mstore(add(add(len, mul(2, offset)), _ptr), add(offset, _base_location))
+        // Push bytes array chunk to buffer
+        mstore(add(add(add(0x20, len), mul(2, offset)), _ptr), mload(add(offset, _arr)))
+      }
+      // Increment buffer length
+      mstore(_ptr, add(mul(2, offset), mload(_ptr)))
+      // If the free-memory pointer does not point beyond the buffer's current size, update it
+      if lt(mload(0x40), add(add(0x20, _ptr), mload(_ptr))) {
+        mstore(0x40, add(add(0x40, _ptr), mload(_ptr))) // Ensure free memory pointer points to the beginning of a memory slot
+      }
+    }
+  }
+
+  /*
+  Returns the bytes32[] stored at the buffer
+
+  @param _ptr: A pointer to the location in memory where the calldata for the call is stored
+  @return store_data: The return values, which will be stored
+  */
+  function getBuffer(uint _ptr) internal pure returns (bytes32[] store_data){
+    assembly {
+      // If the size stored at the pointer is not evenly divislble into 32-byte segments, this was improperly constructed
+      if gt(mod(mload(_ptr), 0x20), 0) { revert (0, 0) }
+      mstore(_ptr, div(mload(_ptr), 0x20))
+      store_data := _ptr
+    }
+  }
+
+  /*
+  Creates a calldata buffer in memory with the given function selector
+
+  @param _selector: The function selector to push to the first location in the buffer
+  @return ptr: The location in memory where the length of the buffer is stored - elements stored consecutively after this location
+  */
+  function cdBuff(bytes4 _selector) internal pure returns (uint ptr) {
+    assembly {
+      // Get buffer location - free memory
+      ptr := mload(0x40)
+      // Place initial length (4 bytes) in buffer
+      mstore(ptr, 0x04)
+      // Place function selector in buffer, after length
+      mstore(add(0x20, ptr), _selector)
+      // Update free-memory pointer - it's important to note that this is not actually free memory, if the pointer is meant to expand
+      mstore(0x40, add(0x40, ptr))
+    }
+  }
+
+  /*
+  Creates a new calldata buffer at the pointer with the given selector. Does not update free memory
+
+  @param _ptr: A pointer to the buffer to overwrite - will be the pointer to the new buffer as well
+  @param _selector: The function selector to place in the buffer
+  */
+  function cdOverwrite(uint _ptr, bytes4 _selector) internal pure {
+    assembly {
+      // Store initial length of buffer - 4 bytes
+      mstore(_ptr, 0x04)
+      // Store function selector after length
+      mstore(add(0x20, _ptr), _selector)
+    }
+  }
+
+  /*
+  Pushes a value to the end of a calldata buffer, and updates the length
+
+  @param _ptr: A pointer to the start of the buffer
+  @param _val: The value to push to the buffer
+  */
+  function cdPush(uint _ptr, bytes32 _val) internal pure {
+    assembly {
+      // Get end of buffer - 32 bytes plus the length stored at the pointer
+      let len := add(0x20, mload(_ptr))
+      // Push value to end of buffer (overwrites memory - be careful!)
+      mstore(add(_ptr, len), _val)
+      // Increment buffer length
+      mstore(_ptr, len)
+      // If the free-memory pointer does not point beyond the buffer's current size, update it
+      if lt(mload(0x40), add(add(0x20, _ptr), len)) {
+        mstore(0x40, add(add(0x2c, _ptr), len)) // Ensure free memory pointer points to the beginning of a memory slot
+      }
+    }
+  }
+
+  /*
+  Executes a 'readMulti' function call, given a pointer to a calldata buffer
+
+  @param _ptr: A pointer to the location in memory where the calldata for the call is stored
+  @return read_values: The values read from storage
+  */
+  function readMulti(uint _ptr) internal view returns (bytes32[] read_values) {
+    bool success;
+    assembly {
+      // Minimum length for 'readMulti' - 1 location is 0x84
+      if lt(mload(_ptr), 0x84) { revert (0, 0) }
+      // Read from storage
+      success := staticcall(gas, caller, add(0x20, _ptr), mload(_ptr), 0, 0)
+      // If call succeed, get return information
+      if gt(success, 0) {
+        // Ensure data will not be copied beyond the pointer
+        if gt(sub(returndatasize, 0x20), mload(_ptr)) { revert (0, 0) }
+        // Copy returned data to pointer, overwriting it in the process
+        // Copies returndatasize, but ignores the initial read offset so that the bytes32[] returned in the read is sitting directly at the pointer
+        returndatacopy(_ptr, 0x20, sub(returndatasize, 0x20))
+        // Set return bytes32[] to pointer, which should now have the stored length of the returned array
+        read_values := _ptr
+      }
+    }
+    if (!success)
+      triggerException(ERR_READ_FAILED);
+  }
+
+  /*
+  Executes a 'read' function call, given a pointer to a calldata buffer
+
+  @param _ptr: A pointer to the location in memory where the calldata for the call is stored
+  @return read_value: The value read from storage
+  */
+  function readSingle(uint _ptr) internal view returns (bytes32 read_value) {
+    bool success;
+    assembly {
+      // Length for 'read' buffer must be 0x44
+      if iszero(eq(mload(_ptr), 0x44)) { revert (0, 0) }
+      // Read from storage, and store return to pointer
+      success := staticcall(gas, caller, add(0x20, _ptr), mload(_ptr), _ptr, 0x20)
+      // If call succeeded, store return at pointer
+      if gt(success, 0) { read_value := mload(_ptr) }
+    }
+    if (!success)
+      triggerException(ERR_READ_FAILED);
+  }
+
+  /*
+  Reverts state changes, but passes message back to caller
+
+  @param _message: The message to return to the caller
+  */
+  function triggerException(bytes32 _message) internal pure {
+    assembly {
+      mstore(0, _message)
+      revert(0, 0x20)
+    }
+  }
+
+
+  // Parses context array and returns execution id, sender address, and sent wei amount
+  function parse(bytes _context) internal pure returns (bytes32 exec_id, address from, uint wei_sent) {
     assembly {
       exec_id := mload(add(0x20, _context))
       from := mload(add(0x40, _context))
+      wei_sent := mload(add(0x60, _context))
     }
-    // Ensure neither field is zero
-    require(from != address(0) && exec_id != bytes32(0));
+    // Ensure sender and exec id are valid
+    if (from == address(0) || exec_id == bytes32(0))
+      triggerException(ERR_UNKNOWN_CONTEXT);
   }
 }

@@ -13,6 +13,14 @@ library CrowdsaleConsole {
   // Whether or not the crowdsale is post-purchase
   bytes32 public constant CROWDSALE_IS_FINALIZED = keccak256("crowdsale_is_finalized");
 
+  // Storage location of a list of the tiers the crowdsale will have
+  // Each tier mimics the following struct: { uint token_sell_cap; uint end_time; }
+  bytes32 public constant CROWDSALE_TIERS = keccak256("crowdsale_tier_list");
+
+  // Storage location of the current tier of the crowdsale, and its index in the crowdsale tier list
+  // Mimics the following struct: { uint token_sell_cap; uint end_time; uint tier_list_index; }
+  bytes32 public constant CROWDSALE_CURRENT_TIER = keccak256("crowdsale_current_tier");
+
   // Storage location of team funds wallet
   bytes32 public constant WALLET = keccak256("crowdsale_wallet");
 
@@ -69,6 +77,10 @@ library CrowdsaleConsole {
 
   /// FUNCTION SELECTORS ///
 
+  // Function selector for storage "read"
+  // read(bytes32 _exec_id, bytes32 _location) view returns (bytes32 data_read);
+  bytes4 public constant RD_SING = bytes4(keccak256("read(bytes32,bytes32)"));
+
   // Function selector for storage 'readMulti'
   // readMulti(bytes32 exec_id, bytes32[] locations)
   bytes4 public constant RD_MULTI = bytes4(keccak256("readMulti(bytes32,bytes32[])"));
@@ -89,32 +101,22 @@ library CrowdsaleConsole {
     bytes32 exec_id;
     (exec_id, sender, ) = parse(_context);
 
-    // Get storage locations for admin address and crowdsale init status
-    bytes32 admin_storage = ADMIN;
-    bytes32 crowdsale_init_status_storage = CROWDSALE_IS_INIT;
+    // Create 'readMulti' calldata buffer in memory
+    uint ptr = cdBuff(RD_MULTI);
+    // Place exec id, data read offset, and read size in buffer
+    cdPush(ptr, exec_id);
+    cdPush(ptr, bytes32(64));
+    cdPush(ptr, bytes32(2));
+    // Place admin storage location and crowdsale status storage location in calldata
+    cdPush(ptr, ADMIN);
+    cdPush(ptr, CROWDSALE_IS_INIT);
+    // Read from storage, and store return to buffer
+    bytes32[] memory read_values = readMulti(ptr);
 
-    // Place 'readMulti' function selector in memory
-    bytes4 rd_multi = RD_MULTI;
-    assembly {
-      // Get pointer to free memory for calldata
-      let ptr := mload(0x40)
-      // Place 'readMulti' selector, exec id, data read offset, and read size in calldata
-      mstore(ptr, rd_multi)
-      mstore(add(0x04, ptr), exec_id)
-      mstore(add(0x24, ptr), 0x40)
-      mstore(add(0x44, ptr), 2)
-      // Place admin storage location and crowdsale status storage location in calldata
-      mstore(add(0x64, ptr), admin_storage)
-      mstore(add(0x84, ptr), crowdsale_init_status_storage)
-      // Read from storage, and store return at pointer
-      let ret := staticcall(gas, caller, ptr, 0xa4, ptr, 0x80)
-      if iszero(ret) { revert (0, 0) }
+    // Check that the sender is the admin address and that the crowdsale is not yet initialized
+    if (read_values[0] != bytes32(sender) || read_values[1] != bytes32(0))
+      triggerException(ERR_INSUFFICIENT_PERMISSIONS);
 
-      // Check that the sender is the crowdsale admin address -
-      if iszero(eq(sender, mload(add(0x40, ptr)))) { revert (0, 0) }
-      // Check that the crowdsale is not already initialized -
-      if gt(mload(add(0x60, ptr)), 0) { revert (0, 0) }
-    }
     // All checks passed - sender is crowdsale admin, and crowdsale is not initialized
     _;
   }
@@ -136,17 +138,38 @@ library CrowdsaleConsole {
     // Ensure valid input
     require(_name != bytes32(0) && _symbol != bytes32(0) && _decimals > 0);
 
-    // Allocate space for return storage request -
-    store_data = new bytes32[](8);
+    // Create memory buffer for return data
+    uint ptr = stBuff();
 
-    // First two slots are blank - this function does not accept eth
-    // Store token name, symbol, and decimals
-    store_data[2] = TOKEN_NAME;
-    store_data[3] = _name;
-    store_data[4] = TOKEN_SYMBOL;
-    store_data[5] = _symbol;
-    store_data[6] = TOKEN_DECIMALS;
-    store_data[7] = bytes32(_decimals);
+    // First two slots, information on wei sent and destination, are blank (this function does not use eth)
+    stPush(ptr, 0);
+    stPush(ptr, 0);
+    // Place token name, symbol, and decimals in return data buffer
+    stPush(ptr, TOKEN_NAME);
+    stPush(ptr, _name);
+    stPush(ptr, TOKEN_SYMBOL);
+    stPush(ptr, _symbol);
+    stPush(ptr, TOKEN_DECIMALS);
+    stPush(ptr, _decimals);
+
+    // Get bytes32[] storage request array from buffer
+    store_data = getBuffer(ptr);
+  }
+
+  /*
+  Allows the admin to create a new tier for the crowdsale and append it to the end of the list of crowdsale tiers
+
+  @param _token_sell_cap: The maximum amount of tokens that will be sold this tier
+  @param _end_time: The end time of this tier (must be after the end time of the previous tier)
+  @param _context: The execution context for this application - a 96-byte array containing (in order):
+    1. Application execution id
+    2. Original script sender (address, padded to 32 bytes)
+    3. Wei amount sent with transaction to storage
+  @return store_data: A formatted storage request - first 64 bytes designate a forwarding address (and amount) for any wei sent
+  */
+  function createCrowdsaleTier(uint _token_sell_cap, uint _start_time, uint _end_time, bytes _context) public onlyAdminAndNotInit(_context) view
+  returns (bytes32[] store_data) {
+
   }
 
   /*
@@ -191,55 +214,37 @@ library CrowdsaleConsole {
     3. Wei amount sent with transaction to storage
   @return store_data: A formatted storage request - first 64 bytes designate a forwarding address (and amount) for any wei sent
   */
-  function initializeCrowdsale(bytes _context) public view returns (bytes32[] store_data) {
+  function initializeCrowdsale(bytes _context) public onlyAdminAndNotInit(_context) view
+  returns (bytes32[] store_data) {
     // Ensure valid input
     if (_context.length != 96)
       triggerException(ERR_UNKNOWN_CONTEXT);
 
-    // Get sender and exec id for this app instance
-    address sender;
+    // Get execuion id from _context
     bytes32 exec_id;
-    (exec_id, sender, ) = parse(_context);
+    (exec_id, , ) = parse(_context);
 
-    // Place struct in memory to hold values
-    CrowdsaleInit memory cr_init = CrowdsaleInit({
-      rd_multi: RD_MULTI,
-      admin_storage: ADMIN,
-      crowdsale_init_status_storage: CROWDSALE_IS_INIT,
-      token_name_storage: TOKEN_NAME
-    });
+    // Create 'read' calldata buffer in memory
+    uint ptr = cdBuff(RD_SING);
 
-    assembly {
-      // Get pointer for calldata
-      let ptr := mload(0x40)
-      // Place function selector, exec id, data read offset, and read size in calldata
-      mstore(ptr, mload(cr_init))
-      mstore(add(0x04, ptr), exec_id)
-      mstore(add(0x24, ptr), 0x40)
-      mstore(add(0x44, ptr), 3)
-      // Place admin address, crowdsale status, and token name storage locations in calldata
-      mstore(add(0x64, ptr), mload(add(0x20, cr_init)))
-      mstore(add(0x84, ptr), mload(add(0x40, cr_init)))
-      mstore(add(0xa4, ptr), mload(add(0x60, cr_init)))
-      // Read from storage, check return, and store value at pointer
-      let ret := staticcall(gas, caller, ptr, 0xc4, ptr, 0xa0)
-      if iszero(ret) { revert (0, 0) }
+    // Place exec id and token name storage location in buffer
+    cdPush(ptr, exec_id);
+    cdPush(ptr, TOKEN_NAME);
 
-      // Check return value - if sender is not admin, revert
-      if iszero(eq(sender, mload(add(0x40, ptr)))) { revert (0, 0) }
-      // Check return value - if crowdsale is already initialized, revert
-      if gt(mload(add(0x60, ptr)), 0) { revert (0, 0) }
-      // Check return value - if token name is zero, revert
-      if iszero(mload(add(0x80, ptr))) { revert (0, 0) }
-    }
+    // Read from storage and check that the token name is nonzero
+    if (readSingle(ptr) == bytes32(0))
+      triggerException(ERR_INSUFFICIENT_PERMISSIONS);
 
-    // Allocate space for return storage request -
-    store_data = new bytes32[](4);
-
-    // First two slots are blank - this function does not accept eth
-    // Store crowdsale initialization status
-    store_data[2] = CROWDSALE_IS_INIT;
-    store_data[3] = bytes32(1);
+    // Overwrite read buffer with storage buffer
+    stOverwrite(ptr);
+    // Push payment information (wei sent and destination) to buffer
+    stPush(ptr, 0);
+    stPush(ptr, 0);
+    // Push crowdsale initialization status location to buffer
+    stPush(ptr, CROWDSALE_IS_INIT);
+    stPush(ptr, bytes32(1));
+    // Get bytes32[] storage request array from buffer
+    store_data = getBuffer(ptr);
   }
 
   struct CrowdsaleFinalize {
@@ -269,54 +274,226 @@ library CrowdsaleConsole {
     bytes32 exec_id;
     (exec_id, sender, ) = parse(_context);
 
-    // Place struct in memory to hold values
-    CrowdsaleFinalize memory cr_fin = CrowdsaleFinalize({
-      rd_multi: RD_MULTI,
-      admin_storage: ADMIN,
-      crowdsale_init_status_storage: CROWDSALE_IS_INIT,
-      crowdsale_finalized_status_storage: CROWDSALE_IS_FINALIZED,
-      token_total_supply_storage: TOKEN_TOTAL_SUPPLY
-    });
-
     uint token_total_supply;
 
-    assembly {
-      // Get pointer for calldata
-      let ptr := mload(0x40)
-      // Place function selector, exec id, data read offset, and read size in calldata
-      mstore(ptr, mload(cr_fin))
-      mstore(add(0x04, ptr), exec_id)
-      mstore(add(0x24, ptr), 0x40)
-      mstore(add(0x44, ptr), 4)
-      // Place admin address, crowdsale init status, crowdsale finalization status, and total token supply storage locations in calldata
-      mstore(add(0x64, ptr), mload(add(0x20, cr_fin)))
-      mstore(add(0x84, ptr), mload(add(0x40, cr_fin)))
-      mstore(add(0xa4, ptr), mload(add(0x60, cr_fin)))
-      mstore(add(0xc4, ptr), mload(add(0x80, cr_fin)))
-      // Read from storage, check return, and store value at pointer
-      let ret := staticcall(gas, caller, ptr, 0xe4, ptr, 0xc0)
-      if iszero(ret) { revert (0, 0) }
-
-      // Check return value - if sender is not admin, revert
-      if iszero(eq(sender, mload(add(0x40, ptr)))) { revert (0, 0) }
-      // Check return value - if crowdsale not initialized - revert
-      if iszero(mload(add(0x60, ptr))) { revert (0, 0) }
-      // Check return value - if crowdsale is already finalized, revert
-      if gt(mload(add(0x80, ptr)), 0) { revert (0, 0) }
-      // Get token total supply (amount of tokens minted during crowdsale)
-      token_total_supply := mload(add(0xa0, ptr))
+    // Create 'readMulti' calldata buffer in memory
+    uint ptr = cdBuff(RD_MULTI);
+    // Push exec id, data read offset, and read size to calldata buffer
+    cdPush(ptr, exec_id);
+    cdPush(ptr, bytes32(64));
+    cdPush(ptr, bytes32(4));
+    // Push admin address, crowdsale init status, crowdsale finalization status, and total token supply storage locations in calldata
+    cdPush(ptr, ADMIN);
+    cdPush(ptr, CROWDSALE_IS_INIT);
+    cdPush(ptr, CROWDSALE_IS_FINALIZED);
+    cdPush(ptr, TOKEN_TOTAL_SUPPLY);
+    // Read from storage, and store returned data in buffer
+    bytes32[] memory read_values = readMulti(ptr);
+    // Check that the sender is the admin address, and that the crowdsale is initialized, but not finalized
+    if (
+      read_values[0] != bytes32(sender)
+      || read_values[1] == bytes32(0) // Crowdsale init status is false
+      || read_values[2] == bytes32(1) // Crowdsale finalization status is true
+    ) {
+      triggerException(ERR_INSUFFICIENT_PERMISSIONS);
     }
 
-    // Allocate space for return storage request -
-    store_data = new bytes32[](6);
+    // Get token total supply from returned data
+    bytes32 token_total_supply = read_values[3];
 
-    // First two slots are blank - this function does not accept eth
-    // Store new crowdsale status
-    store_data[2] = CROWDSALE_IS_FINALIZED;
-    store_data[3] = bytes32(1);
-    // Store total tokens minted during sale (current total supply)
-    store_data[4] = TOTAL_TOKENS_MINTED;
-    store_data[5] = bytes32(token_total_supply);
+    // Create storage buffer, overwriting the previous read buffer
+    stOverwrite(ptr);
+    // Push payment information (0 wei sent and 0 destination address) to storage buffer
+    stPush(ptr, 0);
+    stPush(ptr, 0);
+    // Push crowdsale finalization status to buffer
+    stPush(ptr, CROWDSALE_IS_FINALIZED);
+    stPush(ptr, bytes32(1));
+    // Push total number of tokens minted to buffer
+    stPush(ptr, TOTAL_TOKENS_MINTED);
+    stPush(ptr, token_total_supply);
+
+    // Get bytes32[] storage request array from buffer
+    store_data = getBuffer(ptr);
+  }
+
+  /*
+  Returns the last value stored in the buffer
+
+  @param _ptr: A pointer to the buffer
+  @return last_val: The final value stored in the buffer
+  */
+  function top(uint _ptr) internal pure returns (bytes32 last_val) {
+    assembly {
+      let len := mload(_ptr)
+      // Add 0x20 to length to account for the length itself
+      last_val := mload(add(0x20, add(len, _ptr)))
+    }
+  }
+
+  /*
+  Creates a buffer for return data storage. Buffer pointer stores the lngth of the buffer
+
+  @return ptr: The location in memory where the length of the buffer is stored - elements stored consecutively after this location
+  */
+  function stBuff() internal pure returns (uint ptr) {
+    assembly {
+      // Get buffer location - free memory
+      ptr := mload(0x40)
+      // Update free-memory pointer - it's important to note that this is not actually free memory, if the pointer is meant to expand
+      mstore(0x40, add(0x20, ptr))
+    }
+  }
+
+  /*
+  Creates a new return data storage buffer at the position given by the pointer. Does not update free memory
+
+  @param _ptr: A pointer to the location where the buffer will be created
+  */
+  function stOverwrite(uint _ptr) internal pure {
+    assembly {
+      // Simple set the initial length - 0
+      mstore(_ptr, 0)
+    }
+  }
+
+  /*
+  Pushes a value to the end of a storage return buffer, and updates the length
+
+  @param _ptr: A pointer to the start of the buffer
+  @param _val: The value to push to the buffer
+  */
+  function stPush(uint _ptr, bytes32 _val) internal pure {
+    assembly {
+      // Get end of buffer - 32 bytes plus the length stored at the pointer
+      let len := add(0x20, mload(_ptr))
+      // Push value to end of buffer (overwrites memory - be careful!)
+      mstore(add(_ptr, len), _val)
+      // Increment buffer length
+      mstore(_ptr, len)
+      // If the free-memory pointer does not point beyond the buffer's current size, update it
+      if lt(mload(0x40), add(add(0x20, _ptr), len)) {
+        mstore(0x40, add(add(0x40, _ptr), len)) // Ensure free memory pointer points to the beginning of a memory slot
+      }
+    }
+  }
+
+  /*
+  Returns the bytes32[] stored at the buffer
+
+  @param _ptr: A pointer to the location in memory where the calldata for the call is stored
+  @return store_data: The return values, which will be stored
+  */
+  function getBuffer(uint _ptr) internal pure returns (bytes32[] store_data){
+    assembly {
+      // If the size stored at the pointer is not evenly divislble into 32-byte segments, this was improperly constructed
+      if gt(mod(mload(_ptr), 0x20), 0) { revert (0, 0) }
+      mstore(_ptr, div(mload(_ptr), 0x20))
+      store_data := _ptr
+    }
+  }
+
+  /*
+  Creates a calldata buffer in memory with the given function selector
+
+  @param _selector: The function selector to push to the first location in the buffer
+  @return ptr: The location in memory where the length of the buffer is stored - elements stored consecutively after this location
+  */
+  function cdBuff(bytes4 _selector) internal pure returns (uint ptr) {
+    assembly {
+      // Get buffer location - free memory
+      ptr := mload(0x40)
+      // Place initial length (4 bytes) in buffer
+      mstore(ptr, 0x04)
+      // Place function selector in buffer, after length
+      mstore(add(0x20, ptr), _selector)
+      // Update free-memory pointer - it's important to note that this is not actually free memory, if the pointer is meant to expand
+      mstore(0x40, add(0x40, ptr))
+    }
+  }
+
+  /*
+  Creates a new calldata buffer at the pointer with the given selector. Does not update free memory
+
+  @param _ptr: A pointer to the buffer to overwrite - will be the pointer to the new buffer as well
+  @param _selector: The function selector to place in the buffer
+  */
+  function cdOverwrite(uint _ptr, bytes4 _selector) internal pure {
+    assembly {
+      // Store initial length of buffer - 4 bytes
+      mstore(_ptr, 0x04)
+      // Store function selector after length
+      mstore(add(0x20, _ptr), _selector)
+    }
+  }
+
+  /*
+  Pushes a value to the end of a calldata buffer, and updates the length
+
+  @param _ptr: A pointer to the start of the buffer
+  @param _val: The value to push to the buffer
+  */
+  function cdPush(uint _ptr, bytes32 _val) internal pure {
+    assembly {
+      // Get end of buffer - 32 bytes plus the length stored at the pointer
+      let len := add(0x20, mload(_ptr))
+      // Push value to end of buffer (overwrites memory - be careful!)
+      mstore(add(_ptr, len), _val)
+      // Increment buffer length
+      mstore(_ptr, len)
+      // If the free-memory pointer does not point beyond the buffer's current size, update it
+      if lt(mload(0x40), add(add(0x20, _ptr), len)) {
+        mstore(0x40, add(add(0x2c, _ptr), len)) // Ensure free memory pointer points to the beginning of a memory slot
+      }
+    }
+  }
+
+  /*
+  Executes a 'readMulti' function call, given a pointer to a calldata buffer
+
+  @param _ptr: A pointer to the location in memory where the calldata for the call is stored
+  @return read_values: The values read from storage
+  */
+  function readMulti(uint _ptr) internal view returns (bytes32[] read_values) {
+    bool success;
+    assembly {
+      // Minimum length for 'readMulti' - 1 location is 0x84
+      if lt(mload(_ptr), 0x84) { revert (0, 0) }
+      // Read from storage
+      success := staticcall(gas, caller, add(0x20, _ptr), mload(_ptr), 0, 0)
+      // If call succeed, get return information
+      if gt(success, 0) {
+        // Ensure data will not be copied beyond the pointer
+        if gt(sub(returndatasize, 0x20), mload(_ptr)) { revert (0, 0) }
+        // Copy returned data to pointer, overwriting it in the process
+        // Copies returndatasize, but ignores the initial read offset so that the bytes32[] returned in the read is sitting directly at the pointer
+        returndatacopy(_ptr, 0x20, sub(returndatasize, 0x20))
+        // Set return bytes32[] to pointer, which should now have the stored length of the returned array
+        read_values := _ptr
+      }
+    }
+    if (!success)
+      triggerException(ERR_READ_FAILED);
+  }
+
+  /*
+  Executes a 'read' function call, given a pointer to a calldata buffer
+
+  @param _ptr: A pointer to the location in memory where the calldata for the call is stored
+  @return read_value: The value read from storage
+  */
+  function readSingle(uint _ptr) internal view returns (bytes32 read_value) {
+    bool success;
+    assembly {
+      // Length for 'read' buffer must be 0x44
+      if iszero(eq(mload(_ptr), 0x44)) { revert (0, 0) }
+      // Read from storage, and store return to pointer
+      success := staticcall(gas, caller, add(0x20, _ptr), mload(_ptr), _ptr, 0x20)
+      // If call succeeded, store return at pointer
+      if gt(success, 0) { read_value := mload(_ptr) }
+    }
+    if (!success)
+      triggerException(ERR_READ_FAILED);
   }
 
   /*
@@ -330,6 +507,7 @@ library CrowdsaleConsole {
       revert(0, 0x20)
     }
   }
+
 
   // Parses context array and returns execution id, sender address, and sent wei amount
   function parse(bytes _context) internal pure returns (bytes32 exec_id, address from, uint wei_sent) {

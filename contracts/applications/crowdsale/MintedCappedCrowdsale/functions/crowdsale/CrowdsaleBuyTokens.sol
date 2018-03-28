@@ -231,7 +231,7 @@ library CrowdsaleBuyTokens {
     assembly {
       // If the size stored at the pointer is not evenly divislble into 32-byte segments, this was improperly constructed
       if gt(mod(mload(_ptr), 0x20), 0) { revert (0, 0) }
-      mstore(_ptr, div(0x20, mload(_ptr)))
+      mstore(_ptr, div(mload(_ptr), 0x20))
       store_data := _ptr
     }
   }

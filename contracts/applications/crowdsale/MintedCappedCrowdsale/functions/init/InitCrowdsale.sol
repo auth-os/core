@@ -13,6 +13,14 @@ library InitCrowdsale {
   // Whether or not the crowdsale is post-purchase
   bytes32 public constant CROWDSALE_IS_FINALIZED = keccak256("crowdsale_is_finalized");
 
+  // Storage location of a list of the tiers the crowdsale will have
+  // Each tier mimics the following struct: { uint token_sell_cap; uint end_time; }
+  bytes32 public constant CROWDSALE_TIERS = keccak256("crowdsale_tier_list");
+
+  // Storage location of the current tier of the crowdsale, and its index in the crowdsale tier list
+  // Mimics the following struct: { uint token_sell_cap; uint end_time; uint tier_list_index; }
+  bytes32 public constant CROWDSALE_CURRENT_TIER = keccak256("crowdsale_current_tier");
+
   // Storage location of team funds wallet
   bytes32 public constant WALLET = keccak256("crowdsale_wallet");
 
@@ -78,18 +86,18 @@ library InitCrowdsale {
   bytes4 public constant RD_MULTI = bytes4(keccak256("readMulti(bytes32,bytes32[])"));
 
   /*
-  Creates a crowdsale with initial conditions. The sender (admin) should now initialize the crowdsale's token,
-  and finalize the initialization of the crowdsale, or adjust variables first
+  Creates a crowdsale with initial conditions. The admin should now initialize the crowdsale's token, as well
+  as any additional tiers of the crowdsale that will exist, followed by finalizing the initialization of the crowdsale.
 
   @param _wallet: The team funds wallet, where crowdsale purchases are forwarded
   @param _token_sell_cap: The maximum amount of tokens to sell during the crowdsale
   @param _sale_rate: The amount of tokens purchased per wei invested
   @param _start_time: The start time of the crowdsale
-  @param _end_time: The end time of the crowdsale
+  @param _tier_end_time: The end time of the first tier of the crowdsale
   @param _admin: The address to set as crowdsale admin - is allowed to complete initialization of the crowdsale
   @return store_data: A formatted storage request
   */
-  function init(address _wallet, uint _token_sell_cap, uint _sale_rate, uint _start_time, uint _end_time, address _admin) public view
+  function init(address _wallet, uint _token_sell_cap, uint _sale_rate, uint _start_time, uint _tier_end_time, address _admin) public view
   returns (bytes32[] store_data) {
     // Ensure valid input
     require(
@@ -97,26 +105,34 @@ library InitCrowdsale {
       && _token_sell_cap > 0
       && _sale_rate > 0
       && _start_time >= now
-      && _end_time > _start_time
+      && _tier_end_time > _start_time
       && _admin != address(0)
     );
 
-    // Construct storage request -
-    store_data = new bytes32[](12);
+    // Create storage data return buffer in memory
+    uint ptr = stBuff();
+    // Push admin, wallet, and token sell cap for the initial tier
+    stPush(ptr, ADMIN);
+    stPush(ptr, bytes32(_admin));
+    stPush(ptr, WALLET);
+    stPush(ptr, bytes32(_wallet));
+    stPush(ptr, TOKENS_REMAINING):
+    stPush(ptr, bytes32(_token_sell_cap));
+    // Push token sale rate and crowdsale start time to buffer
+    stPush(ptr, SALE_RATE);
+    stPush(ptr, bytes32(_sale_rate));
+    stPush(ptr, CROWDSALE_STARTS_AT);
+    stPush(ptr, bytes32(_start_time));
+    // Push initial tier to storage, as well as initial tier list length (1)
+    stPush(ptr, CROWDSALE_TIERS);
+    stPush(ptr, bytes32(1));
+    stPush(ptr, bytes32(32 + uint(CROWDSALE_TIERS))); // First slot of crowdsale tier list
+    stPush(ptr, bytes32(_token_sell_cap));
+    stPush(ptr, bytes32(64 + uint(CROWDSALE_TIERS)));
+    stPush(ptr, bytes32(_tier_end_time));
 
-    // Set admin, wallet, token sell cap, sale rate, and crowdsale start and end time values
-    store_data[0] = ADMIN;
-    store_data[1] = bytes32(_admin);
-    store_data[2] = WALLET;
-    store_data[3] = bytes32(_wallet);
-    store_data[4] = TOKENS_REMAINING;
-    store_data[5] = bytes32(_token_sell_cap);
-    store_data[6] = SALE_RATE;
-    store_data[7] = bytes32(_sale_rate);
-    store_data[8] = CROWDSALE_STARTS_AT;
-    store_data[9] = bytes32(_start_time);
-    store_data[10] = CROWDSALE_ENDS_AT;
-    store_data[11] = bytes32(_end_time);
+    // Get bytes32[] storage request array from buffer
+    store_data = getBuffer(ptr);
   }
 
   /// CROWDSALE GETTERS ///

@@ -92,6 +92,10 @@ library InitRegistry {
   // readMulti(bytes32 _exec_id, bytes32[] _locations) view returns (bytes32[] data_read)
   bytes4 public constant RD_MULTI = bytes4(keccak256("readMulti(bytes32,bytes32[])"));
 
+  /// EXCEPTION MESSAGES ///
+
+  bytes32 public constant ERR_READ_FAILED = bytes32("StorageReadFailed"); // Read from storage address failed
+
   /// SCRIPT REGISTRY INIT ///
 
   // Empty init function for simple script registry
@@ -112,54 +116,29 @@ library InitRegistry {
     // Ensure valid input
     require(_storage != address(0) && _exec_id != bytes32(0) && _provider != bytes32(0));
 
-    // Place 'read' and 'readMulti' function selectors in memory
-    bytes4 rd_sing = RD_SING;
-    bytes4 rd_multi = RD_MULTI;
+    // Create 'read' calldata buffer in memory
+    uint ptr = cdBuff(RD_SING);
+    // Push exec id to calldata buffer
+    cdPush(ptr, _exec_id);
+    // Place provider app list storage location in calldata buffer
+    cdPush(ptr, keccak256(PROVIDER_APP_LIST, keccak256(_provider, PROVIDERS)));
+    // Read single value from storage, and place return in buffer
+    uint app_count = uint(readSingleFrom(ptr, _storage));
 
-    // Get provider base storage location
-    bytes32 provider_storage = keccak256(_provider, PROVIDERS);
-    // Get provider registered app list location
-    bytes32 provider_apps = keccak256(PROVIDER_APP_LIST, provider_storage);
+    // Overwrite previous read buffer with readMulti buffer
+    cdOverwrite(ptr, RD_MULTI);
+    // Place exec id, data read offset, and read size in calldata buffer
+    cdPush(ptr, _exec_id);
+    cdPush(ptr, 0x40);
+    cdPush(ptr, bytes32(app_count));
+    // Get base storage location for provider app list
+    uint provider_list_storage = uint(keccak256(PROVIDER_APP_LIST, keccak256(_provider, PROVIDERS)));
+    // Loop over app coutn and store list index locations in calldata buffer
+    for (uint i = 1; i <= app_count; i++)
+      cdPush(ptr, bytes32((32 * i) + provider_list_storage));
 
-    assembly {
-      // Read provider app list length from storage -
-
-      // Get pointer to store calldata in
-      let ptr := mload(0x40)
-      // Place 'read' selector, exec id, and provider app list storage location in calldata
-      mstore(ptr, rd_sing)
-      mstore(add(0x04, ptr), _exec_id)
-      mstore(add(0x24, ptr), provider_apps)
-
-      // Read from storage and check return value. Store returned data at pointer
-      if iszero(
-        staticcall(gas, _storage, ptr, 0x44, ptr, 0x20)
-      ) { revert (0, 0) }
-
-      // Get provider app list length
-      let app_count := mload(ptr)
-
-      // Read app list from storage -
-
-      // Place 'readMulti' selector, exec id, data read offset, and read size in calldata
-      mstore(ptr, rd_multi)
-      mstore(add(0x04, ptr), _exec_id)
-      mstore(add(0x24, ptr), 0x40)
-      mstore(add(0x44, ptr), app_count)
-      // Loop over app count and store list offsets in calldata
-      for { let offset := 0x20 } lt(offset, add(0x20, mul(0x20, app_count))) { offset := add(0x20, offset) } {
-        mstore(add(add(0x44, offset), ptr), add(offset, provider_apps))
-      }
-      // Read from storage and check return value
-      if iszero(
-        staticcall(gas, _storage, ptr, add(0x64, mul(0x20, app_count)), 0, 0)
-      ) { revert (0, 0) }
-
-      // Get memory for return value and copy returned data to return value
-      registered_apps := add(0x20, msize)
-      mstore(registered_apps, app_count)
-      returndatacopy(add(0x20, registered_apps), 0x40, sub(returndatasize, 0x40))
-    }
+    // Read from storage and store return in buffer
+    registered_apps = readMultiFrom(ptr, _storage);
   }
 
   /*
@@ -175,67 +154,35 @@ library InitRegistry {
   returns (bytes32 provider, bytes32[] registered_apps) {
     // Ensure valid input
     require(_storage != address(0) && _exec_id != bytes32(0) && _provider != address(0));
-
-    // Place 'read' and 'readMulti' function selectors in memory
-    bytes4 rd_sing = RD_SING;
-    bytes4 rd_multi = RD_MULTI;
-
-    // Get provider base storage location
+    // Get provider id from provider address
     provider = keccak256(_provider);
-    bytes32 provider_storage = keccak256(provider, PROVIDERS);
-    // Get provider registered app list location
-    bytes32 provider_apps = keccak256(PROVIDER_APP_LIST, provider_storage);
 
-    assembly {
-      // Read provider app list length from storage -
+    // Create 'read' calldata buffer in memory
+    uint ptr = cdBuff(RD_SING);
+    // Push exec id to calldata buffer
+    cdPush(ptr, _exec_id);
+    // Place provider app list storage location in calldata buffer
+    cdPush(ptr, keccak256(PROVIDER_APP_LIST, keccak256(provider, PROVIDERS)));
+    // Read single value from storage, and place return in buffer
+    uint app_count = uint(readSingleFrom(ptr, _storage));
 
-      // Get pointer to store calldata in
-      let ptr := mload(0x40)
-      // Place 'read' selector, exec id, and provider app list storage location in calldata
-      mstore(ptr, rd_sing)
-      mstore(add(0x04, ptr), _exec_id)
-      mstore(add(0x24, ptr), provider_apps)
+    // Overwrite previous read buffer with readMulti buffer
+    cdOverwrite(ptr, RD_MULTI);
+    // Place exec id, data read offset, and read size in calldata buffer
+    cdPush(ptr, _exec_id);
+    cdPush(ptr, 0x40);
+    cdPush(ptr, bytes32(app_count));
+    // Get base storage location for provider app list
+    uint provider_list_storage = uint(keccak256(PROVIDER_APP_LIST, keccak256(provider, PROVIDERS)));
+    // Loop over app coutn and store list index locations in calldata buffer
+    for (uint i = 1; i <= app_count; i++)
+      cdPush(ptr, bytes32((32 * i) + provider_list_storage));
 
-      // Read from storage and check return value. Store returned data at pointer
-      if iszero(
-        staticcall(gas, _storage, ptr, 0x44, ptr, 0x20)
-      ) { revert (0, 0) }
-
-      // Get provider app list length
-      let app_count := mload(ptr)
-
-      // Read app list from storage -
-
-      // Place 'readMulti' selector, exec id, data read offset, and read size in calldata
-      mstore(ptr, rd_multi)
-      mstore(add(0x04, ptr), _exec_id)
-      mstore(add(0x24, ptr), 0x40)
-      mstore(add(0x44, ptr), app_count)
-      // Loop over app count and store list offsets in calldata
-      for { let offset := 0x20 } lt(offset, add(0x20, mul(0x20, app_count))) { offset := add(0x20, offset) } {
-        mstore(add(add(0x44, offset), ptr), add(offset, provider_apps))
-      }
-      // Read from storage and check return value
-      if iszero(
-        staticcall(gas, _storage, ptr, add(0x64, mul(0x20, app_count)), 0, 0)
-      ) { revert (0, 0) }
-
-      // Get memory for return value and copy returned data to return value
-      registered_apps := add(0x20, msize)
-      // Copy app list length and data and store in return value
-      returndatacopy(registered_apps, 0x20, sub(returndatasize, 0x20))
-    }
+    // Read from storage and store return in buffer
+    registered_apps = readMultiFrom(ptr, _storage);
   }
 
   /// APPLICATION INFORMATION ///
-
-  struct AppInfo {
-    bytes4 rd_multi;
-    bytes32 app_storage_loc;
-    bytes32 app_version_list_loc;
-    bytes32 app_default_storage_loc;
-    bytes32 app_description_loc;
-  }
 
   /*
   Returns basic information on an application
@@ -254,79 +201,47 @@ library InitRegistry {
     require(_storage != address(0) && _exec_id != bytes32(0));
     require(_provider != bytes32(0) && _app != bytes32(0));
 
-    // Create struct in memory to hold values
-    AppInfo memory app_info = AppInfo({
-      rd_multi: RD_MULTI,
-      app_storage_loc: keccak256(_provider, PROVIDERS),
-      // Placeholders
-      app_version_list_loc: 0,
-      app_default_storage_loc: 0,
-      app_description_loc: 0
-    });
+    // Create 'readMulti' calldata buffer in memory
+    uint ptr = cdBuff(RD_MULTI);
+    // Place exec id, data read offset, and read size to calldata
+    cdPush(ptr, _exec_id);
+    cdPush(ptr, 0x40);
+    cdPush(ptr, 3);
+    // Push app version list count, app default storage, and app description size storage locations to calldata buffer
+    // Get app base storage -
+    bytes32 temp = keccak256(_provider, PROVIDERS);
+    temp = keccak256(keccak256(_app), keccak256(APPS, temp));
+    cdPush(ptr, keccak256(APP_VERSIONS_LIST, temp)); // App version list location
+    cdPush(ptr, keccak256(APP_STORAGE_IMPL, temp)); // App default storage address location
+    cdPush(ptr, keccak256(APP_DESC, temp)); // App description size location
 
-    // Get app base storage location
-    app_info.app_storage_loc = keccak256(APPS, app_info.app_storage_loc);
-    app_info.app_storage_loc = keccak256(keccak256(_app), app_info.app_storage_loc);
+    // Read from storage and store return in buffer
+    bytes32[] memory read_values = readMultiFrom(ptr, _storage);
 
-    // Get app version list size storage location
-    app_info.app_version_list_loc = keccak256(APP_VERSIONS_LIST, app_info.app_storage_loc);
-    // Get app default storage address storage location
-    app_info.app_default_storage_loc = keccak256(APP_STORAGE_IMPL, app_info.app_storage_loc);
-    // Get app description size storage location
-    app_info.app_description_loc = keccak256(APP_DESC, app_info.app_storage_loc);
+    // Get returned values
+    num_versions = uint(read_values[0]);
+    app_default_storage = address(read_values[1]);
+    uint desc_size = uint(read_values[2]);
 
-    assembly {
-      // Read app version count, default storage addres, and description size -
+    // Normalize description size to 32-byte chunks for next readMulti
+    uint desc_size_norm = desc_size / 32;
+    if (desc_size % 32 != 0)
+      desc_size_norm++;
 
-      // Get pointer to store calldata in
-      let ptr := mload(0x40)
-      // Place 'readMulti' selector, exec id, data read offset, and read size in calldata
-      mstore(ptr, mload(app_info))
-      mstore(add(0x04, ptr), _exec_id)
-      mstore(add(0x24, ptr), 0x40)
-      mstore(add(0x44, ptr), 3)
-      // Place app version list count, app default storage, and app description size storage locations in calldata
-      mstore(add(0x64, ptr), mload(add(0x40, app_info)))
-      mstore(add(0x84, ptr), mload(add(0x60, app_info)))
-      mstore(add(0xa4, ptr), mload(add(0x80, app_info)))
+    // Overwrite previous buffer to create a new readMulti buffer
+    cdOverwrite(ptr, RD_MULTI);
+    // Push exec id, data read offset, and normalized read size to buffer
+    cdPush(ptr, _exec_id);
+    cdPush(ptr, 0x40);
+    cdPush(ptr, bytes32(desc_size_norm));
+    // Get app description base storage location
+    temp = keccak256(APP_DESC, temp);
+    // Loop over description size and add storage locations to buffer
+    for (uint i = 1; i <= desc_size_norm; i++)
+      cdPush(ptr, bytes32((32 * i) + uint(temp)));
 
-      // Read from storage and check return value. Store returned data at pointer
-      if iszero(
-        staticcall(gas, _storage, ptr, 0xc4, ptr, 0xa0)
-      ) { revert (0, 0) }
-
-      // Get returned values
-      num_versions := mload(add(0x40, ptr))
-      app_default_storage := mload(add(0x60, ptr))
-      let desc_size := mload(add(0x80, ptr))
-
-      // Get memory for app description return value, and store description size
-      app_description := add(0x20, msize)
-      mstore(app_description, desc_size)
-
-      // Normalize description size to read from 32-byte slots
-      desc_size := div(desc_size, 0x20)
-      if gt(mod(mload(app_description), 0x20), 0) { desc_size := add(1, desc_size) }
-
-      // Read app description from storage -
-
-      // Place 'readMulti' selector, exec id, data read offset, and read size in calldata
-      mstore(ptr, mload(app_info))
-      mstore(add(0x04, ptr), _exec_id)
-      mstore(add(0x24, ptr), 0x40)
-      mstore(add(0x44, ptr), desc_size)
-      // Loop over description size and store list offsets in calldata
-      for { let offset := 0x20 } lt(offset, add(0x20, mload(app_description))) { offset := add(0x20, offset) } {
-        mstore(add(add(0x44, offset), ptr), add(offset, mload(add(0x80, app_info))))
-      }
-      // Read from storage and check return value
-      if iszero(
-        staticcall(gas, _storage, ptr, add(0x64, mul(0x20, desc_size)), 0, 0)
-      ) { revert (0, 0) }
-
-      // Copy description to return value
-      returndatacopy(add(0x20, app_description), 0x40, sub(returndatasize, 0x40))
-    }
+    // Read from storage, and store return in buffer
+    app_description = readMultiBytesFrom(ptr, desc_size, _storage);
   }
 
   /*
@@ -344,69 +259,37 @@ library InitRegistry {
     require(_storage != address(0) && _exec_id != bytes32(0));
     require(_provider != bytes32(0) && _app != bytes32(0));
 
-    // Place 'read' and 'readMulti' function selectors in memory
-    bytes4 rd_sing = RD_SING;
-    bytes4 rd_multi = RD_MULTI;
+    // Create 'read' calldata buffer in memory
+    uint ptr = cdBuff(RD_SING);
+    // Push exec id and app version list count location to buffer
+    cdPush(ptr, _exec_id);
+    // Get app base storage location
+    bytes32 temp = keccak256(_provider, PROVIDERS);
+    temp = keccak256(APPS, temp);
+    temp = keccak256(keccak256(_app), temp);
+    cdPush(ptr, keccak256(APP_VERSIONS_LIST, temp));
+    // Read from storage and place return in buffer
+    app_version_count = uint(readSingleFrom(ptr, _storage));
 
-    // Get app version list storage location
-    bytes32 app_version_list_loc = keccak256(_provider, PROVIDERS);
-    app_version_list_loc = keccak256(APPS, app_version_list_loc);
-    app_version_list_loc = keccak256(keccak256(_app), app_version_list_loc);
-    app_version_list_loc = keccak256(APP_VERSIONS_LIST, app_version_list_loc);
+    // Overwrite previous buffer with readMulti calldata buffer
+    cdOverwrite(ptr, RD_MULTI);
+    // Push exec id, data read offset, and read size to calldata buffer
+    cdPush(ptr, _exec_id);
+    cdPush(ptr, 0x40);
+    cdPush(ptr, bytes32(app_version_count));
+    // Get app version list base storage location
+    temp = keccak256(APP_VERSIONS_LIST, temp);
+    // Loop over version count and store each list index location in calldata buffer
+    for (uint i = 1; i <= app_version_count; i++)
+      cdPush(ptr, bytes32((i * 32) + uint(temp)));
 
-    assembly {
-      // Read app version count from storage -
-
-      // Get pointer to store calldata in
-      let ptr := mload(0x40)
-      // Place 'read' selector, and exec id in callata
-      mstore(ptr, rd_sing)
-      mstore(add(0x04, ptr), _exec_id)
-      // Place app version list count location in calldata
-      mstore(add(0x24, ptr), app_version_list_loc)
-
-      // Read from storage and check return value. Store returned data at pointer
-      if iszero(
-        staticcall(gas, _storage, ptr, 0x44, ptr, 0x20)
-      ) { revert (0, 0) }
-
-      // Get app version count
-      app_version_count := mload(ptr)
-
-      // Read app version list from storage -
-
-      // Place 'readMulti' selector, exec id, data read offset, and read size in calldata
-      mstore(ptr, rd_multi)
-      mstore(add(0x04, ptr), _exec_id)
-      mstore(add(0x24, ptr), 0x40)
-      mstore(add(0x44, ptr), app_version_count)
-      // Loop over version count and store list offsets in calldata
-      for { let offset := 0x20 } lt(offset, add(0x20, mul(0x20, app_version_count))) { offset := add(0x20, offset) } {
-        mstore(add(add(0x44, offset), ptr), add(offset, app_version_list_loc))
-      }
-      // Read from storage and check return value
-      if iszero(
-        staticcall(gas, _storage, ptr, add(0x64, mul(0x20, app_version_count)), 0, 0)
-      ) { revert (0, 0) }
-
-      // Get memory for return value and copy returned data to return value
-      version_list := add(0x20, msize)
-      // Copy list length and data to return value
-      returndatacopy(version_list, 0x20, sub(returndatasize, 0x20))
-    }
+    // Read from storage and store return in buffer
+    version_list = readMultiFrom(ptr, _storage);
   }
 
-  struct AppLatest {
-    bytes4 rd_multi;
-    bytes4 rd_sing;
-    bytes32 app_storage_loc;
-    bytes32 app_default_storage_loc;
-    bytes32 app_version_list_loc;
-    bytes32 ver_storage_seed;
-    bytes32 ver_status_loc;
-    bytes32 ver_init_addr_loc;
-    bytes32 ver_function_addrs_loc;
-    bytes32 ver_storage_addr_loc;
+  struct AppInfoHelper {
+    bytes32 temp;
+    uint list_length;
   }
 
   /*
@@ -428,153 +311,104 @@ library InitRegistry {
     require(_provider != bytes32(0) && _app != bytes32(0));
 
     // Create struct in memory to hold values
-    AppLatest memory app_info = AppLatest({
-      rd_multi: RD_MULTI,
-      rd_sing: RD_SING,
-      app_storage_loc: keccak256(_provider, PROVIDERS),
-      // Placeholders
-      app_default_storage_loc: 0,
-      app_version_list_loc: 0,
-      ver_storage_seed: 0,
-      ver_status_loc: VER_IS_FINALIZED,
-      ver_init_addr_loc: VER_INIT_ADDR,
-      ver_function_addrs_loc: VER_FUNCTION_ADDRESSES,
-      ver_storage_addr_loc: VER_STORAGE_IMPL
+    AppInfoHelper memory app_helper = AppInfoHelper({
+      temp: keccak256(_provider, PROVIDERS),
+      list_length: 0
     });
 
+    // Create 'readMulti' calldata buffer in memory
+    uint ptr = cdBuff(RD_MULTI);
+    // Push exec id, data read offset, and read size to calldata
+    cdPush(ptr, _exec_id);
+    cdPush(ptr, 0x40);
+    cdPush(ptr, 2);
     // Get app base storage location
-    app_info.app_storage_loc = keccak256(APPS, app_info.app_storage_loc);
-    app_info.app_storage_loc = keccak256(keccak256(_app), app_info.app_storage_loc);
-    // Get app default storage address storage location
-    app_info.app_default_storage_loc = keccak256(APP_STORAGE_IMPL, app_info.app_storage_loc);
-    // Get app version list size storage location
-    app_info.app_version_list_loc = keccak256(APP_VERSIONS_LIST, app_info.app_storage_loc);
-    // Get version base storage seed
-    app_info.ver_storage_seed = keccak256(VERSIONS, app_info.app_storage_loc);
+    app_helper.temp = keccak256(_provider, PROVIDERS);
+    app_helper.temp = keccak256(APPS, app_helper.temp);
+    app_helper.temp = keccak256(keccak256(_app), app_helper.temp);
+    // Push app default storage address location and app version list locations to buffer
+    cdPush(ptr, keccak256(APP_STORAGE_IMPL, app_helper.temp));
+    cdPush(ptr, keccak256(APP_VERSIONS_LIST, app_helper.temp));
+    // Read froms storage and store return in buffer
+    bytes32[] memory read_values = readMultiFrom(ptr, _storage);
 
-    assembly {
-      // Check that application is registered, read app default storage address, and get app version list length -
+    // Read returned values -
+    app_storage_addr = address(read_values[0]);
+    app_helper.list_length = uint(read_values[1]);
+    // If list length is zero, no versions have been registered - return
+    if (app_helper.list_length == 0)
+      return;
 
-      let offset := 0
-      let list_length := 0
-      // Get pointer to store calldata in
-      let ptr := mload(0x40)
-      // Place 'readMulti' selector, exec id, data read offset, and read size in calldata
-      mstore(ptr, mload(app_info))
-      mstore(add(0x04, ptr), _exec_id)
-      mstore(add(0x24, ptr), 0x40)
-      mstore(add(0x44, ptr), 3)
-      // Place app storage location, app default storage address location, and app version list length locations in calldata
-      mstore(add(0x64, ptr), mload(add(0x40, app_info)))
-      mstore(add(0x84, ptr), mload(add(0x60, app_info)))
-      mstore(add(0xa4, ptr), mload(add(0x80, app_info)))
+    // Get app version list location
+    bytes32 app_list_storage_loc = keccak256(APP_VERSIONS_LIST, app_helper.temp);
+    // Get version storage seed
+    app_helper.temp = keccak256(VERSIONS, app_helper.temp);
+    // Loop backwards through app version list, and find the last 'finalized' version
+    for (uint i = app_helper.list_length; i > 0; i--) {
+      // Overwrite last buffer with a 'read' buffer
+      cdOverwrite(ptr, RD_SING);
+      // Push exec id and read location (app_versions_list[length - i])
+      cdPush(ptr, _exec_id);
+      cdPush(ptr, bytes32(uint(app_list_storage_loc) + (32 * i)));
+      // Read from storage, and store return in buffer
+      latest_version = readSingleFrom(ptr, _storage);
 
-      // Read from storage and check return value. Store returned data at pointer
-      if iszero(
-        staticcall(gas, _storage, ptr, 0xc4, ptr, 0xa0)
-      ) { revert (0, 0) }
+      // Hash returned version name and version storage seed
+      bytes32 latest_ver_storage = keccak256(keccak256(latest_version), app_helper.temp);
 
-      // Get returned values -
-      // Read returned app storage location - if zero, application is not registered: revert
-      if iszero(mload(add(0x40, ptr))) { revert (0, 0) }
-      // Get app default storage address
-      app_storage_addr := mload(add(0x60, ptr))
-      // Get app version list length
-      list_length := mload(add(0x80, ptr))
+      // Construct 'readMulti' calldata by overwriting previous 'read' calldata buffer
+      cdOverwrite(ptr, RD_MULTI);
+      // Push exec id, data read offset, and read size to buffer
+      cdPush(ptr, _exec_id);
+      cdPush(ptr, 0x40);
+      cdPush(ptr, 4);
+      // Push version status storage location to buffer
+      cdPush(ptr, keccak256(VER_IS_FINALIZED, latest_ver_storage));
+      // Push version init address storage location to buffer
+      cdPush(ptr, keccak256(VER_INIT_ADDR, latest_ver_storage));
+      // Push version address list location to buffer
+      cdPush(ptr, keccak256(VER_FUNCTION_ADDRESSES, latest_ver_storage));
+      // Push version storage address location to buffer
+      cdPush(ptr, keccak256(VER_STORAGE_IMPL, latest_ver_storage));
+      // Read from storage, and store return in buffer
+      read_values = readMultiFrom(ptr, _storage);
 
-      // If version list length is zero, no versions have been registered - revert
-      if iszero(list_length) { revert (0, 0) }
-
-      // Application is registered: find latest version information -
-
-      // Loop backwards through each version to find the latest finalized version
-      for { offset := mul(0x20, list_length) } gt(add(0x20, offset), 0x20) { offset := sub(offset, 0x20) } {
-        // Read function name from app version list - construct 'read' calldata
-        mstore(ptr, mload(add(0x20, app_info)))
-        // Store exec id and version list location in calldata
-        mstore(add(0x04, ptr), _exec_id)
-        mstore(add(0x24, ptr), add(offset, mload(add(0x80, app_info))))
-        // Read version name from storage and store return at pointer
-        if iszero(
-          staticcall(gas, _storage, ptr, 0x44, ptr, 0x20)
-        ) { revert (0, 0) }
-        // Get returned version name
-        latest_version := mload(ptr)
-
-        // Get version storage location -
-
-        // Hash returned version name, and store in temporary location for further hashing
-        mstore(0, latest_version)
-        mstore(0, keccak256(0, 0x20))
-        // Place version storage seed after hashed version name
-        mstore(0x20, mload(add(0xa0, app_info)))
-        // Hash version name and version storage seed, and place at 0x20 for further hashing. The result is the version base storage location
-        mstore(0x20, keccak256(0, 0x40))
-
-        // Get version information - construct 'readMulti' calldata
-        mstore(ptr, mload(app_info))
-        // Place exec id, data read offset, and read size in calldata
-        mstore(add(0x04, ptr), _exec_id)
-        mstore(add(0x24, ptr), 0x40)
-        mstore(add(0x44, ptr), 4)
-        // Get version status storage location, and store in calldata
-        mstore(0, mload(add(0xc0, app_info)))
-        mstore(add(0x64, ptr), keccak256(0, 0x40))
-        // Get version init address storage location, and store in calldata
-        mstore(0, mload(add(0xe0, app_info)))
-        mstore(add(0x84, ptr), keccak256(0, 0x40))
-        // Get version address list length location, and store in calldata
-        mstore(0, mload(add(0x0100, app_info)))
-        mstore(add(0xa4, ptr), keccak256(0, 0x40))
-        // Get version storage address location, and store in calldata
-        mstore(0, mload(add(0x0120, app_info)))
-        mstore(add(0xc4, ptr), keccak256(0, 0x40))
-        // Read from storage, and store return at pointer
-        if iszero(
-          staticcall(gas, _storage, ptr, 0xe4, ptr, 0xc0)
-        ) { revert (0, 0) }
-        // Check version status - if nonzero, this version is finalized and is the latest version
-        if gt(mload(add(0x40, ptr)), 0) {
-          // Set offset to 0x20 - will terminate the loop
-          offset := 0x20
-          // Get version initialization address from returned data
-          app_init_addr := mload(add(0x60, ptr))
-          // Get version address list length
-          list_length := mload(add(0x80, ptr))
-          // Get version specified storage address
-          app_storage_addr := mload(add(0xa0, ptr))
-        }
-        // If version is finalized, offset is 0x20 and the loop will terminate. Otherwise, continue looping
+      // Check version 'is finalized' status - if true, this is the latest version
+      if (read_values[0] != bytes32(0)) {
+        // Get initialization address for this version
+        app_init_addr = address(read_values[1]);
+        // Get version address list length
+        app_helper.list_length = uint(read_values[2]);
+        // Get storage address for this version
+        app_storage_addr = address(read_values[3]);
+        // Exit loop
+        break;
       }
-
-      // If app_init_addr is zero, a finalized version was not found - revert
-      if iszero(app_init_addr) { revert (0, 0) }
-
-      // Otherwise, get version allowed addresses -
-
-      mstore(ptr, mload(app_info))
-      // Store exec id, data read offset, and read size in calldata
-      mstore(add(0x04, ptr), _exec_id)
-      mstore(add(0x24, ptr), 0x40)
-      mstore(add(0x44, ptr), list_length)
-      // Get version address list storage location, and place in app_info
-      mstore(0, mload(add(0x0100, app_info)))
-      mstore(add(0x0100, app_info), keccak256(0, 0x40))
-      // Loop over list length and place each index in calldata
-      for { offset := 0x20 } lt(offset, add(0x20, mul(0x20, list_length))) { offset := add(0x20, offset) } {
-        // Get list index location and tore in calldata
-        mstore(add(add(0x44, offset), ptr), add(offset, mload(add(0x0100, app_info))))
-      }
-      // Read from storage and store return at pointer
-      if iszero(
-        staticcall(gas, _storage, ptr, add(0x64, mul(0x20, list_length)), ptr, add(0x40, mul(0x20, list_length)))
-      ) { revert (0, 0) }
-
-      // Allocate space for return allowed array
-      allowed := add(0x20, msize)
-      // Copy allowed addresses from returned data
-      returndatacopy(allowed, 0x20, sub(returndatasize, 0x20))
     }
+    // If app_init_addr is still 0, no version was found - return
+    if (app_init_addr == address(0)) {
+      latest_version = bytes32(0);
+      app_storage_addr = address(0);
+      return;
+    }
+
+    /// Otherwise - get version allowed addresses
+
+    // Overwrite previous buffers with 'readMulti' buffer
+    cdOverwrite(ptr, RD_MULTI);
+    // Push exec id, data read offset, and read size to buffer
+    cdPush(ptr, _exec_id);
+    cdPush(ptr, 0x40);
+    cdPush(ptr, bytes32(app_helper.list_length));
+    // Get version addresses list base location
+    app_helper.temp = keccak256(keccak256(latest_version), app_helper.temp);
+    app_helper.temp = keccak256(VER_FUNCTION_ADDRESSES, app_helper.temp);
+    // Loop over list length and place each index storage location in buffer
+    for (i = 1; i <= app_helper.list_length; i++)
+      cdPush(ptr, bytes32((32 * i) + uint(app_helper.temp)));
+
+    // Read from storage, and store return in buffer
+    allowed = readMultiAddressFrom(ptr, _storage);
   }
 
   /// VERSION INFORMATION ///
@@ -594,13 +428,10 @@ library InitRegistry {
   ** which acts much like a constructor - but for a specific execution id.
   */
 
-  struct VerInfo {
-    bytes4 rd_multi;
-    bytes32 ver_storage_loc;
-    bytes32 ver_status_loc;
-    bytes32 ver_function_list_loc;
-    bytes32 ver_storage_addr_loc;
-    bytes32 ver_description_loc;
+  struct StackVarHelper {
+    bytes32 temp;
+    uint desc_size;
+    uint desc_size_norm;
   }
 
   /*
@@ -623,93 +454,56 @@ library InitRegistry {
     require(_provider != bytes32(0) && _app != bytes32(0) && _version != bytes32(0));
 
     // Create struct in memory to hold values
-    VerInfo memory ver_info = VerInfo({
-      rd_multi: RD_MULTI,
-      // Placeholders
-      ver_storage_loc: keccak256(_provider, PROVIDERS),
-      ver_status_loc: 0,
-      ver_function_list_loc: 0,
-      ver_storage_addr_loc: 0,
-      ver_description_loc: 0
+    StackVarHelper memory v_helper = StackVarHelper({
+      temp: keccak256(_provider, PROVIDERS),
+      desc_size: 1,
+      desc_size_norm: 1
     });
-
     // Get version base storage location
-    ver_info.ver_storage_loc = keccak256(APPS, ver_info.ver_storage_loc);
-    ver_info.ver_storage_loc = keccak256(keccak256(_app), ver_info.ver_storage_loc);
-    ver_info.ver_storage_loc = keccak256(VERSIONS, ver_info.ver_storage_loc);
-    ver_info.ver_storage_loc = keccak256(keccak256(_version), ver_info.ver_storage_loc);
+    v_helper.temp = keccak256(APPS, v_helper.temp);
+    v_helper.temp = keccak256(keccak256(_app), v_helper.temp);
+    v_helper.temp = keccak256(VERSIONS, v_helper.temp);
+    v_helper.temp = keccak256(keccak256(_version), v_helper.temp);
 
-    // Get version finalization status storage location
-    ver_info.ver_status_loc = keccak256(VER_IS_FINALIZED, ver_info.ver_storage_loc);
-    // Get version function list size storage location
-    ver_info.ver_function_list_loc = keccak256(VER_FUNCTION_LIST, ver_info.ver_storage_loc);
-    // Get version storage address location
-    ver_info.ver_storage_addr_loc = keccak256(VER_STORAGE_IMPL, ver_info.ver_storage_loc);
-    // Get version description storage location
-    ver_info.ver_description_loc = keccak256(VER_DESC, ver_info.ver_storage_loc);
+    // Create 'readMulti' calldata buffer in memory
+    uint ptr = cdBuff(RD_MULTI);
+    // Push exec id, data read offset, and read size to buffer
+    cdPush(ptr, _exec_id);
+    cdPush(ptr, 0x40);
+    cdPush(ptr, 4);
+    // Push version status, function count, storage address, and description array size storage locations to calldata buffer
+    cdPush(ptr, keccak256(VER_IS_FINALIZED, v_helper.temp));
+    cdPush(ptr, keccak256(VER_FUNCTION_LIST, v_helper.temp));
+    cdPush(ptr, keccak256(VER_STORAGE_IMPL, v_helper.temp));
+    cdPush(ptr, keccak256(VER_DESC, v_helper.temp));
+    // Read from storage and store return in buffer
+    bytes32[] memory read_values = readMultiFrom(ptr, _storage);
 
-    assembly {
-      // Read version finalization status, function count, storage address, and description size -
+    // Read returned values -
+    is_finalized = (read_values[0] != bytes32(0));
+    num_functions = uint(read_values[1]);
+    version_storage = address(read_values[2]);
+    v_helper.desc_size = uint(read_values[3]);
 
-      // Get pointer to store calldata in
-      let ptr := mload(0x40)
-      // Place 'readMulti' selector, exec id, data read offset, and read size in calldata
-      mstore(ptr, mload(ver_info))
-      mstore(add(0x04, ptr), _exec_id)
-      mstore(add(0x24, ptr), 0x40)
-      mstore(add(0x44, ptr), 4)
-      // Place version status, function count, storage address, and description size storage locations in calldata
-      mstore(add(0x64, ptr), mload(add(0x40, ver_info)))
-      mstore(add(0x84, ptr), mload(add(0x60, ver_info)))
-      mstore(add(0xa4, ptr), mload(add(0x80, ver_info)))
-      mstore(add(0xc4, ptr), mload(add(0xa0, ver_info)))
+    // Normalize description size to 32-byte chunks for next readMulti
+    v_helper.desc_size_norm = v_helper.desc_size / 32;
+    if (v_helper.desc_size % 32 != 0)
+      v_helper.desc_size_norm++;
 
-      // Read from storage and check return value. Store returned data at pointer
-      if iszero(
-        staticcall(gas, _storage, ptr, 0xe4, ptr, 0xc0)
-      ) { revert (0, 0) }
+    // Create new readMulti calldata buffer, overwriting the previous buffer
+    cdOverwrite(ptr, RD_MULTI);
+    // Push exec id, data read offset, and read size to buffer
+    cdPush(ptr, _exec_id);
+    cdPush(ptr, 0x40);
+    cdPush(ptr, bytes32(v_helper.desc_size_norm));
+    // Get version description base storage location
+    v_helper.temp = keccak256(VER_DESC, v_helper.temp);
+    // Loop over description size and add storage locations to readMuli buffer
+    for (uint i = 1; i <= v_helper.desc_size_norm; i++)
+      cdPush(ptr, bytes32((32 * i) + uint(v_helper.temp)));
 
-      // Get returned values
-      is_finalized := mload(add(0x40, ptr))
-      num_functions := mload(add(0x60, ptr))
-      version_storage := mload(add(0x80, ptr))
-      let desc_size := mload(add(0xa0, ptr))
-
-      // Get memory for return value. Set version description length
-      version_description := add(0x20, msize)
-      mstore(version_description, desc_size)
-
-      // Normalize description size to read from 32-byte slots
-      desc_size := div(desc_size, 0x20)
-      if gt(mod(mload(version_description), 0x20), 0) { desc_size := add(1, desc_size) }
-
-      // Read version description from storage -
-
-      // Place 'readMulti' selector, exec id, data read offset, and read size in calldata
-      mstore(ptr, mload(ver_info))
-      mstore(add(0x04, ptr), _exec_id)
-      mstore(add(0x24, ptr), 0x40)
-      mstore(add(0x44, ptr), desc_size)
-      // Loop over description size and store list offsets in calldata
-      for { let offset := 0x20 } lt(offset, add(0x20, mload(version_description))) { offset := add(0x20, offset) } {
-        mstore(add(add(0x44, offset), ptr), add(offset, mload(add(0xa0, ver_info))))
-      }
-      // Read from storage and check return value
-      if iszero(
-        staticcall(gas, _storage, ptr, add(0x64, mul(0x20, desc_size)), 0, 0)
-      ) { revert (0, 0) }
-
-      // Copy description data to return value
-      returndatacopy(add(0x20, version_description), 0x40, sub(returndatasize, 0x40))
-    }
-  }
-
-  struct VerInitInfo {
-    bytes4 rd_multi;
-    bytes32 ver_storage_loc;
-    bytes32 ver_init_impl_loc;
-    bytes32 ver_init_sig_loc;
-    bytes32 ver_init_desc_loc;
+    // Read from storage, and store return in buffer
+    version_description = readMultiBytesFrom(ptr, v_helper.desc_size, _storage);
   }
 
   /*
@@ -732,87 +526,54 @@ library InitRegistry {
     require(_provider != bytes32(0) && _app != bytes32(0) && _version != bytes32(0));
 
     // Create struct in memory to hold values
-    VerInitInfo memory ver_info = VerInitInfo({
-      rd_multi: RD_MULTI,
-      // Placeholders
-      ver_storage_loc: keccak256(_provider, PROVIDERS),
-      ver_init_impl_loc: 0,
-      ver_init_sig_loc: 0,
-      ver_init_desc_loc: 0
+    StackVarHelper memory v_helper = StackVarHelper({
+      temp: keccak256(_provider, PROVIDERS),
+      desc_size: 1,
+      desc_size_norm: 1
     });
-
     // Get version base storage location
-    ver_info.ver_storage_loc = keccak256(APPS, ver_info.ver_storage_loc);
-    ver_info.ver_storage_loc = keccak256(keccak256(_app), ver_info.ver_storage_loc);
-    ver_info.ver_storage_loc = keccak256(VERSIONS, ver_info.ver_storage_loc);
-    ver_info.ver_storage_loc = keccak256(keccak256(_version), ver_info.ver_storage_loc);
+    v_helper.temp = keccak256(_provider, PROVIDERS);
+    v_helper.temp = keccak256(APPS, v_helper.temp);
+    v_helper.temp = keccak256(keccak256(_app), v_helper.temp);
+    v_helper.temp = keccak256(VERSIONS, v_helper.temp);
+    v_helper.temp = keccak256(keccak256(_version), v_helper.temp);
+    // Create 'readMulti' calldata buffer in memory
+    uint ptr = cdBuff(RD_MULTI);
+    // Push exec id, data read offset, and read size to buffer
+    cdPush(ptr, _exec_id);
+    cdPush(ptr, 0x40);
+    cdPush(ptr, 3);
+    // Push init implementing address, init function signature, and init description size storage locations to calldata buffer
+    cdPush(ptr, keccak256(VER_INIT_ADDR, v_helper.temp));
+    cdPush(ptr, keccak256(VER_INIT_SIG, v_helper.temp));
+    cdPush(ptr, keccak256(VER_INIT_DESC, v_helper.temp));
+    // Read from storage, and store return in buffer
+    bytes32[] memory read_values = readMultiFrom(ptr, _storage);
 
-    // Get version initialization implementing address locaiton
-    ver_info.ver_init_impl_loc = keccak256(VER_INIT_ADDR, ver_info.ver_storage_loc);
-    // Get version initialization signature location
-    ver_info.ver_init_sig_loc = keccak256(VER_INIT_SIG, ver_info.ver_storage_loc);
-    // Get version init function description location
-    ver_info.ver_init_desc_loc = keccak256(VER_INIT_DESC, ver_info.ver_storage_loc);
+    // Get returned values -
+    init_impl = address(read_values[0]);
+    init_signature = bytes4(read_values[1]);
+    v_helper.desc_size = uint(read_values[2]);
 
-    assembly {
-      // Read version initialization address, initialization function signature, and init function description length -
+    // Normalize description size to 32-byte chunks for next readMulti
+    v_helper.desc_size_norm = v_helper.desc_size / 32;
+    if (v_helper.desc_size % 32 != 0)
+      v_helper.desc_size_norm++;
 
-      // Get pointer to store calldata in
-      let ptr := mload(0x40)
-      // Place 'readMulti' selector, exec id, data read offset, and read size in calldata
-      mstore(ptr, mload(ver_info))
-      mstore(add(0x04, ptr), _exec_id)
-      mstore(add(0x24, ptr), 0x40)
-      mstore(add(0x44, ptr), 3)
-      // Place init implementating address, init function signature, and description size locations in calldata
-      mstore(add(0x64, ptr), mload(add(0x40, ver_info)))
-      mstore(add(0x84, ptr), mload(add(0x60, ver_info)))
-      mstore(add(0xa4, ptr), mload(add(0x80, ver_info)))
+    // Create new readMulti calldata buffer, overwriting the previous buffer
+    cdOverwrite(ptr, RD_MULTI);
+    // Push exec id, data read offset, and read size to buffer
+    cdPush(ptr, _exec_id);
+    cdPush(ptr, 0x40);
+    cdPush(ptr, bytes32(v_helper.desc_size_norm));
+    // Get version init description base storage location
+    v_helper.temp = keccak256(VER_INIT_DESC, v_helper.temp);
+    // Loop over description size and add storage locations to readMuli buffer
+    for (uint i = 1; i <= v_helper.desc_size_norm; i++)
+      cdPush(ptr, bytes32((32 * i) + uint(v_helper.temp)));
 
-      // Read from storage and check return value. Store returned data at pointer
-      if iszero(
-        staticcall(gas, _storage, ptr, 0xc4, ptr, 0xa0)
-      ) { revert (0, 0) }
-
-      // Get returned values
-      init_impl := mload(add(0x40, ptr))
-      init_signature := mload(add(0x60, ptr))
-      let desc_size := mload(add(0x80, ptr))
-
-      // Get memory for return value and set length
-      init_description := add(0x20, msize)
-      mstore(init_description, desc_size)
-
-      // Normalize description size to read from 32-byte slots
-      desc_size := div(desc_size, 0x20)
-      if gt(mod(mload(init_description), 0x20), 0) { desc_size := add(1, desc_size) }
-
-      // Read version init function description from storage -
-
-      // Place 'readMulti' selector, exec id, data read offset, and read size in calldata
-      mstore(ptr, mload(ver_info))
-      mstore(add(0x04, ptr), _exec_id)
-      mstore(add(0x24, ptr), 0x40)
-      mstore(add(0x44, ptr), desc_size)
-      // Loop over description size and store list offsets in calldata
-      for { let offset := 0x20 } lt(offset, add(0x20, mload(init_description))) { offset := add(0x20, offset) } {
-        mstore(add(add(0x44, offset), ptr), add(offset, mload(add(0x80, ver_info))))
-      }
-      // Read from storage and check return value
-      if iszero(
-        staticcall(gas, _storage, ptr, add(0x64, mul(0x20, desc_size)), 0, 0)
-      ) { revert (0, 0) }
-
-      // Copy description length and data to return value
-      returndatacopy(add(0x20, init_description), 0x40, sub(returndatasize, 0x40))
-    }
-  }
-
-  struct VerImplInfo {
-    bytes4 rd_multi;
-    bytes32 ver_storage_loc;
-    bytes32 ver_function_list_loc;
-    bytes32 ver_function_addr_list_loc;
+    // Read from storage, and store return in buffer
+    init_description = readMultiBytesFrom(ptr, v_helper.desc_size, _storage);
   }
 
   /*
@@ -833,80 +594,56 @@ library InitRegistry {
     require(_storage != address(0) && _exec_id != bytes32(0));
     require(_provider != bytes32(0) && _app != bytes32(0) && _version != bytes32(0));
 
-    // Place 'readMulti' function selector in memory
-    bytes4 rd_multi = RD_MULTI;
+    // Get version base storage location
+    bytes32 temp = keccak256(_provider, PROVIDERS);
+    temp = keccak256(APPS, temp);
+    temp = keccak256(keccak256(_app), temp);
+    temp = keccak256(VERSIONS, temp);
+    temp = keccak256(keccak256(_version), temp);
 
-    // Get version function signature and function address storage locations
-    bytes32 ver_function_list_loc = keccak256(_provider, PROVIDERS);
-    ver_function_list_loc = keccak256(APPS, ver_function_list_loc);
-    ver_function_list_loc = keccak256(keccak256(_app), ver_function_list_loc);
-    ver_function_list_loc = keccak256(VERSIONS, ver_function_list_loc);
-    ver_function_list_loc = keccak256(keccak256(_version), ver_function_list_loc);
+    // Create 'readMulti' calldata buffer in memory
+    uint ptr = cdBuff(RD_MULTI);
+    // Push exec id, data read offset, and read size to calldata buffer
+    cdPush(ptr, _exec_id);
+    cdPush(ptr, 0x40);
+    cdPush(ptr, 2);
+    // Push version signature and address list storage locations to calldata
+    cdPush(ptr, keccak256(VER_FUNCTION_LIST, temp));
+    cdPush(ptr, keccak256(VER_FUNCTION_ADDRESSES, temp));
+    // Read from storage, and store return in buffer
+    bytes32[] memory read_values = readMultiFrom(ptr, _storage);
 
-    bytes32 ver_function_addr_list_loc = keccak256(VER_FUNCTION_ADDRESSES, ver_function_list_loc);
-    ver_function_list_loc = keccak256(VER_FUNCTION_LIST, ver_function_list_loc);
+    // Get return lengths - should always be equal
+    uint list_length = uint(read_values[0]);
+    assert(list_length == uint(read_values[1]));
 
-    assembly {
-      // Read and compare version function list length and address list length -
-
-      // Get pointer to store calldata in
-      let ptr := mload(0x40)
-      // Place 'readMulti' selector, exec id, data read offset, and read size in calldata
-      mstore(ptr, rd_multi)
-      mstore(add(0x04, ptr), _exec_id)
-      mstore(add(0x24, ptr), 0x40)
-      mstore(add(0x44, ptr), 2)
-      // Place signature list and address list storage locations in calldata
-      mstore(add(0x64, ptr), ver_function_list_loc)
-      mstore(add(0x84, ptr), ver_function_addr_list_loc)
-
-      // Read from storage and check return value. Store returned data at pointer
-      if iszero(
-        staticcall(gas, _storage, ptr, 0xa4, ptr, 0x80)
-      ) { revert (0, 0) }
-
-      // Get returned values, and ensure they are equal
-      let read_size := mload(add(0x40, ptr))
-      if iszero(eq(read_size, mload(add(0x60, ptr)))) { revert (0, 0) }
-
-      // Read version function signature and address list from storage -
-
-      // Place 'readMulti' selector, exec id, data read offset, and read size in calldata
-      mstore(ptr, rd_multi)
-      mstore(add(0x04, ptr), _exec_id)
-      mstore(add(0x24, ptr), 0x40)
-      mstore(add(0x44, ptr), mul(2, read_size))
-      // Loop over read size - store function signature and address locations in calldata
-
-      for { let offset := 0x20 } lt(offset, add(0x20, mul(0x20, read_size))) { offset := add(0x20, offset) } {
-        mstore(add(add(0x44, offset), ptr), add(offset, ver_function_list_loc))
-        mstore(add(add(add(0x44, mul(0x20, read_size)), offset), ptr), add(offset, ver_function_addr_list_loc))
-      }
-      // Read from storage and check return value
-      if iszero(
-        staticcall(gas, _storage, ptr, add(0x64, mul(0x40, read_size)), 0, 0)
-      ) { revert (0, 0) }
-
-      // Get memory for return values and copy returned data to return data
-      function_signatures := add(0x20, msize)
-      // Set list length
-      mstore(function_signatures, read_size)
-      // Copy signature list length and data to return value
-      returndatacopy(
-        add(0x20, function_signatures),
-        0x40,
-        mul(0x20, read_size)
-      )
-      function_locations := add(add(0x20, mul(0x20, read_size)), function_signatures)
-      // Set list length
-      mstore(function_locations, read_size)
-      // Copy signature list length and data to return value
-      returndatacopy(
-        add(0x20, function_locations),
-        sub(returndatasize, mul(0x20, read_size)),
-        mul(0x20, read_size)
-      )
+    // Create new 'readMulti' calldata buffer, overwriting the previous buffer
+    cdOverwrite(ptr, RD_MULTI);
+    // Push exec id, data read offset, and read size to calldata buffer
+    cdPush(ptr, _exec_id);
+    cdPush(ptr, 0x40);
+    cdPush(ptr, bytes32(list_length));
+    // Get function
+    // Loop over read size and place function signature list index storage locations in calldata buffer
+    for (uint i = 1; i <= list_length; i++) {
+      cdPush(ptr, bytes32((i * 32) + uint(keccak256(VER_FUNCTION_LIST, temp))));
     }
+    // Read from storage, and store return in buffer
+    function_signatures = readMultiBytes4From(ptr, _storage);
+
+    // Create new 'readMulti' calldata buffer in free memory
+    ptr = cdBuff(RD_MULTI);
+    // Push exec id, data read offset, and read size to calldata buffer
+    cdPush(ptr, _exec_id);
+    cdPush(ptr, 0x40);
+    cdPush(ptr, bytes32(list_length));
+    // Get function
+    // Loop over read size and place function signature list index storage locations in calldata buffer
+    for (i = 1; i <= list_length; i++)
+      cdPush(ptr, bytes32((i * 32) + uint(keccak256(VER_FUNCTION_ADDRESSES, temp))));
+
+    // Read from storage, and store return in buffer
+    function_locations = readMultiAddressFrom(ptr, _storage);
   }
 
   /*
@@ -927,69 +664,279 @@ library InitRegistry {
     require(_storage != address(0) && _exec_id != bytes32(0));
     require(_provider != bytes32(0) && _app != bytes32(0) && _version != bytes32(0) && _impl_signature != bytes4(0));
 
-    // Place 'readMulti' function selector in memory
-    bytes4 rd_multi = RD_MULTI;
+    // Create struct in memory to hold values
+    StackVarHelper memory impl_helper = StackVarHelper({
+      temp: keccak256(_provider, PROVIDERS),
+      desc_size: 1,
+      desc_size_norm: 1
+    });
+    // Get function base storage location
+    impl_helper.temp = keccak256(APPS, impl_helper.temp);
+    impl_helper.temp = keccak256(keccak256(_app), impl_helper.temp);
+    impl_helper.temp = keccak256(VERSIONS, impl_helper.temp);
+    impl_helper.temp = keccak256(keccak256(_version), impl_helper.temp);
+    impl_helper.temp = keccak256(FUNCTIONS, impl_helper.temp);
+    impl_helper.temp = keccak256(keccak256(_impl_signature), impl_helper.temp);
 
-    // Get function implementing address and function description locations
-    bytes32 impl_storage_loc = keccak256(_provider, PROVIDERS);
-    impl_storage_loc = keccak256(APPS, impl_storage_loc);
-    impl_storage_loc = keccak256(keccak256(_app), impl_storage_loc);
-    impl_storage_loc = keccak256(VERSIONS, impl_storage_loc);
-    impl_storage_loc = keccak256(keccak256(_version), impl_storage_loc);
-    impl_storage_loc = keccak256(FUNCTIONS, impl_storage_loc);
-    impl_storage_loc = keccak256(keccak256(_impl_signature), impl_storage_loc);
+    // Create 'readMulti' calldata buffer in memory
+    uint ptr = cdBuff(RD_MULTI);
+    // Push exec id, data read offset, and read size to calldata buffer
+    cdPush(ptr, _exec_id);
+    cdPush(ptr, 0x40);
+    cdPush(ptr, 2);
+    // Push function base and description size storage locations in buffer
+    cdPush(ptr, keccak256(FUNC_IMPL_ADDR, impl_helper.temp));
+    cdPush(ptr, keccak256(FUNC_DESC, impl_helper.temp));
+    // Read from storage and store return in buffer
+    bytes32[] memory read_values = readMultiFrom(ptr, _storage);
 
-    bytes32 impl_desc_loc = keccak256(FUNC_DESC, impl_storage_loc);
-    impl_storage_loc = keccak256(FUNC_IMPL_ADDR, impl_storage_loc);
+    // Get returned values -
+    impl_location = address(read_values[0]);
+    impl_helper.desc_size = uint(read_values[1]);
 
+    // Normalize description size to 32-byte chunks for next readMulti
+    impl_helper.desc_size_norm = impl_helper.desc_size / 32;
+    if (impl_helper.desc_size % 32 != 0)
+      impl_helper.desc_size_norm++;
+
+    // If the function has no description, return
+    if (impl_helper.desc_size_norm == 0)
+      return (impl_location, impl_description);
+
+    // Create new readMulti calldata buffer, overwriting the previous buffer
+    cdOverwrite(ptr, RD_MULTI);
+    // Push exec id, data read offset, and read size to buffer
+    cdPush(ptr, _exec_id);
+    cdPush(ptr, 0x40);
+    cdPush(ptr, bytes32(impl_helper.desc_size_norm));
+    // Get version init description base storage location
+    impl_helper.temp = keccak256(FUNC_DESC, impl_helper.temp);
+    // Loop over description size and add storage locations to readMuli buffer
+    for (uint i = 1; i <= impl_helper.desc_size_norm; i++)
+      cdPush(ptr, bytes32((32 * i) + uint(impl_helper.temp)));
+
+    // Read from storage, and store return in buffer
+    impl_description = readMultiBytesFrom(ptr, impl_helper.desc_size, _storage);
+  }
+
+  /*
+  Returns the last value stored in the buffer
+
+  @param _ptr: A pointer to the buffer
+  @return last_val: The final value stored in the buffer
+  */
+  function top(uint _ptr) internal pure returns (bytes32 last_val) {
     assembly {
-      // Read function implementing address and description size from storage -
+      let len := mload(_ptr)
+      // Add 0x20 to length to account for the length itself
+      last_val := mload(add(0x20, add(len, _ptr)))
+    }
+  }
 
-      // Get pointer to store calldata in
-      let ptr := mload(0x40)
-      // Place 'readMulti' selector, exec id, data read offset, and read size in calldata
-      mstore(ptr, rd_multi)
-      mstore(add(0x04, ptr), _exec_id)
-      mstore(add(0x24, ptr), 0x40)
-      mstore(add(0x44, ptr), 2)
-      // Place function implementing address and description length storage locations in calldata
-      mstore(add(0x64, ptr), impl_storage_loc)
-      mstore(add(0x84, ptr), impl_desc_loc)
+  /*
+  Creates a calldata buffer in memory with the given function selector
 
-      // Read from storage and check return value. Store returned data at pointer
-      if iszero(
-        staticcall(gas, _storage, ptr, 0xa4, ptr, 0x80)
-      ) { revert (0, 0) }
+  @param _selector: The function selector to push to the first location in the buffer
+  @return ptr: The location in memory where the length of the buffer is stored - elements stored consecutively after this location
+  */
+  function cdBuff(bytes4 _selector) internal pure returns (uint ptr) {
+    assembly {
+      // Get buffer location - free memory
+      ptr := mload(0x40)
+      // Place initial length (4 bytes) in buffer
+      mstore(ptr, 0x04)
+      // Place function selector in buffer, after length
+      mstore(add(0x20, ptr), _selector)
+      // Update free-memory pointer - it's important to note that this is not actually free memory, if the pointer is meant to expand
+      mstore(0x40, add(0x40, ptr))
+    }
+  }
 
-      // Get returned values
-      impl_location := mload(add(0x40, ptr))
-      // Get memory for return value and set return length
-      impl_description := add(mload(add(0x60, ptr)), msize)
-      mstore(impl_description, mload(add(0x60, ptr)))
+  /*
+  Creates a new calldata buffer at the pointer with the given selector. Does not update free memory
 
-      // Read version init function description from storage -
+  @param _ptr: A pointer to the buffer to overwrite - will be the pointer to the new buffer as well
+  @param _selector: The function selector to place in the buffer
+  */
+  function cdOverwrite(uint _ptr, bytes4 _selector) internal pure {
+    assembly {
+      // Store initial length of buffer - 4 bytes
+      mstore(_ptr, 0x04)
+      // Store function selector after length
+      mstore(add(0x20, _ptr), _selector)
+    }
+  }
 
-      // Place 'readMulti' selector, exec id, and data read offset in calldata
-      mstore(ptr, rd_multi)
-      mstore(add(0x04, ptr), _exec_id)
-      mstore(add(0x24, ptr), 0x40)
-      // Normalize description length to read from 32-byte chunks, and store in calldata
-      mstore(add(0x44, ptr), div(mload(impl_description), 0x20))
-      if gt(mod(mload(impl_description), 0x20), 0) {
-        mstore(add(0x44, ptr), add(1, mload(add(0x44, ptr))))
+  /*
+  Pushes a value to the end of a calldata buffer, and updates the length
+
+  @param _ptr: A pointer to the start of the buffer
+  @param _val: The value to push to the buffer
+  */
+  function cdPush(uint _ptr, bytes32 _val) internal pure {
+    assembly {
+      // Get end of buffer - 32 bytes plus the length stored at the pointer
+      let len := add(0x20, mload(_ptr))
+      // Push value to end of buffer (overwrites memory - be careful!)
+      mstore(add(_ptr, len), _val)
+      // Increment buffer length
+      mstore(_ptr, len)
+      // If the free-memory pointer does not point beyond the buffer's current size, update it
+      if lt(mload(0x40), add(add(0x20, _ptr), len)) {
+        mstore(0x40, add(add(0x2c, _ptr), len)) // Ensure free memory pointer points to the beginning of a memory slot
       }
-      // Loop over description size and store list offsets in calldata
-      // Use _app variable as a loop offset
-      for { _app := 0x20 } lt(_app, add(0x20, mload(impl_description))) { _app := add(0x20, _app) } {
-        mstore(add(add(0x44, _app), ptr), add(_app, impl_desc_loc))
-      }
-      // Read from storage and check return value
-      if iszero(
-        staticcall(gas, _storage, ptr, add(0x64, mul(0x20, mload(add(0x44, ptr)))), 0, 0)
-      ) { revert (0, 0) }
+    }
+  }
 
-      // Copy description data to return value
-      returndatacopy(add(0x20, impl_description), 0x40, sub(returndatasize, 0x40))
+  /*
+  Executes a 'readMulti' function call, given a pointer to a calldata buffer
+
+  @param _ptr: A pointer to the location in memory where the calldata for the call is stored
+  @param _storage: The address to read from
+  @return read_values: The values read from storage
+  */
+  function readMultiFrom(uint _ptr, address _storage) internal view returns (bytes32[] read_values) {
+    bool success;
+    assembly {
+      // Minimum length for 'readMulti' - 1 location is 0x84
+      if lt(mload(_ptr), 0x84) { revert (0, 0) }
+      // Read from storage
+      success := staticcall(gas, _storage, add(0x20, _ptr), mload(_ptr), 0, 0)
+      // If call succeed, get return information
+      if gt(success, 0) {
+        // Ensure data will not be copied beyond the pointer
+        if gt(sub(returndatasize, 0x20), mload(_ptr)) { revert (0, 0) }
+        // Copy returned data to pointer, overwriting it in the process
+        // Copies returndatasize, but ignores the initial read offset so that the bytes32[] returned in the read is sitting directly at the pointer
+        returndatacopy(_ptr, 0x20, sub(returndatasize, 0x20))
+        // Set return bytes32[] to pointer, which should now have the stored length of the returned array
+        read_values := _ptr
+      }
+    }
+    if (!success)
+      triggerException(ERR_READ_FAILED);
+  }
+
+  /*
+  Executes a 'readMulti' function call, given a pointer to a calldata buffer
+
+  @param _ptr: A pointer to the location in memory where the calldata for the call is stored
+  @param _storage: The address to read from
+  @return read_values: The values read from storage
+  */
+  function readMultiBytes4From(uint _ptr, address _storage) internal view returns (bytes4[] read_values) {
+    bool success;
+    assembly {
+      // Minimum length for 'readMulti' - 1 location is 0x84
+      if lt(mload(_ptr), 0x84) { revert (0, 0) }
+      // Read from storage
+      success := staticcall(gas, _storage, add(0x20, _ptr), mload(_ptr), 0, 0)
+      // If call succeed, get return information
+      if gt(success, 0) {
+        // Ensure data will not be copied beyond the pointer
+        if gt(sub(returndatasize, 0x20), mload(_ptr)) { revert (0, 0) }
+        // Copy returned data to pointer, overwriting it in the process
+        // Copies returndatasize, but ignores the initial read offset so that the bytes32[] returned in the read is sitting directly at the pointer
+        returndatacopy(_ptr, 0x20, sub(returndatasize, 0x20))
+        // Set return bytes32[] to pointer, which should now have the stored length of the returned array
+        read_values := _ptr
+      }
+    }
+    if (!success)
+      triggerException(ERR_READ_FAILED);
+  }
+
+  /*
+  Executes a 'readMulti' function call, given a pointer to a calldata buffer
+
+  @param _ptr: A pointer to the location in memory where the calldata for the call is stored
+  @param _storage: The address to read from
+  @return read_values: The values read from storage
+  */
+  function readMultiAddressFrom(uint _ptr, address _storage) internal view returns (address[] read_values) {
+    bool success;
+    assembly {
+      // Minimum length for 'readMulti' - 1 location is 0x84
+      if lt(mload(_ptr), 0x84) { revert (0, 0) }
+      // Read from storage
+      success := staticcall(gas, _storage, add(0x20, _ptr), mload(_ptr), 0, 0)
+      // If call succeed, get return information
+      if gt(success, 0) {
+        // Ensure data will not be copied beyond the pointer
+        if gt(sub(returndatasize, 0x20), mload(_ptr)) { revert (0, 0) }
+        // Copy returned data to pointer, overwriting it in the process
+        // Copies returndatasize, but ignores the initial read offset so that the bytes32[] returned in the read is sitting directly at the pointer
+        returndatacopy(_ptr, 0x20, sub(returndatasize, 0x20))
+        // Set return bytes32[] to pointer, which should now have the stored length of the returned array
+        read_values := _ptr
+      }
+    }
+    if (!success)
+      triggerException(ERR_READ_FAILED);
+  }
+
+  /*
+  Executes a 'readMulti' function call, given a pointer to a calldata buffer
+
+  @param _ptr: A pointer to the location in memory where the calldata for the call is stored
+  @param _arr_len: The actual length of the bytes array being returned
+  @param _storage: The address to read from
+  @return read_values: The bytes array read from storage
+  */
+  function readMultiBytesFrom(uint _ptr, uint _arr_len, address _storage) internal view returns (bytes read_values) {
+    bool success;
+    assembly {
+      // Minimum length for 'readMulti' - 1 location is 0x84
+      if lt(mload(_ptr), 0x84) { revert (0, 0) }
+      // Read from storage
+      success := staticcall(gas, _storage, add(0x20, _ptr), mload(_ptr), 0, 0)
+      // If call succeed, get return information
+      if gt(success, 0) {
+        // Ensure data will not be copied beyond the pointer
+        if gt(sub(returndatasize, 0x20), mload(_ptr)) { revert (0, 0) }
+        // Copy returned data to pointer, overwriting it in the process
+        // Copies returndatasize, but ignores the initial read offset so that the bytes32[] returned in the read is sitting directly at the pointer
+        returndatacopy(_ptr, 0x20, sub(returndatasize, 0x20))
+        // Set return bytes32[] to pointer, which should now have the stored length of the returned array
+        read_values := _ptr
+        // Copy input length to read_values - corrects length
+        mstore(read_values, _arr_len)
+      }
+    }
+    if (!success)
+      triggerException(ERR_READ_FAILED);
+  }
+
+  /*
+  Executes a 'read' function call, given a pointer to a calldata buffer
+
+  @param _ptr: A pointer to the location in memory where the calldata for the call is stored
+  @param _storage: The address to read from
+  @return read_value: The value read from storage
+  */
+  function readSingleFrom(uint _ptr, address _storage) internal view returns (bytes32 read_value) {
+    bool success;
+    assembly {
+      // Length for 'read' buffer must be 0x44
+      if iszero(eq(mload(_ptr), 0x44)) { revert (0, 0) }
+      // Read from storage, and store return to pointer
+      success := staticcall(gas, _storage, add(0x20, _ptr), mload(_ptr), _ptr, 0x20)
+      // If call succeeded, store return at pointer
+      if gt(success, 0) { read_value := mload(_ptr) }
+    }
+    if (!success)
+      triggerException(ERR_READ_FAILED);
+  }
+
+  /*
+  Reverts state changes, but passes message back to caller
+
+  @param _message: The message to return to the caller
+  */
+  function triggerException(bytes32 _message) internal pure {
+    assembly {
+      mstore(0, _message)
+      revert(0, 0x20)
     }
   }
 }
