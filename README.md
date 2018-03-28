@@ -36,11 +36,11 @@ Upon initialization of the application, the application can be used by calling t
 
 Several of these contracts have been deployed to Ropsten, to allow for open testing. Below is a list of the verified contracts being used:
 
-1. RegistryStorage: 0x253dc5A398ff89A0b1bD00DE73c8865a7C062aee
-2. InitRegistry: 0x0B4567Ac84e2244f9C9c1169005b995102A9Bb1f
-3. AppConsole: 0x2e75962C92662468722E5b50319141a6C214C91c
-4. VersionConsole: 0x9bDddD9EBEaE1c4C7A3C5f75Dba092E7a827efE4
-5. ImplementationConsole: 0x030CAf41dFEccb4EE6AA6f126e499f908Fd48099
+1. RegistryStorage: https://ropsten.etherscan.io/address/0xf86d24445c3ca88e12af55586cb2cb915410438f#code
+2. InitRegistry: https://ropsten.etherscan.io/address/0x90afaa721432f31768d923ed35ddfbc8411c3493#code
+3. AppConsole: https://ropsten.etherscan.io/address/0xe40609c32fcd462d612b75737ce47e9d782c4d21#code
+4. VersionConsole: https://ropsten.etherscan.io/address/0x77f07606f900e82116769575ddbc9daac25ef516#code
+5. ImplementationConsole: https://ropsten.etherscan.io/address/0x3c97c65181e9bf50a8db05bb82b1ffc6fd4ad96e#code
 6. TokenTransfer: 0xB62AF075e8EEa16154775F45F884865aD10d4d2B
 7. InitToken: 0xE87e1565A9Ac331339A6015A50fe01aC6Cfd7387
 8. ScriptExec: 0x3B9A54A62002bc6aC3a60E9744b20063B077b1aB
