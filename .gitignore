@@ -1,2 +1,4 @@
 build/
+flat/
 node_modules/
+tmp/
