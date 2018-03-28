@@ -41,9 +41,11 @@ Several of these contracts have been deployed to Ropsten, to allow for open test
 3. AppConsole: https://ropsten.etherscan.io/address/0xe40609c32fcd462d612b75737ce47e9d782c4d21#code
 4. VersionConsole: https://ropsten.etherscan.io/address/0x77f07606f900e82116769575ddbc9daac25ef516#code
 5. ImplementationConsole: https://ropsten.etherscan.io/address/0x3c97c65181e9bf50a8db05bb82b1ffc6fd4ad96e#code
-6. TokenTransfer: 0xB62AF075e8EEa16154775F45F884865aD10d4d2B
-7. InitToken: 0xE87e1565A9Ac331339A6015A50fe01aC6Cfd7387
-8. ScriptExec: 0x3B9A54A62002bc6aC3a60E9744b20063B077b1aB
+6. TokenTransfer: https://ropsten.etherscan.io/address/0x9a18eb62093d7502cbfed8d9d6a03c951d46a003#code
+7. TokenTransferFrom: https://ropsten.etherscan.io/address/0x6485587b0c4fe54cfd907166d29d1a9236d99a9e#code
+8. TokenApprove: https://ropsten.etherscan.io/address/0xe64dd83c320519cec5778e33f9ed41e537220c46#code
+7. InitToken: https://ropsten.etherscan.io/address/0xfbed6ca4f5ce1c3da8981932e243f3a27a7d011b#code
+8. ScriptExec: https://ropsten.etherscan.io/address/0x3cc0fab364aeaa2488789453fe567c11dfec51a8#code
 
 The 'default' variables in ScriptExec.sol can be examined for information on the registry's execution id, as well as the storage address of the registry. 
 
