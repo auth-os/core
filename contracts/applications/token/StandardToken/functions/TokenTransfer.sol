@@ -16,7 +16,6 @@ library TokenTransfer {
   /// EXCEPTION MESSAGES ///
 
   bytes32 public constant ERR_UNKNOWN_CONTEXT = bytes32("UnknownContext"); // Malformed '_context' array
-  bytes32 public constant ERR_INSUFFICIENT_PERMISSIONS = bytes32("InsufficientPermissions"); // Action not allowed
   bytes32 public constant ERR_READ_FAILED = bytes32("StorageReadFailed"); // Read from storage address failed
 
   /*
@@ -81,34 +80,6 @@ library TokenTransfer {
 
     // Get bytes32[] representation of storage buffer
     store_data = getBuffer(ptr);
-  }
-
-  /*
-  Returns the last value stored in the buffer
-
-  @param _ptr: A pointer to the buffer
-  @return last_val: The final value stored in the buffer
-  */
-  function top(uint _ptr) internal pure returns (bytes32 last_val) {
-    assembly {
-      let len := mload(_ptr)
-      // Add 0x20 to length to account for the length itself
-      last_val := mload(add(0x20, add(len, _ptr)))
-    }
-  }
-
-  /*
-  Creates a buffer for return data storage. Buffer pointer stores the lngth of the buffer
-
-  @return ptr: The location in memory where the length of the buffer is stored - elements stored consecutively after this location
-  */
-  function stBuff() internal pure returns (uint ptr) {
-    assembly {
-      // Get buffer location - free memory
-      ptr := mload(0x40)
-      // Update free-memory pointer - it's important to note that this is not actually free memory, if the pointer is meant to expand
-      mstore(0x40, add(0x20, ptr))
-    }
   }
 
   /*
@@ -179,21 +150,6 @@ library TokenTransfer {
   }
 
   /*
-  Creates a new calldata buffer at the pointer with the given selector. Does not update free memory
-
-  @param _ptr: A pointer to the buffer to overwrite - will be the pointer to the new buffer as well
-  @param _selector: The function selector to place in the buffer
-  */
-  function cdOverwrite(uint _ptr, bytes4 _selector) internal pure {
-    assembly {
-      // Store initial length of buffer - 4 bytes
-      mstore(_ptr, 0x04)
-      // Store function selector after length
-      mstore(add(0x20, _ptr), _selector)
-    }
-  }
-
-  /*
   Pushes a value to the end of a calldata buffer, and updates the length
 
   @param _ptr: A pointer to the start of the buffer
@@ -237,26 +193,6 @@ library TokenTransfer {
         // Set return bytes32[] to pointer, which should now have the stored length of the returned array
         read_values := _ptr
       }
-    }
-    if (!success)
-      triggerException(ERR_READ_FAILED);
-  }
-
-  /*
-  Executes a 'read' function call, given a pointer to a calldata buffer
-
-  @param _ptr: A pointer to the location in memory where the calldata for the call is stored
-  @return read_value: The value read from storage
-  */
-  function readSingle(uint _ptr) internal view returns (bytes32 read_value) {
-    bool success;
-    assembly {
-      // Length for 'read' buffer must be 0x44
-      if iszero(eq(mload(_ptr), 0x44)) { revert (0, 0) }
-      // Read from storage, and store return to pointer
-      success := staticcall(gas, caller, add(0x20, _ptr), mload(_ptr), _ptr, 0x20)
-      // If call succeeded, store return at pointer
-      if gt(success, 0) { read_value := mload(_ptr) }
     }
     if (!success)
       triggerException(ERR_READ_FAILED);

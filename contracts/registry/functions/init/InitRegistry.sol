@@ -720,20 +720,6 @@ library InitRegistry {
   }
 
   /*
-  Returns the last value stored in the buffer
-
-  @param _ptr: A pointer to the buffer
-  @return last_val: The final value stored in the buffer
-  */
-  function top(uint _ptr) internal pure returns (bytes32 last_val) {
-    assembly {
-      let len := mload(_ptr)
-      // Add 0x20 to length to account for the length itself
-      last_val := mload(add(0x20, add(len, _ptr)))
-    }
-  }
-
-  /*
   Creates a calldata buffer in memory with the given function selector
 
   @param _selector: The function selector to push to the first location in the buffer

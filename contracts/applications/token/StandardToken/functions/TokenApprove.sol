@@ -16,7 +16,6 @@ library TokenApprove {
   /// EXCEPTION MESSAGES ///
 
   bytes32 public constant ERR_UNKNOWN_CONTEXT = bytes32("UnknownContext"); // Malformed '_context' array
-  bytes32 public constant ERR_INSUFFICIENT_PERMISSIONS = bytes32("InsufficientPermissions"); // Action not allowed
   bytes32 public constant ERR_READ_FAILED = bytes32("StorageReadFailed"); // Read from storage address failed
 
   /*
@@ -54,12 +53,6 @@ library TokenApprove {
 
     // Get bytes32[] representation of storage buffer
     store_data = getBuffer(ptr);
-  }
-
-  struct Approval {
-    bytes4 rd_sing;
-    bytes32 spender_allowance_loc;
-    uint spender_allowance;
   }
 
   /*
@@ -156,20 +149,6 @@ library TokenApprove {
   }
 
   /*
-  Returns the last value stored in the buffer
-
-  @param _ptr: A pointer to the buffer
-  @return last_val: The final value stored in the buffer
-  */
-  function top(uint _ptr) internal pure returns (bytes32 last_val) {
-    assembly {
-      let len := mload(_ptr)
-      // Add 0x20 to length to account for the length itself
-      last_val := mload(add(0x20, add(len, _ptr)))
-    }
-  }
-
-  /*
   Creates a buffer for return data storage. Buffer pointer stores the lngth of the buffer
 
   @return ptr: The location in memory where the length of the buffer is stored - elements stored consecutively after this location
@@ -247,21 +226,6 @@ library TokenApprove {
       mstore(add(0x20, ptr), _selector)
       // Update free-memory pointer - it's important to note that this is not actually free memory, if the pointer is meant to expand
       mstore(0x40, add(0x40, ptr))
-    }
-  }
-
-  /*
-  Creates a new calldata buffer at the pointer with the given selector. Does not update free memory
-
-  @param _ptr: A pointer to the buffer to overwrite - will be the pointer to the new buffer as well
-  @param _selector: The function selector to place in the buffer
-  */
-  function cdOverwrite(uint _ptr, bytes4 _selector) internal pure {
-    assembly {
-      // Store initial length of buffer - 4 bytes
-      mstore(_ptr, 0x04)
-      // Store function selector after length
-      mstore(add(0x20, _ptr), _selector)
     }
   }
 

@@ -185,14 +185,6 @@ library InitToken {
     token_symbol = readSingleFrom(ptr, _storage);
   }
 
-  struct TokenInfo {
-    bytes4 rd_multi;
-    bytes32 name_storage;
-    bytes32 symbol_storage;
-    bytes32 decimals_storage;
-    bytes32 total_supply_storage;
-  }
-
   /*
   Returns general information on a token - name, symbol, decimals, and total supply
 
@@ -227,20 +219,6 @@ library InitToken {
   }
 
   /*
-  Returns the last value stored in the buffer
-
-  @param _ptr: A pointer to the buffer
-  @return last_val: The final value stored in the buffer
-  */
-  function top(uint _ptr) internal pure returns (bytes32 last_val) {
-    assembly {
-      let len := mload(_ptr)
-      // Add 0x20 to length to account for the length itself
-      last_val := mload(add(0x20, add(len, _ptr)))
-    }
-  }
-
-  /*
   Creates a buffer for return data storage. Buffer pointer stores the lngth of the buffer
 
   @return ptr: The location in memory where the length of the buffer is stored - elements stored consecutively after this location
@@ -251,18 +229,6 @@ library InitToken {
       ptr := mload(0x40)
       // Update free-memory pointer - it's important to note that this is not actually free memory, if the pointer is meant to expand
       mstore(0x40, add(0x20, ptr))
-    }
-  }
-
-  /*
-  Creates a new return data storage buffer at the position given by the pointer. Does not update free memory
-
-  @param _ptr: A pointer to the location where the buffer will be created
-  */
-  function stOverwrite(uint _ptr) internal pure {
-    assembly {
-      // Simple set the initial length - 0
-      mstore(_ptr, 0)
     }
   }
 
@@ -318,21 +284,6 @@ library InitToken {
       mstore(add(0x20, ptr), _selector)
       // Update free-memory pointer - it's important to note that this is not actually free memory, if the pointer is meant to expand
       mstore(0x40, add(0x40, ptr))
-    }
-  }
-
-  /*
-  Creates a new calldata buffer at the pointer with the given selector. Does not update free memory
-
-  @param _ptr: A pointer to the buffer to overwrite - will be the pointer to the new buffer as well
-  @param _selector: The function selector to place in the buffer
-  */
-  function cdOverwrite(uint _ptr, bytes4 _selector) internal pure {
-    assembly {
-      // Store initial length of buffer - 4 bytes
-      mstore(_ptr, 0x04)
-      // Store function selector after length
-      mstore(add(0x20, _ptr), _selector)
     }
   }
 
