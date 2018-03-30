@@ -26,6 +26,7 @@ library InitCrowdsale {
     uint _tier_token_sell_cap;          // The maximum number of tokens that will be sold during this tier
     uint _duration;                     // The amount of time this tier will be active for
     bool _tier_duration_is_modifiable;  // Whether the crowdsale admin is allowed to modify the duration of a tier before it goes live
+    bool _tier_is_whitelist_enabled     // Whether this tier of the crowdsale requires users to be on a purchase whitelist
   }
   */
   bytes32 public constant CROWDSALE_TIERS = keccak256("crowdsale_tier_list");
@@ -47,6 +48,9 @@ library InitCrowdsale {
 
   // Storage location of token per wei rate
   bytes32 public constant SALE_RATE = keccak256("crowdsale_sale_rate");
+
+  // Storage seed for crowdsale whitelist mapping - maps addresses to a boolean value indicating whether they are on the whitelist
+  bytes32 public constant SALE_WHITELIST = keccak256("crowdsale_purchase_whitelist");
 
   /// TOKEN STORAGE ///
 
@@ -106,10 +110,11 @@ library InitCrowdsale {
   @param _initial_tier_name: The name of the initial tier of the crowdsale
   @param _initial_tier_duration: The duration of the initial tier of the crowdsale
   @param _initial_tier_token_sell_cap: The maximum number of tokens that can be sold during the initial tier
+  @param _initial_tier_is_whitelisted: Whether the initial tier of the crowdsale requires an address be whitelisted for successful purchase
   @param _admin: A privileged address which is able to complete the crowdsale initialization process
   @return store_data: A formatted storage request
   */
-  function init(address _team_wallet, uint _sale_rate, uint _start_time, bytes32 _initial_tier_name, uint _initial_tier_duration, uint _initial_tier_token_sell_cap, address _admin) public view
+  function init(address _team_wallet, uint _sale_rate, uint _start_time, bytes32 _initial_tier_name, uint _initial_tier_duration, uint _initial_tier_token_sell_cap, bool _initial_tier_is_whitelisted, address _admin) public view
   returns (bytes32[] store_data) {
     // Ensure valid input
     if (
@@ -150,6 +155,9 @@ library InitCrowdsale {
     // Whether this tier's duration is modifiable prior to its start time (automatically true for initial tiers)
     stPush(ptr, bytes32(128 + uint(CROWDSALE_TIERS)));
     stPush(ptr, bytes32(1));
+    // Whether this tier requires an address be whitelisted to complete token purchase
+    stPush(ptr, bytes32(160 + uint(CROWDSALE_TIERS)));
+    stPush(ptr, (_initial_tier_is_whitelisted ? bytes32(1) : bytes32(0)));
 
     // Push current crowdsale tier to buffer (initial tier is '1')
     stPush(ptr, CROWDSALE_CURRENT_TIER);
@@ -229,10 +237,12 @@ library InitCrowdsale {
   @return tier_name: The name of the current tier
   @return tier_index: The current tier's index in the CROWDSALE_TIERS list
   @return tier_ends_at: The time at which purcahses for the current tier are forcibly locked
-  @retrn tier_tokens_remaining: The amount of tokens remaining to be purchased in the current tier
+  @return tier_tokens_remaining: The amount of tokens remaining to be purchased in the current tier
+  @return duration_is_modifiable: Whether the crowdsale admin can update the duration of this tier before it starts
+  @return whitelist_enabled: Whether an address must be whitelisted to participate in this tier
   */
   function getCurrentTierInfo(address _storage, bytes32 _exec_id) public view
-  returns (bytes32 tier_name, uint tier_index, uint tier_ends_at, uint tier_tokens_remaining) {
+  returns (bytes32 tier_name, uint tier_index, uint tier_ends_at, uint tier_tokens_remaining, bool duration_is_modifiable, bool whitelist_enabled) {
     // Create 'readMulti' calldata buffer in memory
     uint ptr = cdBuff(RD_MULTI);
     // Push exec id, data read offset, and read size to calldata buffer
@@ -256,15 +266,22 @@ library InitCrowdsale {
     tier_index = uint(read_values[1]) - 1;
     tier_tokens_remaining = uint(read_values[2]);
 
-    // Overwrite previous buffer, and create new 'read' calldata buffer
-    cdOverwrite(ptr, RD_SING);
-    // Push exec id to buffer
+    // Overwrite previous buffer, and create new 'readMulti' calldata buffer
+    cdOverwrite(ptr, RD_MULTI);
+    // Push exec id, data read offset, and read size to buffer
     cdPush(ptr, _exec_id);
-    // Push tier name storage location to buffer
-    uint name_storage_offset = 32 + (128 * tier_index);
+    cdPush(ptr, 0x40);
+    cdPush(ptr, bytes32(3));
+    // Push tier name, modifiable status, and tier whitelist status storage locations to buffer
+    uint name_storage_offset = 32 + (160 * tier_index);
     cdPush(ptr, bytes32(name_storage_offset + uint(CROWDSALE_TIERS)));
-    // Read from storage and get return value
-    tier_name = readSingleFrom(ptr, _storage);
+    cdPush(ptr, bytes32(96 + name_storage_offset + uint(CROWDSALE_TIERS)));
+    cdPush(ptr, bytes32(128 + name_storage_offset + uint(CROWDSALE_TIERS)));
+    // Read from storage and get return values
+    read_values = readMultiFrom(ptr, _storage);
+    tier_name = read_values[0];
+    duration_is_modifiable = (read_values[1] == bytes32(0) ? false : true);
+    whitelist_enabled = (read_values[2] == bytes32(0) ? false : true);
   }
 
   /*
@@ -277,21 +294,24 @@ library InitCrowdsale {
   @return tier_sell_cap: The amount of tokens designated to be sold during this tier
   @return tier_duration: The duration of the given tier
   @return duration_is_modifiable: Whether the crowdsale admin can change the duration of this tier prior to its start time
+  @return whitelist_enabled: Whether an address must be whitelisted to participate in this tier
   */
-  function getCrowdsaleTier(address _storage, bytes32 _exec_id, uint _index) public view returns (bytes32 tier_name, uint tier_sell_cap, uint tier_duration, bool duration_is_modifiable) {
+  function getCrowdsaleTier(address _storage, bytes32 _exec_id, uint _index) public view
+  returns (bytes32 tier_name, uint tier_sell_cap, uint tier_duration, bool duration_is_modifiable, bool whitelist_enabled) {
     // Create 'readMulti' calldata buffer in memory
     uint ptr = cdBuff(RD_MULTI);
     // Push exec id, data read offset, and read size to calldata buffer
     cdPush(ptr, _exec_id);
     cdPush(ptr, 0x40);
-    cdPush(ptr, bytes32(4));
+    cdPush(ptr, bytes32(5));
     // Get tier offset storage location
-    uint tier_info_location = 32 + (128 * _index) + uint(CROWDSALE_TIERS);
+    uint tier_info_location = 32 + (160 * _index) + uint(CROWDSALE_TIERS);
     // Push tier name, sell cap, duration, and modifiable status storage locations to buffer
     cdPush(ptr, bytes32(tier_info_location)); // Name
     cdPush(ptr, bytes32(32 + tier_info_location)); // Token sell cap
     cdPush(ptr, bytes32(64 + tier_info_location)); // Tier duration
     cdPush(ptr, bytes32(96 + tier_info_location)); // Modifiability status
+    cdPush(ptr, bytes32(128 + tier_info_location)); // Whitelist enabled status
     // Read from storage and store return in buffer
     bytes32[] memory read_values = readMultiFrom(ptr, _storage);
 
@@ -300,6 +320,7 @@ library InitCrowdsale {
     tier_sell_cap = uint(read_values[1]);
     tier_duration = uint(read_values[2]);
     duration_is_modifiable = (read_values[3] == 0 ? false : true);
+    whitelist_enabled = (read_values[4] == 0 ? false : true);
   }
 
   /*
@@ -327,6 +348,25 @@ library InitCrowdsale {
     uint wei_raised = uint(read_values[0]);
     uint sale_rate = uint(read_values[1]);
     tokens_sold = wei_raised * sale_rate;
+  }
+
+  /*
+  Returns whether a given buyer is whitelisted for the crowdsale
+
+  @param _storage: The address where application storage is located
+  @param _exec_id: The application execution id under which storage for this instance is located
+  @param _buyer: The address of the user whose whitelist status will be returned
+  @return is_whitelisted: Whether or not the buyer is whitelisted for the crowdsale
+  */
+  function getWhitelistStatus(address _storage, bytes32 _exec_id, address _buyer) public view returns (bool is_whitelisted) {
+    // Create 'read' calldata buffer in memory
+    uint ptr = cdBuff(RD_SING);
+    // Push exec id to buffer
+    cdPush(ptr, _exec_id);
+    // Push buyer whitelist status storage location to buffer
+    cdPush(ptr, keccak256(keccak256(_buyer), SALE_WHITELIST));
+    // Raed from storage and get return value
+    is_whitelisted = (readSingleFrom(ptr, _storage) == bytes32(0) ? false : true);
   }
 
   /// TOKEN GETTERS ///

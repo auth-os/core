@@ -26,6 +26,7 @@ library CrowdsaleConsole {
     uint _tier_token_sell_cap;          // The maximum number of tokens that will be sold during this tier
     uint _duration;                     // The amount of time this tier will be active for
     bool _tier_duration_is_modifiable;  // Whether the crowdsale admin is allowed to modify the duration of a tier before it goes live
+    bool _tier_is_whitelist_enabled     // Whether this tier of the crowdsale requires users to be on a purchase whitelist
   }
   */
   bytes32 public constant CROWDSALE_TIERS = keccak256("crowdsale_tier_list");
@@ -35,6 +36,9 @@ library CrowdsaleConsole {
 
   // Storage location of the end time of the current tier. Purchase attempts beyond this time will update the current tier (if another is available)
   bytes32 public constant CURRENT_TIER_ENDS_AT = keccak256("crowdsale_tier_ends_at");
+
+  // Storage seed for crowdsale whitelist mapping - maps addresses to a boolean value indicating whether they are on the whitelist
+  bytes32 public constant SALE_WHITELIST = keccak256("crowdsale_purchase_whitelist");
 
   /// TOKEN STORAGE ///
 
@@ -130,6 +134,52 @@ library CrowdsaleConsole {
   }
 
   /*
+  Allows the admin of a crowdsale to update the whitelist status for several addresses simultaneously
+
+  @param _to_update: An array of addresses for which whitelist status will be updated
+  @param _new_status: The new whitelist status of the address. If true, address is whitelisted
+  @param _context: The execution context for this application - a 96-byte array containing (in order):
+    1. Application execution id
+    2. Original script sender (address, padded to 32 bytes)
+    3. Wei amount sent with transaction to storage
+  @return store_data: A formatted storage request - first 64 bytes designate a forwarding address (and amount) for any wei sent
+  */
+  function whitelistMulti(address[] _to_update, bool[] _new_status, bytes _context) public view returns (bytes32[] store_data) {
+    // Ensure valid input
+    require(_to_update.length == _new_status.length);
+    if (_context.length != 96)
+      triggerException(ERR_UNKNOWN_CONTEXT);
+
+    // Get sender and exec id from context
+    address sender;
+    bytes32 exec_id;
+    (exec_id, sender, ) = parse(_context);
+
+    // Create 'read' calldata buffer in memory
+    uint ptr = cdBuff(RD_MULTI);
+    // Push exec id to buffer
+    cdPush(ptr, exec_id);
+    // Push admin address storage location to buffer
+    cdPush(ptr, ADMIN);
+    // Read from storage - if returned value is not equal to the sender, sender is not the crowdsale admin
+    if (readSingle(ptr) != bytes32(sender))
+      triggerException(ERR_INSUFFICIENT_PERMISSIONS);
+
+    /// Sender is crowdsale admin - create storage return request and append whitelist updates
+    stOverwrite(ptr);
+    // Push payment destination and value (0, 0) to buffer
+    stPush(ptr, 0);
+    stPush(ptr, 0);
+    // Loop over input and add whitelist storage information to buffer
+    for (uint i = 0; i < _to_update.length; i++) {
+      stPush(ptr, keccak256(keccak256(_to_update[i]), SALE_WHITELIST));
+      stPush(ptr, (_new_status[i] ? bytes32(1) : bytes32(0)));
+    }
+    // Get bytes32[] storage request array from buffer
+    store_data = getBuffer(ptr);
+  }
+
+  /*
   Allows the admin to create new tiers for the crowdsale and append them to the end of the list of crowdsale tiers
   Each tier added will begin once the previous tier added ends
 
@@ -137,16 +187,24 @@ library CrowdsaleConsole {
   @param _tier_durations: An array of durations each tier will last
   @param _tier_caps: The maximum amount of tokens to be sold during each tier
   @param _tier_is_modifiable: Whether each tier's duration may be changed prior to its start time
+  @param _tier_is_whitelisted: Whether each tier requires purchasers to be whitelisted
   @param _context: The execution context for this application - a 96-byte array containing (in order):
     1. Application execution id
     2. Original script sender (address, padded to 32 bytes)
     3. Wei amount sent with transaction to storage
   @return store_data: A formatted storage request - first 64 bytes designate a forwarding address (and amount) for any wei sent
   */
-  function createCrowdsaleTiers(bytes32[] _tier_names, uint[] _tier_durations, uint[] _tier_caps, bool[] _tier_is_modifiable, bytes _context) public view
+  function createCrowdsaleTiers(bytes32[] _tier_names, uint[] _tier_durations, uint[] _tier_caps, bool[] _tier_is_modifiable, bool[] _tier_is_whitelisted, bytes _context) public view
   returns (bytes32[] store_data) {
     // Ensure valid input
-    require(_tier_names.length == _tier_durations.length && _tier_names.length == _tier_caps.length && _tier_names.length == _tier_is_modifiable.length);
+    require(
+      _tier_names.length == _tier_durations.length
+      && _tier_names.length == _tier_caps.length
+      && _tier_names.length == _tier_is_modifiable.length
+      && _tier_is_modifiable.length == _tier_is_whitelisted.length
+    );
+    if (_context.length != 96)
+      triggerException(ERR_UNKNOWN_CONTEXT);
 
     // Get sender and exec id from context
     address sender;
@@ -188,7 +246,7 @@ library CrowdsaleConsole {
     stPush(ptr, bytes32(num_tiers + _tier_names.length));
 
     // Place crowdsale tier storage base location in num_tiers
-    num_tiers = 32 + (128 * num_tiers) + uint(CROWDSALE_TIERS);
+    num_tiers = 32 + (160 * num_tiers) + uint(CROWDSALE_TIERS);
     // Loop over each new tier, and add to storage buffer. Keep track of the added duration
     for (uint i = 0; i < _tier_names.length; i++) {
       // Ensure valid input -
@@ -197,7 +255,7 @@ library CrowdsaleConsole {
       // Increment total duration of the crowdsale
       total_duration += _tier_durations[i];
       // Get crowdsale tier index storage offset
-      num_tiers = (128 * i) + num_tiers;
+      num_tiers += (160 * i);
       // Push name, token sell cap, initial duration, and modifiability to storage buffer
       stPush(ptr, bytes32(num_tiers)); // Name and name storage location
       stPush(ptr, _tier_names[i]);
@@ -206,7 +264,9 @@ library CrowdsaleConsole {
       stPush(ptr, bytes32(64 + num_tiers)); // Tier duration and duration storage location
       stPush(ptr, bytes32(_tier_durations[i]));
       stPush(ptr, bytes32(96 + num_tiers)); // Tier modifiability status and modifiability status storage location
-      stPush(ptr, bytes32((_tier_is_modifiable[i] ? 1 : 0)));
+      stPush(ptr, bytes32((_tier_is_modifiable[i] ? bytes32(1) : bytes32(0))));
+      stPush(ptr, bytes32(128 + num_tiers)); // Tier whitelist requirement status and status storage location
+      stPush(ptr, bytes32((_tier_is_whitelisted[i] ? bytes32(1) : bytes32(0))));
     }
     // Push new total crowdsale duration to storage buffer
     stPush(ptr, CROWDSALE_TOTAL_DURATION);
@@ -263,8 +323,8 @@ library CrowdsaleConsole {
     cdPush(ptr, CROWDSALE_CURRENT_TIER);
     cdPush(ptr, CURRENT_TIER_ENDS_AT);
     // Push storage locations of information of the tier to be updated (tier duration and tier modifiability status)
-    cdPush(ptr, bytes32(96 + (128 * _tier_index) + uint(CROWDSALE_TIERS))); // Storage location of tier-to-update's duration (used to update crowdsale total duration)
-    cdPush(ptr, bytes32(128 + (128 * _tier_index) + uint(CROWDSALE_TIERS))); // Storage location of tier-to-update's modifiability status (whether the tier's duration can be updated)
+    cdPush(ptr, bytes32(96 + (160 * _tier_index) + uint(CROWDSALE_TIERS))); // Storage location of tier-to-update's duration (used to update crowdsale total duration)
+    cdPush(ptr, bytes32(128 + (160 * _tier_index) + uint(CROWDSALE_TIERS))); // Storage location of tier-to-update's modifiability status (whether the tier's duration can be updated)
     // Read from storage, and store return to buffer
     bytes32[] memory read_values = readMulti(ptr);
 
@@ -319,7 +379,7 @@ library CrowdsaleConsole {
       cdPush(ptr, bytes32(_tier_index - uint(read_values[5])));
       // Loop through the difference in the returned 'current' index and the requested update index, and push the location of each in-between tier's duration to the buffer
       for (uint i = uint(read_values[5]); i < _tier_index; i++)
-        cdPush(ptr, bytes32(96 + (128 * i) + uint(CROWDSALE_TIERS)));
+        cdPush(ptr, bytes32(96 + (160 * i) + uint(CROWDSALE_TIERS)));
 
       // Read from storage, and store return to buffer
       uint[] memory read_durations = readMultiUint(ptr);
@@ -359,7 +419,7 @@ library CrowdsaleConsole {
       tier_update.total_duration += (_new_duration - tier_update.prev_duration);
 
     // Push new tier duration to crowdsale tier list in storage buffer
-    stPush(ptr, bytes32(96 + (128 * _tier_index) + uint(CROWDSALE_TIERS)));
+    stPush(ptr, bytes32(96 + (160 * _tier_index) + uint(CROWDSALE_TIERS)));
     stPush(ptr, bytes32(_new_duration));
     // Push updated overall crowdsale duration to buffer
     stPush(ptr, CROWDSALE_TOTAL_DURATION);
@@ -379,10 +439,6 @@ library CrowdsaleConsole {
   */
   function initializeCrowdsale(bytes _context) public onlyAdminAndNotInit(_context) view
   returns (bytes32[] store_data) {
-    // Ensure valid input
-    if (_context.length != 96)
-      triggerException(ERR_UNKNOWN_CONTEXT);
-
     // Get execuion id from _context
     bytes32 exec_id;
     (exec_id, , ) = parse(_context);
@@ -622,6 +678,26 @@ library CrowdsaleConsole {
         // Set return bytes32[] to pointer, which should now have the stored length of the returned array
         read_values := _ptr
       }
+    }
+    if (!success)
+      triggerException(ERR_READ_FAILED);
+  }
+
+  /*
+  Executes a 'read' function call, given a pointer to a calldata buffer
+
+  @param _ptr: A pointer to the location in memory where the calldata for the call is stored
+  @return read_value: The value read from storage
+  */
+  function readSingle(uint _ptr) internal view returns (bytes32 read_value) {
+    bool success;
+    assembly {
+      // Length for 'read' buffer must be 0x44
+      if iszero(eq(mload(_ptr), 0x44)) { revert (0, 0) }
+      // Read from storage, and store return to pointer
+      success := staticcall(gas, caller, add(0x20, _ptr), mload(_ptr), _ptr, 0x20)
+      // If call succeeded, store return at pointer
+      if gt(success, 0) { read_value := mload(_ptr) }
     }
     if (!success)
       triggerException(ERR_READ_FAILED);

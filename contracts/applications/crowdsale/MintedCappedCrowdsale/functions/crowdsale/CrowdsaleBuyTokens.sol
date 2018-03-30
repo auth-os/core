@@ -20,6 +20,7 @@ library CrowdsaleBuyTokens {
     uint _tier_token_sell_cap;          // The maximum number of tokens that will be sold during this tier
     uint _duration;                     // The amount of time this tier will be active for
     bool _tier_duration_is_modifiable;  // Whether the crowdsale admin is allowed to modify the duration of a tier before it goes live
+    bool _tier_is_whitelist_enabled     // Whether this tier of the crowdsale requires users to be on a purchase whitelist
   }
   */
   bytes32 public constant CROWDSALE_TIERS = keccak256("crowdsale_tier_list");
@@ -42,6 +43,9 @@ library CrowdsaleBuyTokens {
   // Storage location of token per wei rate
   bytes32 public constant SALE_RATE = keccak256("crowdsale_sale_rate");
 
+  // Storage seed for crowdsale whitelist mapping - maps addresses to a boolean value indicating whether they are on the whitelist
+  bytes32 public constant SALE_WHITELIST = keccak256("crowdsale_purchase_whitelist");
+
   /// TOKEN STORAGE ///
 
   // Storage location for token totalSupply
@@ -51,6 +55,10 @@ library CrowdsaleBuyTokens {
   bytes32 public constant TOKEN_BALANCES = keccak256("token_balances");
 
   /// FUNCTION SELECTORS ///
+
+  // Function selector for storage "read"
+  // read(bytes32 _exec_id, bytes32 _location) view returns (bytes32 data_read);
+  bytes4 public constant RD_SING = bytes4(keccak256("read(bytes32,bytes32)"));
 
   // Function selector for storage 'readMulti'
   // readMulti(bytes32 exec_id, bytes32[] locations)
@@ -70,6 +78,7 @@ library CrowdsaleBuyTokens {
     uint tokens_remaining;
     uint time_remaining;
     uint tier_ends_at;
+    bool tier_is_whitelisted;
     bool updated_tier;
   }
 
@@ -112,10 +121,30 @@ library CrowdsaleBuyTokens {
     if (wei_sent == 0)
       triggerException(ERR_INSUFFICIENT_FUNDS);
 
+    // Get CrowdsaleTier struct to hold returned data
+    CrowdsaleTier memory cur_tier = CrowdsaleTier({
+      index: 0,
+      tokens_remaining: 0,
+      time_remaining: 0,
+      tier_ends_at: 0,
+      tier_is_whitelisted: false,
+      // In the event the current tier information retrieved from storage is incorrect, this flags storage of new 'current tier info'
+      updated_tier: false
+    });
+
     /// Read crowdsale and tier information from storage -
 
-    // Create 'readMulti' calldata buffer in memory
-    uint ptr = cdBuff(RD_MULTI);
+    // Initial read - current tier index
+    // Create 'read' calldata buffer in memory
+    uint ptr = cdBuff(RD_SING);
+    // Push exec id and current tier index storage location to buffer
+    cdPush(ptr, exec_id);
+    cdPush(ptr, CROWDSALE_CURRENT_TIER);
+    // Read from storage, and place return in CrowdsaleTier struct
+    cur_tier.index = uint(readSingle(ptr)) - 1; // Indexes are off by one in storage
+
+    // Create 'readMulti' calldata buffer in memory - overwrite previous buffer
+    cdOverwrite(ptr, RD_MULTI);
     // Push exec id, data read offset, and read size to buffer
     cdPush(ptr, exec_id);
     cdPush(ptr, 0x40);
@@ -130,7 +159,7 @@ library CrowdsaleBuyTokens {
     cdPush(ptr, CROWDSALE_START_TIME); // Start time for the crowdsale
     cdPush(ptr, CROWDSALE_TIERS); // Number of tiers in the crowdsale
     // Push crowdsale tier information storage locations to calldata buffer
-    cdPush(ptr, CROWDSALE_CURRENT_TIER); // Index of current crowdsale tier in tier list
+    cdPush(ptr, bytes32(160 + (160 * cur_tier.index) + uint(CROWDSALE_TIERS))); // Location of current tier 'whitelist-enabled' storage location
     cdPush(ptr, CURRENT_TIER_ENDS_AT); // Time at which the current crowdsale tier ends
     cdPush(ptr, CURRENT_TIER_TOKENS_REMAINING); // Number of tokens remaining in the current tier
     // Push token information storage locations to calldata buffer
@@ -149,15 +178,11 @@ library CrowdsaleBuyTokens {
       num_tiers: uint(read_values[6])
     });
 
-    // Get CrowdsaleTier struct from returned tier information
-    CrowdsaleTier memory cur_tier = CrowdsaleTier({
-      index: uint(read_values[7]) - 1, // Indexes are off by one in storage
-      tokens_remaining: uint(read_values[9]),
-      time_remaining: (now < uint(read_values[8]) ? uint(read_values[8]) - now : 0),
-      tier_ends_at: uint(read_values[8]),
-      // In the event the current tier information retrieved from storage is incorrect, this flags storage of new 'current tier info'
-      updated_tier: false
-    });
+    // Update CrowdsaleTier struct with returned data
+    cur_tier.tokens_remaining = uint(read_values[9]);
+    cur_tier.time_remaining = (now < uint(read_values[8]) ? uint(read_values[8]) - now : 0);
+    cur_tier.tier_ends_at = uint(read_values[8]);
+    cur_tier.tier_is_whitelisted = (read_values[7] == bytes32(0) ? false : true);
 
     // Get SpendInfo struct from returned token and balance information
     SpendInfo memory spend_info = SpendInfo({
@@ -168,7 +193,6 @@ library CrowdsaleBuyTokens {
       // This flag is updated if the crowdsale is in a valid state to execute purchase of tokens
       valid_state: false
     });
-
 
     /// Check values from storage for valid purchase state -
     if (
@@ -248,6 +272,19 @@ library CrowdsaleBuyTokens {
     assert(spend_info.spend_amount != 0 && spend_info.spend_amount <= wei_sent);
     spend_info.tokens_purchased = spend_info.spend_amount * sale_stat.sale_rate;
 
+    /// If current tier is whitelisted, read sender's whitelist status storage location -
+
+    if (cur_tier.tier_is_whitelisted == true) {
+      // Overwrite previous buffer, and create 'read' calldata buffer
+      cdOverwrite(ptr, RD_SING);
+      // Push exec id and sender whitelist status storage location to buffer
+      cdPush(ptr, exec_id);
+      cdPush(ptr, keccak256(keccak256(sender), SALE_WHITELIST));
+      // Read from storage - if returned value is false, sender cannot participate in this tier
+      if (readSingle(ptr) == bytes32(0))
+        triggerException(ERR_INSUFFICIENT_PERMISSIONS);
+    }
+
     // Overwrite previous read buffer, and create storage return buffer
     stOverwrite(ptr);
     // Push payment information (team wallet address and spend amount) to storage buffer
@@ -299,11 +336,13 @@ library CrowdsaleBuyTokens {
       // Push exec id, data read offset, and read size to calldata buffer
       cdPush(ptr, _exec_id);
       cdPush(ptr, 0x40);
-      cdPush(ptr, bytes32(2));
+      cdPush(ptr, bytes32(3));
       // Push tier duration storage location to buffer
-      cdPush(ptr, bytes32(96 + (128 * cur_tier.index) + uint(CROWDSALE_TIERS)));
+      cdPush(ptr, bytes32(96 + (160 * cur_tier.index) + uint(CROWDSALE_TIERS)));
       // Push tier token sell cap storage location to buffer
-      cdPush(ptr, bytes32(64 + (128 * cur_tier.index) + uint(CROWDSALE_TIERS)));
+      cdPush(ptr, bytes32(64 + (160 * cur_tier.index) + uint(CROWDSALE_TIERS)));
+      // Push tier 'is-whitelisted' status storage location to buffer
+      cdPush(ptr, bytes32(160 + (160 * cur_tier.index) + uint(CROWDSALE_TIERS)));
       // Read from storage, and store return to buffer
       read_values = readMultiUint(ptr);
       // Add returned duration to previous tier end time
@@ -320,6 +359,7 @@ library CrowdsaleBuyTokens {
     assert(read_values[1] != 0);
     cur_tier.tokens_remaining = read_values[1];
     cur_tier.time_remaining = cur_tier.tier_ends_at - now;
+    cur_tier.tier_is_whitelisted = (read_values[2] == 0 ? false : true);
     cur_tier.updated_tier = true;
   }
 
@@ -387,6 +427,21 @@ library CrowdsaleBuyTokens {
       mstore(add(0x20, ptr), _selector)
       // Update free-memory pointer - it's important to note that this is not actually free memory, if the pointer is meant to expand
       mstore(0x40, add(0x40, ptr))
+    }
+  }
+
+  /*
+  Creates a new calldata buffer at the pointer with the given selector. Does not update free memory
+
+  @param _ptr: A pointer to the buffer to overwrite - will be the pointer to the new buffer as well
+  @param _selector: The function selector to place in the buffer
+  */
+  function cdOverwrite(uint _ptr, bytes4 _selector) internal pure {
+    assembly {
+      // Store initial length of buffer - 4 bytes
+      mstore(_ptr, 0x04)
+      // Store function selector after length
+      mstore(add(0x20, _ptr), _selector)
     }
   }
 
@@ -462,6 +517,26 @@ library CrowdsaleBuyTokens {
         // Set return bytes32[] to pointer, which should now have the stored length of the returned array
         read_values := _ptr
       }
+    }
+    if (!success)
+      triggerException(ERR_READ_FAILED);
+  }
+
+  /*
+  Executes a 'read' function call, given a pointer to a calldata buffer
+
+  @param _ptr: A pointer to the location in memory where the calldata for the call is stored
+  @return read_value: The value read from storage
+  */
+  function readSingle(uint _ptr) internal view returns (bytes32 read_value) {
+    bool success;
+    assembly {
+      // Length for 'read' buffer must be 0x44
+      if iszero(eq(mload(_ptr), 0x44)) { revert (0, 0) }
+      // Read from storage, and store return to pointer
+      success := staticcall(gas, caller, add(0x20, _ptr), mload(_ptr), _ptr, 0x20)
+      // If call succeeded, store return at pointer
+      if gt(success, 0) { read_value := mload(_ptr) }
     }
     if (!success)
       triggerException(ERR_READ_FAILED);
