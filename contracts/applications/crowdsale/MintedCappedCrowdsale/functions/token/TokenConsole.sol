@@ -7,22 +7,25 @@ library TokenConsole {
   // Storage location of crowdsale admin address
   bytes32 public constant ADMIN = keccak256("admin");
 
-  // Whether the crowdsale and token are initialized, and the application is ready to run
+  // Whether the crowdsale and token are initialized, and the sale is ready to run
   bytes32 public constant CROWDSALE_IS_INIT = keccak256("crowdsale_is_init");
 
   // Whether or not the crowdsale is post-purchase
   bytes32 public constant CROWDSALE_IS_FINALIZED = keccak256("crowdsale_is_finalized");
 
-  // Storage location for the number of tokens minted during the crowdsale
-  bytes32 public constant TOTAL_TOKENS_MINTED = keccak256("crowdsale_tokens_minted");
+  // Storage location of amount of wei raised during the crowdsale, total
+  bytes32 public constant WEI_RAISED = keccak256("crowdsale_wei_raised");
+
+  // Storage location of token per wei rate
+  bytes32 public constant SALE_RATE = keccak256("crowdsale_sale_rate");
 
   /// TOKEN STORAGE ///
 
-  // Storage seed for user balances mapping
-  bytes32 public constant TOKEN_BALANCES = keccak256("token_balances");
-
   // Storage location for token totalSupply
   bytes32 public constant TOKEN_TOTAL_SUPPLY = keccak256("token_total_supply");
+
+  // Storage seed for user balances mapping
+  bytes32 public constant TOKEN_BALANCES = keccak256("token_balances");
 
   // Storage seed for token 'transfer agent' status for any address
   // Transfer agents can transfer tokens, even if the crowdsale has not yet been finalized
@@ -135,7 +138,7 @@ library TokenConsole {
     uint ptr = cdBuff(RD_MULTI);
     // Place exec id, data read offset, and read size in buffer
     cdPush(ptr, exec_id);
-    cdPush(ptr, bytes32(64));
+    cdPush(ptr, 0x40);
     // Reading data for all input destinations, as well as crowdsale destinations list length, crowdsale admin address permission, and crowdsale initialization status locations
     cdPush(ptr, bytes32(3 + _destinations.length));
     // Push crowdsale admin address permission location to buffer
@@ -244,7 +247,7 @@ library TokenConsole {
     uint ptr = cdBuff(RD_MULTI);
     // Place exec id, data read offset, and read size in buffer
     cdPush(ptr, exec_id);
-    cdPush(ptr, bytes32(64));
+    cdPush(ptr, 0x40);
     cdPush(ptr, 4);
     // Place admin address, crowdsale initialization status, reserved token list length, and _destination list index storage locations in callata
     cdPush(ptr, ADMIN);
@@ -338,26 +341,27 @@ library TokenConsole {
     uint ptr = cdBuff(RD_MULTI);
     // Place exec id, data read offset, and read size in buffer
     cdPush(ptr, exec_id);
-    cdPush(ptr, bytes32(64));
-    cdPush(ptr, 4);
-    // Place crowdsale finalization status, total tokens minted location, total token supply, and reserved destination length storage locations to calldata
+    cdPush(ptr, 0x40);
+    cdPush(ptr, bytes32(5));
+    // Place crowdsale finalization status, wei raised, sale rate, total token supply, and reserved destination length storage locations to calldata
     cdPush(ptr, CROWDSALE_IS_FINALIZED);
-    cdPush(ptr, TOTAL_TOKENS_MINTED);
+    cdPush(ptr, WEI_RAISED);
+    cdPush(ptr, SALE_RATE);
     cdPush(ptr, TOKEN_TOTAL_SUPPLY);
     cdPush(ptr, TOKEN_RESERVED_DESTINATIONS);
     // Read from storage, and store returned values in buffer
     bytes32[] memory initial_read_values = readMulti(ptr);
     // Ensure the length is 4
-    assert(initial_read_values.length == 4);
+    assert(initial_read_values.length == 5);
 
     // If the crowdsale is not finalized, revert
     if (initial_read_values[0] != bytes32(1))
       triggerException(ERR_INSUFFICIENT_PERMISSIONS);
 
     // Get total tokens minted, total token supply, and reserved destinations list length
-    uint total_minted = uint(initial_read_values[1]);
-    uint total_supply = uint(initial_read_values[2]);
-    uint num_destinations = uint(initial_read_values[3]);
+    uint total_sold = uint(initial_read_values[1]) * uint(initial_read_values[2]);
+    uint total_supply = uint(initial_read_values[3]);
+    uint num_destinations = uint(initial_read_values[4]);
 
     // If _amt is greater than the reserved destinations list length, set amt equal to the list length
     if (_amt > num_destinations)
@@ -367,7 +371,7 @@ library TokenConsole {
     cdOverwrite(ptr, RD_MULTI);
     // Place exec id, data read offset, and read size in buffer
     cdPush(ptr, exec_id);
-    cdPush(ptr, bytes32(64));
+    cdPush(ptr, 0x40);
     cdPush(ptr, bytes32(_amt));
     // Get the locations of all destinations to be paid out, starting with the last destination and working backward (this allows us to simply decrement the length, instead of swapping entries)
     for (uint i = 0; i < _amt; i++) {
@@ -414,8 +418,8 @@ library TokenConsole {
       assert(10 ** precision > precision);
       precision = 10 ** precision;
 
-      // Get number of tokens to add frmo total_minted and precent reserved
-      to_add = total_minted * to_add / precision;
+      // Get number of tokens to add frmo total_sold and precent reserved
+      to_add = total_sold * to_add / precision;
 
       // Add number of tokens reserved, and check for overflow
       // Additionally, check that the added amount does not overflow total supply
@@ -510,7 +514,7 @@ library TokenConsole {
     assembly {
       // If the size stored at the pointer is not evenly divislble into 32-byte segments, this was improperly constructed
       if gt(mod(mload(_ptr), 0x20), 0) { revert (0, 0) }
-      mstore(_ptr, div(0x20, mload(_ptr)))
+      mstore(_ptr, div(mload(_ptr), 0x20))
       store_data := _ptr
     }
   }

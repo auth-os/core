@@ -7,40 +7,34 @@ library CrowdsaleConsole {
   // Storage location of crowdsale admin address
   bytes32 public constant ADMIN = keccak256("admin");
 
-  // Whether the crowdsale and token are initialized, and the application is ready to run
+  // Whether the crowdsale and token are initialized, and the sale is ready to run
   bytes32 public constant CROWDSALE_IS_INIT = keccak256("crowdsale_is_init");
 
   // Whether or not the crowdsale is post-purchase
   bytes32 public constant CROWDSALE_IS_FINALIZED = keccak256("crowdsale_is_finalized");
 
+  // Storage location of the crowdsale's start time
+  bytes32 public constant CROWDSALE_START_TIME = keccak256("crowdsale_start_time");
+
+  // Storage location of the amount of time the crowdsale will take, accounting for all tiers
+  bytes32 public constant CROWDSALE_TOTAL_DURATION = keccak256("crowdsale_total_duration");
+
   // Storage location of a list of the tiers the crowdsale will have
-  // Each tier mimics the following struct: { uint token_sell_cap; uint end_time; }
+  /* Each tier mimics the following struct:
+  struct CrowdsaleTier {
+    bytes32 _tier_name;                 // The name of the crowdsale tier
+    uint _tier_token_sell_cap;          // The maximum number of tokens that will be sold during this tier
+    uint _duration;                     // The amount of time this tier will be active for
+    bool _tier_duration_is_modifiable;  // Whether the crowdsale admin is allowed to modify the duration of a tier before it goes live
+  }
+  */
   bytes32 public constant CROWDSALE_TIERS = keccak256("crowdsale_tier_list");
 
-  // Storage location of the current tier of the crowdsale, and its index in the crowdsale tier list
-  // Mimics the following struct: { uint token_sell_cap; uint end_time; uint tier_list_index; }
+  // Storage location of the CROWDSALE_TIERS index of the current tier. Return value minus 1 is the actual index of the tier. 0 is an invalid return
   bytes32 public constant CROWDSALE_CURRENT_TIER = keccak256("crowdsale_current_tier");
 
-  // Storage location of team funds wallet
-  bytes32 public constant WALLET = keccak256("crowdsale_wallet");
-
-  // Storage location of amount of wei raised during the crowdsale, total
-  bytes32 public constant WEI_RAISED = keccak256("crowdsale_wei_raised");
-
-  // Storage location for the amount of tokens still available for purchase in this crowdsale
-  bytes32 public constant TOKENS_REMAINING = keccak256("crowdsale_tokens_remaining");
-
-  // Storage location of token per wei rate
-  bytes32 public constant SALE_RATE = keccak256("crowdsale_sale_rate");
-
-  // Storage location of crowdsale start time
-  bytes32 public constant CROWDSALE_STARTS_AT = keccak256("crowdsale_starts_at");
-
-  // Storage location of crowdsale end time
-  bytes32 public constant CROWDSALE_ENDS_AT = keccak256("crowdsale_ends_at");
-
-  // Storage location for the number of tokens minted during the crowdsale
-  bytes32 public constant TOTAL_TOKENS_MINTED = keccak256("crowdsale_tokens_minted");
+  // Storage location of the end time of the current tier. Purchase attempts beyond this time will update the current tier (if another is available)
+  bytes32 public constant CURRENT_TIER_ENDS_AT = keccak256("crowdsale_tier_ends_at");
 
   /// TOKEN STORAGE ///
 
@@ -53,33 +47,7 @@ library CrowdsaleConsole {
   // Storage location for token decimals
   bytes32 public constant TOKEN_DECIMALS = keccak256("token_decimals");
 
-  // Storage location for token totalSupply
-  bytes32 public constant TOKEN_TOTAL_SUPPLY = keccak256("token_total_supply");
-
-  // Storage seed for user balances mapping
-  bytes32 public constant TOKEN_BALANCES = keccak256("token_balances");
-
-  // Storage seed for user allowances mapping
-  bytes32 public constant TOKEN_ALLOWANCES = keccak256("token_allowances");
-
-  // Storage seed for token 'transfer agent' status for any address
-  // Transfer agents can transfer tokens, even if the crowdsale has not yet been finalized
-  bytes32 public constant TOKEN_TRANSFER_AGENTS = keccak256("token_transfer_agents");
-
-  /// Storage location for an array of addresses with some form of reserved tokens
-  bytes32 public constant TOKEN_RESERVED_DESTINATIONS = keccak256("token_reserved_dest_list");
-
-  // Storage seed for reserved token information for a given address
-  // Maps an address for which tokens are reserved to a struct:
-  // ReservedInfo { uint destination_list_index; uint num_tokens; uint num_percent; uint percent_decimals; }
-  // destination_list_index is the address's index in TOKEN_RESERVED_DESTINATIONS, plus 1. 0 means the address is not in the list
-  bytes32 public constant TOKEN_RESERVED_ADDR_INFO = keccak256("token_reserved_addr_info");
-
   /// FUNCTION SELECTORS ///
-
-  // Function selector for storage "read"
-  // read(bytes32 _exec_id, bytes32 _location) view returns (bytes32 data_read);
-  bytes4 public constant RD_SING = bytes4(keccak256("read(bytes32,bytes32)"));
 
   // Function selector for storage 'readMulti'
   // readMulti(bytes32 exec_id, bytes32[] locations)
@@ -88,6 +56,7 @@ library CrowdsaleConsole {
   /// EXCEPTION MESSAGES ///
 
   bytes32 public constant ERR_UNKNOWN_CONTEXT = bytes32("UnknownContext"); // Malformed '_context' array
+  bytes32 public constant ERR_IMPROPOER_INITIALIZATION = bytes32("ImproperInitialization"); // Initialization variables invalid
   bytes32 public constant ERR_INSUFFICIENT_PERMISSIONS = bytes32("InsufficientPermissions"); // Action not allowed
   bytes32 public constant ERR_READ_FAILED = bytes32("StorageReadFailed"); // Read from storage address failed
 
@@ -105,7 +74,7 @@ library CrowdsaleConsole {
     uint ptr = cdBuff(RD_MULTI);
     // Place exec id, data read offset, and read size in buffer
     cdPush(ptr, exec_id);
-    cdPush(ptr, bytes32(64));
+    cdPush(ptr, 0x40);
     cdPush(ptr, bytes32(2));
     // Place admin storage location and crowdsale status storage location in calldata
     cdPush(ptr, ADMIN);
@@ -136,7 +105,11 @@ library CrowdsaleConsole {
   function initCrowdsaleToken(bytes32 _name, bytes32 _symbol, uint _decimals, bytes _context) public onlyAdminAndNotInit(_context) view
   returns (bytes32[] store_data) {
     // Ensure valid input
-    require(_name != bytes32(0) && _symbol != bytes32(0) && _decimals > 0);
+    if (
+      _name == bytes32(0)
+      || _symbol == bytes32(0)
+      || _decimals == 0
+    ) triggerException(ERR_IMPROPOER_INITIALIZATION);
 
     // Create memory buffer for return data
     uint ptr = stBuff();
@@ -150,59 +123,249 @@ library CrowdsaleConsole {
     stPush(ptr, TOKEN_SYMBOL);
     stPush(ptr, _symbol);
     stPush(ptr, TOKEN_DECIMALS);
-    stPush(ptr, _decimals);
+    stPush(ptr, bytes32(_decimals));
 
     // Get bytes32[] storage request array from buffer
     store_data = getBuffer(ptr);
   }
 
   /*
-  Allows the admin to create a new tier for the crowdsale and append it to the end of the list of crowdsale tiers
+  Allows the admin to create new tiers for the crowdsale and append them to the end of the list of crowdsale tiers
+  Each tier added will begin once the previous tier added ends
 
-  @param _token_sell_cap: The maximum amount of tokens that will be sold this tier
-  @param _end_time: The end time of this tier (must be after the end time of the previous tier)
+  @param _tier_names: An array of names for each tier
+  @param _tier_durations: An array of durations each tier will last
+  @param _tier_caps: The maximum amount of tokens to be sold during each tier
+  @param _tier_is_modifiable: Whether each tier's duration may be changed prior to its start time
   @param _context: The execution context for this application - a 96-byte array containing (in order):
     1. Application execution id
     2. Original script sender (address, padded to 32 bytes)
     3. Wei amount sent with transaction to storage
   @return store_data: A formatted storage request - first 64 bytes designate a forwarding address (and amount) for any wei sent
   */
-  function createCrowdsaleTier(uint _token_sell_cap, uint _start_time, uint _end_time, bytes _context) public onlyAdminAndNotInit(_context) view
+  function createCrowdsaleTiers(bytes32[] _tier_names, uint[] _tier_durations, uint[] _tier_caps, bool[] _tier_is_modifiable, bytes _context) public view
   returns (bytes32[] store_data) {
+    // Ensure valid input
+    require(_tier_names.length == _tier_durations.length && _tier_names.length == _tier_caps.length && _tier_names.length == _tier_is_modifiable.length);
 
+    // Get sender and exec id from context
+    address sender;
+    bytes32 exec_id;
+    (exec_id, sender, ) = parse(_context);
+
+    // Create 'readMulti' calldata buffer in memory
+    uint ptr = cdBuff(RD_MULTI);
+    // Push exec id, data read offset, and read size to buffer
+    cdPush(ptr, exec_id);
+    cdPush(ptr, 0x40);
+    cdPush(ptr, bytes32(4));
+    // Push read locations to buffer: total duration, and tier list length
+    cdPush(ptr, CROWDSALE_TOTAL_DURATION);
+    cdPush(ptr, CROWDSALE_TIERS);
+    // Push crowdsale initialization status and admin address storage locations to buffer
+    cdPush(ptr, CROWDSALE_IS_INIT);
+    cdPush(ptr, ADMIN);
+    // Read from storage, and return data to buffer
+    bytes32[] memory read_values = readMulti(ptr);
+
+    // Get current number of tiers and total duration
+    uint total_duration = uint(read_values[0]);
+    uint num_tiers = uint(read_values[1]);
+
+    // Check that the sender is the crowdsale admin, and that the crowdsale is not initialized
+    if (
+      read_values[2] != bytes32(0)
+      || read_values[3] != bytes32(sender)
+    ) triggerException(ERR_INSUFFICIENT_PERMISSIONS);
+
+    // Overwrite previous buffer to create a storage return buffer
+    stOverwrite(ptr);
+    // Push payment destination and value (0, 0) to storage buffer
+    stPush(ptr, 0);
+    stPush(ptr, 0);
+    // Push new tier list length to buffer
+    stPush(ptr, CROWDSALE_TIERS);
+    stPush(ptr, bytes32(num_tiers + _tier_names.length));
+
+    // Place crowdsale tier storage base location in num_tiers
+    num_tiers = 32 + (128 * num_tiers) + uint(CROWDSALE_TIERS);
+    // Loop over each new tier, and add to storage buffer. Keep track of the added duration
+    for (uint i = 0; i < _tier_names.length; i++) {
+      // Ensure valid input -
+      require(_tier_caps[i] > 0 && total_duration + _tier_durations[i] > total_duration);
+
+      // Increment total duration of the crowdsale
+      total_duration += _tier_durations[i];
+      // Get crowdsale tier index storage offset
+      num_tiers = (128 * i) + num_tiers;
+      // Push name, token sell cap, initial duration, and modifiability to storage buffer
+      stPush(ptr, bytes32(num_tiers)); // Name and name storage location
+      stPush(ptr, _tier_names[i]);
+      stPush(ptr, bytes32(32 + num_tiers)); // Token sell cap and sell cap storage location
+      stPush(ptr, bytes32(_tier_caps[i]));
+      stPush(ptr, bytes32(64 + num_tiers)); // Tier duration and duration storage location
+      stPush(ptr, bytes32(_tier_durations[i]));
+      stPush(ptr, bytes32(96 + num_tiers)); // Tier modifiability status and modifiability status storage location
+      stPush(ptr, bytes32((_tier_is_modifiable[i] ? 1 : 0)));
+    }
+    // Push new total crowdsale duration to storage buffer
+    stPush(ptr, CROWDSALE_TOTAL_DURATION);
+    stPush(ptr, bytes32(total_duration));
+
+    // Get bytes32[] storage request array from buffer
+    store_data = getBuffer(ptr);
+  }
+
+  struct TierUpdate {
+    uint crowdsale_starts_at;
+    uint total_duration;
+    uint cur_tier_end_time;
+    uint prev_duration;
   }
 
   /*
-  Allows the admin of a crowdsale to revise crowdsale start and end time, provided the crowdsale is not already initialized
+  Allows the admin of a crowdsale to update the duration of a tier, provided it has not already begun, and was marked as modifiable during the initialization process
 
-  @param _start_time: The new start time of the crowdsale
-  @param _end_time: The new end time of the crowdsale
+  @param _tier_index: The index of the tier whose duration will be updated (indexes in the tier list are 1-indexed: 0 is an invalid index)
+  @param _new_duration: The new duration for the tier
   @param _context: The execution context for this application - a 96-byte array containing (in order):
     1. Application execution id
     2. Original script sender (address, padded to 32 bytes)
     3. Wei amount sent with transaction to storage
   @return store_data: A formatted storage request - first 64 bytes designate a forwarding address (and amount) for any wei sent
   */
-  function setCrowdsaleTimes(uint _start_time, uint _end_time, bytes _context) public onlyAdminAndNotInit(_context) view returns (bytes32[] store_data) {
+  function updateTierDuration(uint _tier_index, uint _new_duration, bytes _context) public view returns (bytes32[] store_data) {
     // Ensure valid input
-    require(_start_time >= now && _end_time > _start_time);
+    require(_new_duration > 0);
+    if (_context.length != 96)
+      triggerException(ERR_UNKNOWN_CONTEXT);
 
-    // Allocate space for return storage request -
-    store_data = new bytes32[](6);
+    // Get sender address and exec id from context
+    address sender;
+    bytes32 exec_id;
+    (exec_id, sender, ) = parse(_context);
 
-    // First two slots are blank - this function does not accept eth
-    // Store crowdsale start and end times
-    store_data[2] = CROWDSALE_STARTS_AT;
-    store_data[3] = bytes32(_start_time);
-    store_data[4] = CROWDSALE_ENDS_AT;
-    store_data[5] = bytes32(_end_time);
-  }
+    /// Set up read from storage - reading crowdsale status and tier info:
 
-  struct CrowdsaleInit {
-    bytes4 rd_multi;
-    bytes32 admin_storage;
-    bytes32 crowdsale_init_status_storage;
-    bytes32 token_name_storage;
+    // Create 'readMulti' calldata buffer in memory
+    uint ptr = cdBuff(RD_MULTI);
+    // Push exec id, data read offset, and read size to buffer
+    cdPush(ptr, exec_id);
+    cdPush(ptr, 0x40);
+    cdPush(ptr, bytes32(9));
+    // Push crowdsale status storage locations to buffer -
+    cdPush(ptr, ADMIN);
+    cdPush(ptr, CROWDSALE_IS_FINALIZED);
+    cdPush(ptr, CROWDSALE_START_TIME);
+    cdPush(ptr, CROWDSALE_TOTAL_DURATION);
+    // Push current tier info storage locations to buffer -
+    cdPush(ptr, CROWDSALE_TIERS);
+    cdPush(ptr, CROWDSALE_CURRENT_TIER);
+    cdPush(ptr, CURRENT_TIER_ENDS_AT);
+    // Push storage locations of information of the tier to be updated (tier duration and tier modifiability status)
+    cdPush(ptr, bytes32(96 + (128 * _tier_index) + uint(CROWDSALE_TIERS))); // Storage location of tier-to-update's duration (used to update crowdsale total duration)
+    cdPush(ptr, bytes32(128 + (128 * _tier_index) + uint(CROWDSALE_TIERS))); // Storage location of tier-to-update's modifiability status (whether the tier's duration can be updated)
+    // Read from storage, and store return to buffer
+    bytes32[] memory read_values = readMulti(ptr);
+
+    // Get TierUpdate struct from returned data
+    TierUpdate memory tier_update = TierUpdate({
+      crowdsale_starts_at: uint(read_values[2]),
+      total_duration: uint(read_values[3]),
+      cur_tier_end_time: uint(read_values[6]),
+      prev_duration: uint(read_values[7])
+    });
+
+    // Ensure an update is being performed
+    require(tier_update.prev_duration != _new_duration);
+    // Total crowdsale duration should always be minimum the previous duration for the tier to update
+    assert(tier_update.total_duration >= tier_update.prev_duration);
+
+    // Check returned values for valid crowdsale and tier status -
+    if (
+      read_values[0] != bytes32(sender)                   // Sender is not the crowdsale admin
+      || read_values[1] != bytes32(0)                     // Crowdsale is already finalized
+      || uint(read_values[4]) <= _tier_index              // Passed-in tier index is out of range
+      || read_values[5] == bytes32(0)                     // Invalid return for 'current crowdsale tier index' - should always be nonzero
+      || uint(read_values[5]) - 1 > _tier_index           // Current crowdsale tier is already past requested index (trying to modify a previous tier)
+      || (uint(read_values[5]) - 1 == _tier_index         // Trying to modify the current tier, when the current tier is not the first tier
+         && _tier_index != 0)
+      || read_values[8] == bytes32(0)                     // Requested crowdsale tier was not set as 'modifiable'
+    ) triggerException(ERR_INSUFFICIENT_PERMISSIONS);
+
+    /// If the tier to update is tier 0, and the current tier index is 0, tier can be updated iff crowdsale has not yet begun - check start time
+    if (_tier_index == 0 && read_values[5] == bytes32(1)) {
+      if (now >= tier_update.crowdsale_starts_at) // If the crowdsale has already begun, the first tier's duration cannot be updated
+        triggerException(ERR_INSUFFICIENT_PERMISSIONS);
+
+      /// Updating tier 0 - overwrite memory buffer to create storage return buffer
+      stOverwrite(ptr);
+      // Push payment destination and value (0, 0) to buffer
+      stPush(ptr, 0);
+      stPush(ptr, 0);
+      // Push updated 'current tier ends at' value to buffer
+      stPush(ptr, CURRENT_TIER_ENDS_AT);
+      stPush(ptr, bytes32(_new_duration + tier_update.crowdsale_starts_at));
+
+    /// If the tier to update is not the current tier, but it is beyond the end time of the current tier, current tier may need updating -
+    } else if (_tier_index > uint(read_values[5]) - 1 && now >= tier_update.cur_tier_end_time) {
+      /// Loop through tiers between 'current tier' and _tier_index, and add their durations to a new 'readMulti' buffer - to get the requested tier to update's start time
+
+      // Get new 'readMulti' calldata buffer - do not overwrite previous buffer
+      ptr = cdBuff(RD_MULTI);
+      // Push exec id, data read offset, and read size to buffer
+      cdPush(ptr, exec_id);
+      cdPush(ptr, 0x40);
+      cdPush(ptr, bytes32(_tier_index - uint(read_values[5])));
+      // Loop through the difference in the returned 'current' index and the requested update index, and push the location of each in-between tier's duration to the buffer
+      for (uint i = uint(read_values[5]); i < _tier_index; i++)
+        cdPush(ptr, bytes32(96 + (128 * i) + uint(CROWDSALE_TIERS)));
+
+      // Read from storage, and store return to buffer
+      uint[] memory read_durations = readMultiUint(ptr);
+      assert(read_durations.length == _tier_index - uint(read_values[5])); // Ensure valid returned array size
+
+      // Loop through returned durations, and add each to 'cur tier end time'
+      for (i = 0; i < read_durations.length; i++)
+        tier_update.cur_tier_end_time += read_durations[i];
+
+      // If 'now' is not beyond 'cur_tier_end_time', sender is attempting to modify a tier which is in progress or has already passed
+      if (now <= tier_update.cur_tier_end_time)
+        triggerException(ERR_INSUFFICIENT_PERMISSIONS);
+
+      /// Requested tier to update is valid - overwrite previous buffer to create storage return buffer
+
+      stOverwrite(ptr);
+      // Push payment destination and value (0, 0) to storage buffer
+      stPush(ptr, 0);
+      stPush(ptr, 0);
+
+    /// If the tier to be updated is not the current tier, but the current tier is still in progress, update the requested tier -
+    } else if (_tier_index > uint(read_values[5]) - 1 && now < tier_update.cur_tier_end_time) {
+      // Overwrite previous buffer with storage buffer
+      stOverwrite(ptr);
+      // Push payment destination and value (0, 0) to buffer
+      stPush(ptr, 0);
+      stPush(ptr, 0);
+    } else {
+      // Not a valid state to update - throw
+      triggerException(ERR_INSUFFICIENT_PERMISSIONS);
+    }
+
+    // Get new overall crowdsale duration -
+    if (tier_update.prev_duration > _new_duration) // Subtracting from total_duration
+      tier_update.total_duration -= (tier_update.prev_duration - _new_duration);
+    else // Adding to total_duration
+      tier_update.total_duration += (_new_duration - tier_update.prev_duration);
+
+    // Push new tier duration to crowdsale tier list in storage buffer
+    stPush(ptr, bytes32(96 + (128 * _tier_index) + uint(CROWDSALE_TIERS)));
+    stPush(ptr, bytes32(_new_duration));
+    // Push updated overall crowdsale duration to buffer
+    stPush(ptr, CROWDSALE_TOTAL_DURATION);
+    stPush(ptr, bytes32(tier_update.total_duration));
+    // Get bytes32[] storage request array from buffer
+    store_data = getBuffer(ptr);
   }
 
   /*
@@ -224,16 +387,22 @@ library CrowdsaleConsole {
     bytes32 exec_id;
     (exec_id, , ) = parse(_context);
 
-    // Create 'read' calldata buffer in memory
-    uint ptr = cdBuff(RD_SING);
+    // Create 'readMulti' calldata buffer in memory
+    uint ptr = cdBuff(RD_MULTI);
 
-    // Place exec id and token name storage location in buffer
+    // Place exec id, data read offset, and read size in buffer
     cdPush(ptr, exec_id);
+    cdPush(ptr, 0x40);
+    cdPush(ptr, bytes32(2));
+    cdPush(ptr, CROWDSALE_START_TIME);
     cdPush(ptr, TOKEN_NAME);
 
-    // Read from storage and check that the token name is nonzero
-    if (readSingle(ptr) == bytes32(0))
-      triggerException(ERR_INSUFFICIENT_PERMISSIONS);
+    // Read from storage and check that the token name is nonzero and the start time has not passed yet
+    bytes32[] memory read_values = readMulti(ptr);
+    if (
+      read_values[0] > bytes32(now)
+      || read_values[1] == bytes32(0)
+    ) triggerException(ERR_INSUFFICIENT_PERMISSIONS);
 
     // Overwrite read buffer with storage buffer
     stOverwrite(ptr);
@@ -245,14 +414,6 @@ library CrowdsaleConsole {
     stPush(ptr, bytes32(1));
     // Get bytes32[] storage request array from buffer
     store_data = getBuffer(ptr);
-  }
-
-  struct CrowdsaleFinalize {
-    bytes4 rd_multi;
-    bytes32 admin_storage;
-    bytes32 crowdsale_init_status_storage;
-    bytes32 crowdsale_finalized_status_storage;
-    bytes32 token_total_supply_storage;
   }
 
   /*
@@ -274,19 +435,16 @@ library CrowdsaleConsole {
     bytes32 exec_id;
     (exec_id, sender, ) = parse(_context);
 
-    uint token_total_supply;
-
     // Create 'readMulti' calldata buffer in memory
     uint ptr = cdBuff(RD_MULTI);
     // Push exec id, data read offset, and read size to calldata buffer
     cdPush(ptr, exec_id);
-    cdPush(ptr, bytes32(64));
-    cdPush(ptr, bytes32(4));
-    // Push admin address, crowdsale init status, crowdsale finalization status, and total token supply storage locations in calldata
+    cdPush(ptr, 0x40);
+    cdPush(ptr, bytes32(3));
+    // Push admin address, crowdsale init status, and crowdsale finalization status in calldata
     cdPush(ptr, ADMIN);
     cdPush(ptr, CROWDSALE_IS_INIT);
     cdPush(ptr, CROWDSALE_IS_FINALIZED);
-    cdPush(ptr, TOKEN_TOTAL_SUPPLY);
     // Read from storage, and store returned data in buffer
     bytes32[] memory read_values = readMulti(ptr);
     // Check that the sender is the admin address, and that the crowdsale is initialized, but not finalized
@@ -298,9 +456,6 @@ library CrowdsaleConsole {
       triggerException(ERR_INSUFFICIENT_PERMISSIONS);
     }
 
-    // Get token total supply from returned data
-    bytes32 token_total_supply = read_values[3];
-
     // Create storage buffer, overwriting the previous read buffer
     stOverwrite(ptr);
     // Push payment information (0 wei sent and 0 destination address) to storage buffer
@@ -309,26 +464,9 @@ library CrowdsaleConsole {
     // Push crowdsale finalization status to buffer
     stPush(ptr, CROWDSALE_IS_FINALIZED);
     stPush(ptr, bytes32(1));
-    // Push total number of tokens minted to buffer
-    stPush(ptr, TOTAL_TOKENS_MINTED);
-    stPush(ptr, token_total_supply);
 
     // Get bytes32[] storage request array from buffer
     store_data = getBuffer(ptr);
-  }
-
-  /*
-  Returns the last value stored in the buffer
-
-  @param _ptr: A pointer to the buffer
-  @return last_val: The final value stored in the buffer
-  */
-  function top(uint _ptr) internal pure returns (bytes32 last_val) {
-    assembly {
-      let len := mload(_ptr)
-      // Add 0x20 to length to account for the length itself
-      last_val := mload(add(0x20, add(len, _ptr)))
-    }
   }
 
   /*
@@ -413,21 +551,6 @@ library CrowdsaleConsole {
   }
 
   /*
-  Creates a new calldata buffer at the pointer with the given selector. Does not update free memory
-
-  @param _ptr: A pointer to the buffer to overwrite - will be the pointer to the new buffer as well
-  @param _selector: The function selector to place in the buffer
-  */
-  function cdOverwrite(uint _ptr, bytes4 _selector) internal pure {
-    assembly {
-      // Store initial length of buffer - 4 bytes
-      mstore(_ptr, 0x04)
-      // Store function selector after length
-      mstore(add(0x20, _ptr), _selector)
-    }
-  }
-
-  /*
   Pushes a value to the end of a calldata buffer, and updates the length
 
   @param _ptr: A pointer to the start of the buffer
@@ -477,20 +600,28 @@ library CrowdsaleConsole {
   }
 
   /*
-  Executes a 'read' function call, given a pointer to a calldata buffer
+  Executes a 'readMulti' function call, given a pointer to a calldata buffer
 
   @param _ptr: A pointer to the location in memory where the calldata for the call is stored
-  @return read_value: The value read from storage
+  @return read_values: The values read from storage
   */
-  function readSingle(uint _ptr) internal view returns (bytes32 read_value) {
+  function readMultiUint(uint _ptr) internal view returns (uint[] read_values) {
     bool success;
     assembly {
-      // Length for 'read' buffer must be 0x44
-      if iszero(eq(mload(_ptr), 0x44)) { revert (0, 0) }
-      // Read from storage, and store return to pointer
-      success := staticcall(gas, caller, add(0x20, _ptr), mload(_ptr), _ptr, 0x20)
-      // If call succeeded, store return at pointer
-      if gt(success, 0) { read_value := mload(_ptr) }
+      // Minimum length for 'readMulti' - 1 location is 0x84
+      if lt(mload(_ptr), 0x84) { revert (0, 0) }
+      // Read from storage
+      success := staticcall(gas, caller, add(0x20, _ptr), mload(_ptr), 0, 0)
+      // If call succeed, get return information
+      if gt(success, 0) {
+        // Ensure data will not be copied beyond the pointer
+        if gt(sub(returndatasize, 0x20), mload(_ptr)) { revert (0, 0) }
+        // Copy returned data to pointer, overwriting it in the process
+        // Copies returndatasize, but ignores the initial read offset so that the bytes32[] returned in the read is sitting directly at the pointer
+        returndatacopy(_ptr, 0x20, sub(returndatasize, 0x20))
+        // Set return bytes32[] to pointer, which should now have the stored length of the returned array
+        read_values := _ptr
+      }
     }
     if (!success)
       triggerException(ERR_READ_FAILED);
