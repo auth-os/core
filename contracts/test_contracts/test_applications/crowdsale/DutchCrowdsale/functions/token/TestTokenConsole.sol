@@ -1,11 +1,31 @@
 pragma solidity ^0.4.21;
 
-library TokenApprove {
+// TokenConsole with additional testing features
+contract TestTokenConsole {
+
+  // Storage address to read from - readMulti and readSingle functions read from this address
+  address public app_storage;
+
+  // Constructor - set storage address
+  function TestTokenConsole(address _storage) public {
+    app_storage = _storage;
+  }
+
+  // Change storage address
+  function newStorage(address _new_storage) public {
+    app_storage = _new_storage;
+  }
+
+  /// CROWDSALE STORAGE ///
+
+  // Storage location of crowdsale admin address
+  bytes32 public constant ADMIN = keccak256("admin");
 
   /// TOKEN STORAGE ///
 
-  // Storage seed for user allowances mapping
-  bytes32 public constant TOKEN_ALLOWANCES = keccak256("token_allowances");
+  // Storage seed for token 'transfer agent' status for any address
+  // Transfer agents can transfer tokens, even if the crowdsale has not yet been finalized
+  bytes32 public constant TOKEN_TRANSFER_AGENTS = keccak256("token_transfer_agents");
 
   /// FUNCTION SELECTORS ///
 
@@ -16,150 +36,53 @@ library TokenApprove {
   /// EXCEPTION MESSAGES ///
 
   bytes32 public constant ERR_UNKNOWN_CONTEXT = bytes32("UnknownContext"); // Malformed '_context' array
+  bytes32 public constant ERR_INSUFFICIENT_PERMISSIONS = bytes32("InsufficientPermissions"); // Action not allowed
   bytes32 public constant ERR_READ_FAILED = bytes32("StorageReadFailed"); // Read from storage address failed
 
   /*
-  Approves another address to spend tokens on the sender's behalf
+  Allows the admin to set an address's transfer agent status - transfer agents can transfer tokens prior to the end of the crowdsale
 
-  @param _spender: The address for which the amount will be approved
-  @param _amt: The amount of tokens to approve for spending
+  @param _agent: The address whose transfer agent status will be updated
+  @param _is_transfer_agent: If true, address will be set as a transfer agent
   @param _context: The execution context for this application - a 96-byte array containing (in order):
     1. Application execution id
     2. Original script sender (address, padded to 32 bytes)
     3. Wei amount sent with transaction to storage
   @return store_data: A formatted storage request - first 64 bytes designate a forwarding address (and amount) for any wei sent
   */
-  function approve(address _spender, uint _amt, bytes _context) public pure
-  returns (bytes32[] store_data) {
-    // Ensure valid inputs
-    require(_spender != address(0) && _amt != 0);
+  function setTransferAgentStatus(address _agent, bool _is_transfer_agent, bytes _context) public view returns (bytes32[] store_data) {
+    // Ensure valid input
+    require(_agent != address(0));
     if (_context.length != 96)
       triggerException(ERR_UNKNOWN_CONTEXT);
 
+    // Parse context array and get sender address and execution id
     address sender;
     bytes32 exec_id;
-    // Parse context array and get sender address and execution id
-    (exec_id, sender, ) = parse(_context);
-
-    // Create storage return data buffer in memory
-    uint ptr = stBuff();
-    // Place payment destination and amount in buffer (0, 0)
-    stPush(ptr, 0);
-    stPush(ptr, 0);
-    // Push spender allowance location to buffer
-    stPush(ptr, keccak256(keccak256(_spender), keccak256(keccak256(sender), TOKEN_ALLOWANCES)));
-    // Push new spender allowance to buffer
-    stPush(ptr, bytes32(_amt));
-
-    // Get bytes32[] representation of storage buffer
-    store_data = getBuffer(ptr);
-  }
-
-  /*
-  Increases the spending approval amount set by the sender for the _spender
-
-  @param _spender: The address for which the allowance will be increased
-  @param _amt: The amount to increase the allowance by
-  @param _context: The execution context for this application - a 96-byte array containing (in order):
-    1. Application execution id
-    2. Original script sender (address, padded to 32 bytes)
-    3. Wei amount sent with transaction to storage
-  @return store_data: A formatted storage request - first 64 bytes designate a forwarding address (and amount) for any wei sent
-  */
-  function increaseApproval(address _spender, uint _amt, bytes _context) public view returns (bytes32[] store_data) {
-    // Ensure valid inputs
-    require(_spender != address(0) && _amt != 0);
-    if (_context.length != 96)
-      triggerException(ERR_UNKNOWN_CONTEXT);
-
-    address sender;
-    bytes32 exec_id;
-    // Parse context array and get sender address and execution id
     (exec_id, sender, ) = parse(_context);
 
     // Create 'read' calldata buffer in memory
     uint ptr = cdBuff(RD_SING);
-    // Push exec id and spender allowance location to buffer
+    // Place exec id and admin storage address location in memory
     cdPush(ptr, exec_id);
-    cdPush(ptr, keccak256(keccak256(_spender), keccak256(keccak256(sender), TOKEN_ALLOWANCES)));
+    cdPush(ptr, ADMIN);
 
-    // Read spender allowance from storage
-    uint spender_bal = uint(readSingle(ptr));
-    // Safely increase the spender's balance -
-    require(spender_bal + _amt > spender_bal);
-    spender_bal += _amt;
+    // Read from storage and store return in buffer -
+    // Check that sender is equal to the returned admin address
+    if (bytes32(sender) != readSingle(ptr))
+      triggerException(ERR_INSUFFICIENT_PERMISSIONS);
 
-    // Overwrite previous buffer, and create storage return buffer
+    // Sender is admin address - create storage buffer (overwrite previous read buffer), and set return values -
     stOverwrite(ptr);
-    // Place payment destination and amount in buffer (0, 0)
+    // Push two empty slots to buffer, to represent payment infomation (this function does not accept ETH)
     stPush(ptr, 0);
     stPush(ptr, 0);
-    // Place spender allowance location and updated allowance in buffer
-    stPush(ptr, keccak256(keccak256(_spender), keccak256(keccak256(sender), TOKEN_ALLOWANCES)));
-    stPush(ptr, bytes32(spender_bal));
+    // Push address transfer agent status storage location in storage buffer, followed by the passed-in status
+    stPush(ptr, keccak256(keccak256(_agent), TOKEN_TRANSFER_AGENTS));
+    stPush(ptr, (_is_transfer_agent ? bytes32(1) : bytes32(0))); // 1, if _is_transfer_agent - 2, otherwise
 
     // Get bytes32[] representation of storage buffer
     store_data = getBuffer(ptr);
-  }
-
-  /*
-  Decreases the spending approval amount set by the sender for the _spender
-
-  @param _spender: The address for which the allowance will be increased
-  @param _amt: The amount to decrease the allowance by
-  @param _context: The execution context for this application - a 96-byte array containing (in order):
-    1. Application execution id
-    2. Original script sender (address, padded to 32 bytes)
-    3. Wei amount sent with transaction to storage
-  @return store_data: A formatted storage request - first 64 bytes designate a forwarding address (and amount) for any wei sent
-  */
-  function decreaseApproval(address _spender, uint _amt, bytes _context) public view returns (bytes32[] store_data) {
-    // Ensure valid inputs
-    require(_spender != address(0) && _amt != 0);
-    if (_context.length != 96)
-      triggerException(ERR_UNKNOWN_CONTEXT);
-
-    address sender;
-    bytes32 exec_id;
-    // Parse context array and get sender address and execution id
-    (exec_id, sender, ) = parse(_context);
-
-    // Create 'read' calldata buffer in memory
-    uint ptr = cdBuff(RD_SING);
-    // Push exec id and spender allowance location to buffer
-    cdPush(ptr, exec_id);
-    cdPush(ptr, keccak256(keccak256(_spender), keccak256(keccak256(sender), TOKEN_ALLOWANCES)));
-
-    // Read spender allowance from storage
-    uint spender_bal = uint(readSingle(ptr));
-    // Safely decrease the spender's balance -
-    spender_bal = (_amt > spender_bal ? 0 : spender_bal - _amt);
-
-    // Overwrite previous buffer, and create storage return buffer
-    stOverwrite(ptr);
-    // Place payment destination and amount in buffer (0, 0)
-    stPush(ptr, 0);
-    stPush(ptr, 0);
-    // Place spender allowance location and updated allowance in buffer
-    stPush(ptr, keccak256(keccak256(_spender), keccak256(keccak256(sender), TOKEN_ALLOWANCES)));
-    stPush(ptr, bytes32(spender_bal));
-
-    // Get bytes32[] representation of storage buffer
-    store_data = getBuffer(ptr);
-  }
-
-  /*
-  Creates a buffer for return data storage. Buffer pointer stores the lngth of the buffer
-
-  @return ptr: The location in memory where the length of the buffer is stored - elements stored consecutively after this location
-  */
-  function stBuff() internal pure returns (uint ptr) {
-    assembly {
-      // Get buffer location - free memory
-      ptr := mload(0x40)
-      // Update free-memory pointer - it's important to note that this is not actually free memory, if the pointer is meant to expand
-      mstore(0x40, add(0x20, ptr))
-    }
   }
 
   /*
@@ -252,17 +175,19 @@ library TokenApprove {
 
   /*
   Executes a 'readMulti' function call, given a pointer to a calldata buffer
+  Test version reads from app storage address
 
   @param _ptr: A pointer to the location in memory where the calldata for the call is stored
   @return read_values: The values read from storage
   */
   function readMulti(uint _ptr) internal view returns (bytes32[] read_values) {
     bool success;
+    address _storage = app_storage;
     assembly {
       // Minimum length for 'readMulti' - 1 location is 0x84
       if lt(mload(_ptr), 0x84) { revert (0, 0) }
       // Read from storage
-      success := staticcall(gas, caller, add(0x20, _ptr), mload(_ptr), 0, 0)
+      success := staticcall(gas, _storage, add(0x20, _ptr), mload(_ptr), 0, 0)
       // If call succeed, get return information
       if gt(success, 0) {
         // Ensure data will not be copied beyond the pointer
@@ -280,17 +205,19 @@ library TokenApprove {
 
   /*
   Executes a 'read' function call, given a pointer to a calldata buffer
+  Test version reads from app storage address
 
   @param _ptr: A pointer to the location in memory where the calldata for the call is stored
   @return read_value: The value read from storage
   */
   function readSingle(uint _ptr) internal view returns (bytes32 read_value) {
     bool success;
+    address _storage = app_storage;
     assembly {
       // Length for 'read' buffer must be 0x44
       if iszero(eq(mload(_ptr), 0x44)) { revert (0, 0) }
       // Read from storage, and store return to pointer
-      success := staticcall(gas, caller, add(0x20, _ptr), mload(_ptr), _ptr, 0x20)
+      success := staticcall(gas, _storage, add(0x20, _ptr), mload(_ptr), _ptr, 0x20)
       // If call succeeded, store return at pointer
       if gt(success, 0) { read_value := mload(_ptr) }
     }

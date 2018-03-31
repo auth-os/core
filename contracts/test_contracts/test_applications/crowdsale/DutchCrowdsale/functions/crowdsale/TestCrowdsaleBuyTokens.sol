@@ -1,6 +1,20 @@
 pragma solidity ^0.4.21;
 
-library CrowdsaleBuyTokens {
+// CrowdsaleBuyTokens with additional testing features
+contract TestCrowdsaleBuyTokens {
+
+  // Storage address to read from - readMulti and readSingle functions read from this address
+  address public app_storage;
+
+  // Constructor - set storage address
+  function TestCrowdsaleConsole(address _storage) public {
+    app_storage = _storage;
+  }
+
+  // Change storage address
+  function newStorage(address _new_storage) public {
+    app_storage = _new_storage;
+  }
 
   /// CROWDSALE STORAGE ///
 
@@ -316,17 +330,19 @@ library CrowdsaleBuyTokens {
 
   /*
   Executes a 'readMulti' function call, given a pointer to a calldata buffer
+  Test version reads from app storage address
 
   @param _ptr: A pointer to the location in memory where the calldata for the call is stored
   @return read_values: The values read from storage
   */
   function readMulti(uint _ptr) internal view returns (bytes32[] read_values) {
     bool success;
+    address _storage = app_storage;
     assembly {
       // Minimum length for 'readMulti' - 1 location is 0x84
       if lt(mload(_ptr), 0x84) { revert (0, 0) }
       // Read from storage
-      success := staticcall(gas, caller, add(0x20, _ptr), mload(_ptr), 0, 0)
+      success := staticcall(gas, _storage, add(0x20, _ptr), mload(_ptr), 0, 0)
       // If call succeed, get return information
       if gt(success, 0) {
         // Ensure data will not be copied beyond the pointer

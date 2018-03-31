@@ -1,6 +1,20 @@
 pragma solidity ^0.4.21;
 
-library TokenApprove {
+// TokenApprove with additional testing features
+contract TestTokenApprove {
+
+  // Storage address to read from - readMulti and readSingle functions read from this address
+  address public app_storage;
+
+  // Constructor - set storage address
+  function TestTokenApprove(address _storage) public {
+    app_storage = _storage;
+  }
+
+  // Change storage address
+  function newStorage(address _new_storage) public {
+    app_storage = _new_storage;
+  }
 
   /// TOKEN STORAGE ///
 
@@ -252,17 +266,19 @@ library TokenApprove {
 
   /*
   Executes a 'readMulti' function call, given a pointer to a calldata buffer
+  Test version reads from app storage address
 
   @param _ptr: A pointer to the location in memory where the calldata for the call is stored
   @return read_values: The values read from storage
   */
   function readMulti(uint _ptr) internal view returns (bytes32[] read_values) {
     bool success;
+    address _storage = app_storage;
     assembly {
       // Minimum length for 'readMulti' - 1 location is 0x84
       if lt(mload(_ptr), 0x84) { revert (0, 0) }
       // Read from storage
-      success := staticcall(gas, caller, add(0x20, _ptr), mload(_ptr), 0, 0)
+      success := staticcall(gas, _storage, add(0x20, _ptr), mload(_ptr), 0, 0)
       // If call succeed, get return information
       if gt(success, 0) {
         // Ensure data will not be copied beyond the pointer
@@ -280,17 +296,19 @@ library TokenApprove {
 
   /*
   Executes a 'read' function call, given a pointer to a calldata buffer
+  Test version reads from app storage address
 
   @param _ptr: A pointer to the location in memory where the calldata for the call is stored
   @return read_value: The value read from storage
   */
   function readSingle(uint _ptr) internal view returns (bytes32 read_value) {
     bool success;
+    address _storage = app_storage;
     assembly {
       // Length for 'read' buffer must be 0x44
       if iszero(eq(mload(_ptr), 0x44)) { revert (0, 0) }
       // Read from storage, and store return to pointer
-      success := staticcall(gas, caller, add(0x20, _ptr), mload(_ptr), _ptr, 0x20)
+      success := staticcall(gas, _storage, add(0x20, _ptr), mload(_ptr), _ptr, 0x20)
       // If call succeeded, store return at pointer
       if gt(success, 0) { read_value := mload(_ptr) }
     }

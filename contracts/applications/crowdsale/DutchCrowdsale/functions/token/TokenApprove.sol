@@ -310,7 +310,6 @@ library TokenApprove {
     }
   }
 
-
   // Parses context array and returns execution id, sender address, and sent wei amount
   function parse(bytes _context) internal pure returns (bytes32 exec_id, address from, uint wei_sent) {
     assembly {
