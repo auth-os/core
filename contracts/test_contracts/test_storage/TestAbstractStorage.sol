@@ -351,13 +351,16 @@ contract TestAbstractStorage {
     // If ether was sent, send it back with returnToSender
     if (msg.value > 0)
       address(msg.sender).transfer(msg.value);
-    bytes32 message = bytes32("DefaultException");
+    bytes32 message;
     assembly {
       // If returned data exists, get first 32 bytes set message
       if eq(returndatasize, 0x20) {
-        returndatacopy(message, 0, 0x20)
+        returndatacopy(0, 0, 0x20)
+        message := mload(0)
       }
     }
+    if (message == bytes32(0))
+      message = bytes32("DefaultException");
     emit ApplicationException(_application, _execution_id, message);
   }
 
