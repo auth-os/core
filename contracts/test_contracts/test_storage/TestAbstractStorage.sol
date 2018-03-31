@@ -67,11 +67,6 @@ contract TestAbstractStorage {
   ** application reads from storage and generates return data, formatted as a
   ** storage request. Storage requests are handled by storeReturned.
   **
-  ** 'getter' functions which do not wish to modify state should not be set as
-  ** permissioned storage addresses (they will store data), and instead called
-  ** through 'execView'
-  **
-  ** 'payable' functions should be executed through 'execPayable'
   */
 
   /*
@@ -413,24 +408,11 @@ contract TestAbstractStorage {
         // Get return value - number of storage slots written to
         amount_written := div(sub(returndatasize, 0x40), 0x40)
       }
-
-      // If returned data is exactly 64 bytes, assume single location: [location][data]
-      // Hash location with exec id seed, and store data
-      if eq(returndatasize, 0x40) {
-
-        // Copy returned data to pointer
-        returndatacopy(returndata_ptr, 0, returndatasize)
-        // Place storage location (first value) at hash_ptr
-        mstore(hash_ptr, mload(returndata_ptr))
-        // Hash storage location and exec id seed, and store data
-        sstore(keccak256(hash_ptr, 0x40), mload(add(0x20, returndata_ptr)))
-
-        // Get return value - number of storage slots written to
-        amount_written := 1
-      }
     }
     // Sanity check - ensure amount written is nonzero
-    assert(amount_written > 0);
+    assert(amount_written > 1);
+    // Remove payment fields from amount written
+    amount_written -= 1;
   }
 
   /*
@@ -474,38 +456,11 @@ contract TestAbstractStorage {
         amount_paid := mload(add(0x20, returndata_ptr))
       }
 
-      // If returned data is equal to 128 bytes, assume one payment and one storage request
-      // [destination][amount][location][data]
-      // i.e: returned(address, uint, bytes32, bytes32)
-      // Hash location with exec id seed, and store data
-      if eq(returndatasize, 0x80) {
-        // Sanity checks
-        if gt(amount_paid, 0) { revert (0, 0) }
-        if gt(paid_to, 0) { revert (0, 0) }
-        if gt(amount_written, 0) { revert (0, 0) }
-
-        // Copy returned data to pointer
-        returndatacopy(returndata_ptr, 0, returndatasize)
-
-        // Get payment destination address
-        paid_to := mload(returndata_ptr)
-        // Get payment amount
-        amount_paid := mload(add(0x20, returndata_ptr))
-
-        // Place storage location (third value) at hash_ptr
-        mstore(hash_ptr, mload(add(0x40, returndata_ptr)))
-        // Hash storage location and exec id seed, and store data
-        sstore(keccak256(hash_ptr, 0x40), mload(add(0x60, returndata_ptr)))
-
-        // Get return value - number of storage slots written to
-        amount_written := 1
-      }
-
-      // If returned data is larger than 128 bytes, assume payment information, followed by a bytes32 array (ABI-encoded):
+      // If returned data is larger than 64 bytes, assume payment information, followed by a bytes32 array (ABI-encoded):
       // [destination][amount][offset][array length][location 0][data 0][location 1][data 1]
-      // i.e: returned(address, uint, uint, bytes32[])
+      // i.e: returned(address, uint, bytes32[])
       // Hash locations with exec id seed, and store data:
-      if gt(returndatasize, 0x80) {
+      if gt(returndatasize, 0x40) {
         // Sanity checks
         if gt(amount_paid, 0) { revert (0, 0) }
         if gt(paid_to, 0) { revert (0, 0) }
@@ -538,7 +493,9 @@ contract TestAbstractStorage {
         amount_written := div(sub(returndatasize, 0x80), 0x40)
 
         // Sanity check - amount written must be nonzero
-        if iszero(amount_written) { revert (0, 0) }
+        if iszero(gt(amount_written, 1)) { revert (0, 0) }
+        // Remove payment information from amount written
+        amount_written := sub(amount_written, 1)
       }
     }
     // Sanity check - ensure valid, safe state change. If no storage occured, there must be valid payment. If storage occured, no payment is required
