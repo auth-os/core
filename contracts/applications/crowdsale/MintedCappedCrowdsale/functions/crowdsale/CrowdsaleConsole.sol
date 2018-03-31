@@ -60,7 +60,7 @@ library CrowdsaleConsole {
   /// EXCEPTION MESSAGES ///
 
   bytes32 public constant ERR_UNKNOWN_CONTEXT = bytes32("UnknownContext"); // Malformed '_context' array
-  bytes32 public constant ERR_IMPROPOER_INITIALIZATION = bytes32("ImproperInitialization"); // Initialization variables invalid
+  bytes32 public constant ERR_IMPROPER_INITIALIZATION = bytes32("ImproperInitialization"); // Initialization variables invalid
   bytes32 public constant ERR_INSUFFICIENT_PERMISSIONS = bytes32("InsufficientPermissions"); // Action not allowed
   bytes32 public constant ERR_READ_FAILED = bytes32("StorageReadFailed"); // Read from storage address failed
 
@@ -113,7 +113,7 @@ library CrowdsaleConsole {
       _name == bytes32(0)
       || _symbol == bytes32(0)
       || _decimals == 0
-    ) triggerException(ERR_IMPROPOER_INITIALIZATION);
+    ) triggerException(ERR_IMPROPER_INITIALIZATION);
 
     // Create memory buffer for return data
     uint ptr = stBuff();
@@ -508,9 +508,7 @@ library CrowdsaleConsole {
       read_values[0] != bytes32(sender)
       || read_values[1] == bytes32(0) // Crowdsale init status is false
       || read_values[2] == bytes32(1) // Crowdsale finalization status is true
-    ) {
-      triggerException(ERR_INSUFFICIENT_PERMISSIONS);
-    }
+    ) triggerException(ERR_INSUFFICIENT_PERMISSIONS);
 
     // Create storage buffer, overwriting the previous read buffer
     stOverwrite(ptr);

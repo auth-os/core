@@ -16,7 +16,6 @@ library TokenApprove {
   /// EXCEPTION MESSAGES ///
 
   bytes32 public constant ERR_UNKNOWN_CONTEXT = bytes32("UnknownContext"); // Malformed '_context' array
-  bytes32 public constant ERR_INSUFFICIENT_PERMISSIONS = bytes32("InsufficientPermissions"); // Action not allowed
   bytes32 public constant ERR_READ_FAILED = bytes32("StorageReadFailed"); // Read from storage address failed
 
   /*
@@ -37,20 +36,23 @@ library TokenApprove {
     if (_context.length != 96)
       triggerException(ERR_UNKNOWN_CONTEXT);
 
-    // Parse context array and get sender address and execution id
     address sender;
     bytes32 exec_id;
+    // Parse context array and get sender address and execution id
     (exec_id, sender, ) = parse(_context);
 
-    store_data = new bytes32[](2);
-    store_data[0] = keccak256(keccak256(_spender), keccak256(keccak256(sender), TOKEN_ALLOWANCES));
-    store_data[1] = bytes32(_amt);
-  }
+    // Create storage return data buffer in memory
+    uint ptr = stBuff();
+    // Place payment destination and amount in buffer (0, 0)
+    stPush(ptr, 0);
+    stPush(ptr, 0);
+    // Push spender allowance location to buffer
+    stPush(ptr, keccak256(keccak256(_spender), keccak256(keccak256(sender), TOKEN_ALLOWANCES)));
+    // Push new spender allowance to buffer
+    stPush(ptr, bytes32(_amt));
 
-  struct Approval {
-    bytes4 rd_sing;
-    bytes32 spender_allowance_loc;
-    uint spender_allowance;
+    // Get bytes32[] representation of storage buffer
+    store_data = getBuffer(ptr);
   }
 
   /*
@@ -70,38 +72,34 @@ library TokenApprove {
     if (_context.length != 96)
       triggerException(ERR_UNKNOWN_CONTEXT);
 
-    // Parse context array and get sender address and execution id
     address sender;
     bytes32 exec_id;
+    // Parse context array and get sender address and execution id
     (exec_id, sender, ) = parse(_context);
 
-    // Create struct in memory to hold values. Values are stored in-order as they would be returned in the return storage request
-    Approval memory tok_appr = Approval({
-      rd_sing: RD_SING,
-      spender_allowance_loc: keccak256(keccak256(_spender), keccak256(keccak256(sender), TOKEN_ALLOWANCES)),
-      spender_allowance: 0
-    });
+    // Create 'read' calldata buffer in memory
+    uint ptr = cdBuff(RD_SING);
+    // Push exec id and spender allowance location to buffer
+    cdPush(ptr, exec_id);
+    cdPush(ptr, keccak256(keccak256(_spender), keccak256(keccak256(sender), TOKEN_ALLOWANCES)));
 
-    assembly {
-      // Read spender's current allowance from storage -
+    // Read spender allowance from storage
+    uint spender_bal = uint(readSingle(ptr));
+    // Safely increase the spender's balance -
+    require(spender_bal + _amt > spender_bal);
+    spender_bal += _amt;
 
-      let ptr := mload(0x40)
-      mstore(ptr, mload(tok_appr))
-      mstore(add(0x04, ptr), exec_id)
-      mstore(add(0x24, ptr), mload(add(0x20, tok_appr)))
-      // Read from storage, and store return value directly to tok_appr
-      let ret := staticcall(gas, caller, ptr, 0x44, add(0x40, tok_appr), 0x20)
-      if iszero(ret) { revert (0, 0) }
+    // Overwrite previous buffer, and create storage return buffer
+    stOverwrite(ptr);
+    // Place payment destination and amount in buffer (0, 0)
+    stPush(ptr, 0);
+    stPush(ptr, 0);
+    // Place spender allowance location and updated allowance in buffer
+    stPush(ptr, keccak256(keccak256(_spender), keccak256(keccak256(sender), TOKEN_ALLOWANCES)));
+    stPush(ptr, bytes32(spender_bal));
 
-      // Check safe addition of allowance increase
-      if lt(add(_amt, mload(add(0x40, tok_appr))), mload(add(0x40, tok_appr))) { revert (0, 0) }
-      // No overflow - add amount to return request
-      mstore(add(0x40, tok_appr), add(_amt, mload(add(0x40, tok_appr))))
-
-      // Set return data location, and return length -
-      store_data := tok_appr
-      mstore(store_data, 2)
-    }
+    // Get bytes32[] representation of storage buffer
+    store_data = getBuffer(ptr);
   }
 
   /*
@@ -121,38 +119,183 @@ library TokenApprove {
     if (_context.length != 96)
       triggerException(ERR_UNKNOWN_CONTEXT);
 
-    // Parse context array and get sender address and execution id
     address sender;
     bytes32 exec_id;
+    // Parse context array and get sender address and execution id
     (exec_id, sender, ) = parse(_context);
 
-    // Create struct in memory to hold values. Values are stored in-order as they would be returned in the return storage request
-    Approval memory tok_appr = Approval({
-      rd_sing: RD_SING,
-      spender_allowance_loc: keccak256(keccak256(_spender), keccak256(keccak256(sender), TOKEN_ALLOWANCES)),
-      spender_allowance: 0
-    });
+    // Create 'read' calldata buffer in memory
+    uint ptr = cdBuff(RD_SING);
+    // Push exec id and spender allowance location to buffer
+    cdPush(ptr, exec_id);
+    cdPush(ptr, keccak256(keccak256(_spender), keccak256(keccak256(sender), TOKEN_ALLOWANCES)));
 
+    // Read spender allowance from storage
+    uint spender_bal = uint(readSingle(ptr));
+    // Safely decrease the spender's balance -
+    spender_bal = (_amt > spender_bal ? 0 : spender_bal - _amt);
+
+    // Overwrite previous buffer, and create storage return buffer
+    stOverwrite(ptr);
+    // Place payment destination and amount in buffer (0, 0)
+    stPush(ptr, 0);
+    stPush(ptr, 0);
+    // Place spender allowance location and updated allowance in buffer
+    stPush(ptr, keccak256(keccak256(_spender), keccak256(keccak256(sender), TOKEN_ALLOWANCES)));
+    stPush(ptr, bytes32(spender_bal));
+
+    // Get bytes32[] representation of storage buffer
+    store_data = getBuffer(ptr);
+  }
+
+  /*
+  Creates a buffer for return data storage. Buffer pointer stores the lngth of the buffer
+
+  @return ptr: The location in memory where the length of the buffer is stored - elements stored consecutively after this location
+  */
+  function stBuff() internal pure returns (uint ptr) {
     assembly {
-      // Read spender's current allowance from storage -
-
-      let ptr := mload(0x40)
-      mstore(ptr, mload(tok_appr))
-      mstore(add(0x04, ptr), exec_id)
-      mstore(add(0x24, ptr), mload(add(0x20, tok_appr)))
-      // Read from storage, and store return value directly to tok_appr
-      let ret := staticcall(gas, caller, ptr, 0x44, add(0x40, tok_appr), 0x20)
-      if iszero(ret) { revert (0, 0) }
-
-      // Check for underflow
-      if gt(_amt, mload(add(0x40, tok_appr))) { revert (0, 0) }
-      // No underflow - add amount to return request
-      mstore(add(0x40, tok_appr), sub(mload(add(0x40, tok_appr)), _amt))
-
-      // Set return data location, and return length -
-      store_data := tok_appr
-      mstore(store_data, 2)
+      // Get buffer location - free memory
+      ptr := mload(0x40)
+      // Update free-memory pointer - it's important to note that this is not actually free memory, if the pointer is meant to expand
+      mstore(0x40, add(0x20, ptr))
     }
+  }
+
+  /*
+  Creates a new return data storage buffer at the position given by the pointer. Does not update free memory
+
+  @param _ptr: A pointer to the location where the buffer will be created
+  */
+  function stOverwrite(uint _ptr) internal pure {
+    assembly {
+      // Simple set the initial length - 0
+      mstore(_ptr, 0)
+    }
+  }
+
+  /*
+  Pushes a value to the end of a storage return buffer, and updates the length
+
+  @param _ptr: A pointer to the start of the buffer
+  @param _val: The value to push to the buffer
+  */
+  function stPush(uint _ptr, bytes32 _val) internal pure {
+    assembly {
+      // Get end of buffer - 32 bytes plus the length stored at the pointer
+      let len := add(0x20, mload(_ptr))
+      // Push value to end of buffer (overwrites memory - be careful!)
+      mstore(add(_ptr, len), _val)
+      // Increment buffer length
+      mstore(_ptr, len)
+      // If the free-memory pointer does not point beyond the buffer's current size, update it
+      if lt(mload(0x40), add(add(0x20, _ptr), len)) {
+        mstore(0x40, add(add(0x40, _ptr), len)) // Ensure free memory pointer points to the beginning of a memory slot
+      }
+    }
+  }
+
+  /*
+  Returns the bytes32[] stored at the buffer
+
+  @param _ptr: A pointer to the location in memory where the calldata for the call is stored
+  @return store_data: The return values, which will be stored
+  */
+  function getBuffer(uint _ptr) internal pure returns (bytes32[] store_data){
+    assembly {
+      // If the size stored at the pointer is not evenly divislble into 32-byte segments, this was improperly constructed
+      if gt(mod(mload(_ptr), 0x20), 0) { revert (0, 0) }
+      mstore(_ptr, div(mload(_ptr), 0x20))
+      store_data := _ptr
+    }
+  }
+
+  /*
+  Creates a calldata buffer in memory with the given function selector
+
+  @param _selector: The function selector to push to the first location in the buffer
+  @return ptr: The location in memory where the length of the buffer is stored - elements stored consecutively after this location
+  */
+  function cdBuff(bytes4 _selector) internal pure returns (uint ptr) {
+    assembly {
+      // Get buffer location - free memory
+      ptr := mload(0x40)
+      // Place initial length (4 bytes) in buffer
+      mstore(ptr, 0x04)
+      // Place function selector in buffer, after length
+      mstore(add(0x20, ptr), _selector)
+      // Update free-memory pointer - it's important to note that this is not actually free memory, if the pointer is meant to expand
+      mstore(0x40, add(0x40, ptr))
+    }
+  }
+
+  /*
+  Pushes a value to the end of a calldata buffer, and updates the length
+
+  @param _ptr: A pointer to the start of the buffer
+  @param _val: The value to push to the buffer
+  */
+  function cdPush(uint _ptr, bytes32 _val) internal pure {
+    assembly {
+      // Get end of buffer - 32 bytes plus the length stored at the pointer
+      let len := add(0x20, mload(_ptr))
+      // Push value to end of buffer (overwrites memory - be careful!)
+      mstore(add(_ptr, len), _val)
+      // Increment buffer length
+      mstore(_ptr, len)
+      // If the free-memory pointer does not point beyond the buffer's current size, update it
+      if lt(mload(0x40), add(add(0x20, _ptr), len)) {
+        mstore(0x40, add(add(0x2c, _ptr), len)) // Ensure free memory pointer points to the beginning of a memory slot
+      }
+    }
+  }
+
+  /*
+  Executes a 'readMulti' function call, given a pointer to a calldata buffer
+
+  @param _ptr: A pointer to the location in memory where the calldata for the call is stored
+  @return read_values: The values read from storage
+  */
+  function readMulti(uint _ptr) internal view returns (bytes32[] read_values) {
+    bool success;
+    assembly {
+      // Minimum length for 'readMulti' - 1 location is 0x84
+      if lt(mload(_ptr), 0x84) { revert (0, 0) }
+      // Read from storage
+      success := staticcall(gas, caller, add(0x20, _ptr), mload(_ptr), 0, 0)
+      // If call succeed, get return information
+      if gt(success, 0) {
+        // Ensure data will not be copied beyond the pointer
+        if gt(sub(returndatasize, 0x20), mload(_ptr)) { revert (0, 0) }
+        // Copy returned data to pointer, overwriting it in the process
+        // Copies returndatasize, but ignores the initial read offset so that the bytes32[] returned in the read is sitting directly at the pointer
+        returndatacopy(_ptr, 0x20, sub(returndatasize, 0x20))
+        // Set return bytes32[] to pointer, which should now have the stored length of the returned array
+        read_values := _ptr
+      }
+    }
+    if (!success)
+      triggerException(ERR_READ_FAILED);
+  }
+
+  /*
+  Executes a 'read' function call, given a pointer to a calldata buffer
+
+  @param _ptr: A pointer to the location in memory where the calldata for the call is stored
+  @return read_value: The value read from storage
+  */
+  function readSingle(uint _ptr) internal view returns (bytes32 read_value) {
+    bool success;
+    assembly {
+      // Length for 'read' buffer must be 0x44
+      if iszero(eq(mload(_ptr), 0x44)) { revert (0, 0) }
+      // Read from storage, and store return to pointer
+      success := staticcall(gas, caller, add(0x20, _ptr), mload(_ptr), _ptr, 0x20)
+      // If call succeeded, store return at pointer
+      if gt(success, 0) { read_value := mload(_ptr) }
+    }
+    if (!success)
+      triggerException(ERR_READ_FAILED);
   }
 
   /*
@@ -166,6 +309,7 @@ library TokenApprove {
       revert(0, 0x20)
     }
   }
+
 
   // Parses context array and returns execution id, sender address, and sent wei amount
   function parse(bytes _context) internal pure returns (bytes32 exec_id, address from, uint wei_sent) {

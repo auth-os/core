@@ -72,34 +72,6 @@ library TokenConsole {
   }
 
   /*
-  Returns the last value stored in the buffer
-
-  @param _ptr: A pointer to the buffer
-  @return last_val: The final value stored in the buffer
-  */
-  function top(uint _ptr) internal pure returns (bytes32 last_val) {
-    assembly {
-      let len := mload(_ptr)
-      // Add 0x20 to length to account for the length itself
-      last_val := mload(add(0x20, add(len, _ptr)))
-    }
-  }
-
-  /*
-  Creates a buffer for return data storage. Buffer pointer stores the lngth of the buffer
-
-  @return ptr: The location in memory where the length of the buffer is stored - elements stored consecutively after this location
-  */
-  function stBuff() internal pure returns (uint ptr) {
-    assembly {
-      // Get buffer location - free memory
-      ptr := mload(0x40)
-      // Update free-memory pointer - it's important to note that this is not actually free memory, if the pointer is meant to expand
-      mstore(0x40, add(0x20, ptr))
-    }
-  }
-
-  /*
   Creates a new return data storage buffer at the position given by the pointer. Does not update free memory
 
   @param _ptr: A pointer to the location where the buffer will be created
@@ -142,7 +114,7 @@ library TokenConsole {
     assembly {
       // If the size stored at the pointer is not evenly divislble into 32-byte segments, this was improperly constructed
       if gt(mod(mload(_ptr), 0x20), 0) { revert (0, 0) }
-      mstore(_ptr, div(0x20, mload(_ptr)))
+      mstore(_ptr, div(mload(_ptr), 0x20))
       store_data := _ptr
     }
   }
@@ -163,21 +135,6 @@ library TokenConsole {
       mstore(add(0x20, ptr), _selector)
       // Update free-memory pointer - it's important to note that this is not actually free memory, if the pointer is meant to expand
       mstore(0x40, add(0x40, ptr))
-    }
-  }
-
-  /*
-  Creates a new calldata buffer at the pointer with the given selector. Does not update free memory
-
-  @param _ptr: A pointer to the buffer to overwrite - will be the pointer to the new buffer as well
-  @param _selector: The function selector to place in the buffer
-  */
-  function cdOverwrite(uint _ptr, bytes4 _selector) internal pure {
-    assembly {
-      // Store initial length of buffer - 4 bytes
-      mstore(_ptr, 0x04)
-      // Store function selector after length
-      mstore(add(0x20, _ptr), _selector)
     }
   }
 
@@ -261,7 +218,6 @@ library TokenConsole {
       revert(0, 0x20)
     }
   }
-
 
   // Parses context array and returns execution id, sender address, and sent wei amount
   function parse(bytes _context) internal pure returns (bytes32 exec_id, address from, uint wei_sent) {

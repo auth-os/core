@@ -97,7 +97,7 @@ library InitCrowdsale {
 
   /// EXCEPTION MESSAGES ///
 
-  bytes32 public constant ERR_IMPROPOER_INITIALIZATION = bytes32("ImproperInitialization"); // Initialization variables invalid
+  bytes32 public constant ERR_IMPROPER_INITIALIZATION = bytes32("ImproperInitialization"); // Initialization variables invalid
   bytes32 public constant ERR_READ_FAILED = bytes32("StorageReadFailed"); // Read from storage address failed
 
   /*
@@ -124,7 +124,7 @@ library InitCrowdsale {
       || _start_time + _initial_tier_duration <= _start_time
       || _initial_tier_token_sell_cap == 0
       || _admin == address(0)
-    ) triggerException(ERR_IMPROPOER_INITIALIZATION);
+    ) triggerException(ERR_IMPROPER_INITIALIZATION);
 
     // Create storage data return buffer in memory
     uint ptr = stBuff();
