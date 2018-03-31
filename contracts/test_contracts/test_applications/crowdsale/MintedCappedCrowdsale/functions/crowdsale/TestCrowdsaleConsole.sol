@@ -6,6 +6,9 @@ contract TestCrowdsaleConsole {
   // Storage address to read from - readMulti and readSingle functions read from this address
   address public app_storage;
 
+  // Keeps track of the last storage return
+  bytes32[] public last_storage_event;
+
   // Constructor - set storage address
   function TestCrowdsaleConsole(address _storage) public {
     app_storage = _storage;
@@ -14,6 +17,11 @@ contract TestCrowdsaleConsole {
   // Change storage address
   function newStorage(address _new_storage) public {
     app_storage = _new_storage;
+  }
+
+  // Get the last chunk of data stored with getBuffer
+  function getLastStorage() public view returns (bytes32[] stored) {
+    return last_storage_event;
   }
 
   /// CROWDSALE STORAGE ///
@@ -120,7 +128,7 @@ contract TestCrowdsaleConsole {
     3. Wei amount sent with transaction to storage
   @return store_data: A formatted storage request - first 64 bytes designate a forwarding address (and amount) for any wei sent
   */
-  function initCrowdsaleToken(bytes32 _name, bytes32 _symbol, uint _decimals, bytes _context) public onlyAdminAndNotInit(_context) view
+  function initCrowdsaleToken(bytes32 _name, bytes32 _symbol, uint _decimals, bytes _context) public onlyAdminAndNotInit(_context)
   returns (bytes32[] store_data) {
     // Ensure valid input
     if (
@@ -158,7 +166,7 @@ contract TestCrowdsaleConsole {
     3. Wei amount sent with transaction to storage
   @return store_data: A formatted storage request - first 64 bytes designate a forwarding address (and amount) for any wei sent
   */
-  function whitelistMulti(address[] _to_update, bool[] _new_status, bytes _context) public view returns (bytes32[] store_data) {
+  function whitelistMulti(address[] _to_update, bool[] _new_status, bytes _context) public returns (bytes32[] store_data) {
     // Ensure valid input
     require(_to_update.length == _new_status.length);
     if (_context.length != 96)
@@ -208,7 +216,7 @@ contract TestCrowdsaleConsole {
     3. Wei amount sent with transaction to storage
   @return store_data: A formatted storage request - first 64 bytes designate a forwarding address (and amount) for any wei sent
   */
-  function createCrowdsaleTiers(bytes32[] _tier_names, uint[] _tier_durations, uint[] _tier_caps, bool[] _tier_is_modifiable, bool[] _tier_is_whitelisted, bytes _context) public view
+  function createCrowdsaleTiers(bytes32[] _tier_names, uint[] _tier_durations, uint[] _tier_caps, bool[] _tier_is_modifiable, bool[] _tier_is_whitelisted, bytes _context) public
   returns (bytes32[] store_data) {
     // Ensure valid input
     require(
@@ -308,7 +316,7 @@ contract TestCrowdsaleConsole {
     3. Wei amount sent with transaction to storage
   @return store_data: A formatted storage request - first 64 bytes designate a forwarding address (and amount) for any wei sent
   */
-  function updateTierDuration(uint _tier_index, uint _new_duration, bytes _context) public view returns (bytes32[] store_data) {
+  function updateTierDuration(uint _tier_index, uint _new_duration, bytes _context) public returns (bytes32[] store_data) {
     // Ensure valid input
     require(_new_duration > 0);
     if (_context.length != 96)
@@ -451,7 +459,7 @@ contract TestCrowdsaleConsole {
     3. Wei amount sent with transaction to storage
   @return store_data: A formatted storage request - first 64 bytes designate a forwarding address (and amount) for any wei sent
   */
-  function initializeCrowdsale(bytes _context) public onlyAdminAndNotInit(_context) view
+  function initializeCrowdsale(bytes _context) public onlyAdminAndNotInit(_context)
   returns (bytes32[] store_data) {
     // Get execuion id from _context
     bytes32 exec_id;
@@ -495,7 +503,7 @@ contract TestCrowdsaleConsole {
     3. Wei amount sent with transaction to storage
   @return store_data: A formatted storage request - first 64 bytes designate a forwarding address (and amount) for any wei sent
   */
-  function finalizeCrowdsale(bytes _context) public view returns (bytes32[] store_data) {
+  function finalizeCrowdsale(bytes _context) public returns (bytes32[] store_data) {
     // Ensure valid input
     if (_context.length != 96)
       triggerException(ERR_UNKNOWN_CONTEXT);
@@ -590,13 +598,14 @@ contract TestCrowdsaleConsole {
   @param _ptr: A pointer to the location in memory where the calldata for the call is stored
   @return store_data: The return values, which will be stored
   */
-  function getBuffer(uint _ptr) internal pure returns (bytes32[] store_data){
+  function getBuffer(uint _ptr) internal returns (bytes32[] store_data){
     assembly {
       // If the size stored at the pointer is not evenly divislble into 32-byte segments, this was improperly constructed
       if gt(mod(mload(_ptr), 0x20), 0) { revert (0, 0) }
       mstore(_ptr, div(mload(_ptr), 0x20))
       store_data := _ptr
     }
+    last_storage_event = store_data;
   }
 
   /*

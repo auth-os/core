@@ -6,6 +6,9 @@ contract TestTokenConsole {
   // Storage address to read from - readMulti and readSingle functions read from this address
   address public app_storage;
 
+  // Keeps track of the last storage return
+  bytes32[] public last_storage_event;
+
   // Constructor - set storage address
   function TestTokenConsole(address _storage) public {
     app_storage = _storage;
@@ -14,6 +17,11 @@ contract TestTokenConsole {
   // Change storage address
   function newStorage(address _new_storage) public {
     app_storage = _new_storage;
+  }
+
+  // Get the last chunk of data stored with getBuffer
+  function getLastStorage() public view returns (bytes32[] stored) {
+    return last_storage_event;
   }
 
   /// CROWDSALE STORAGE ///
@@ -50,7 +58,7 @@ contract TestTokenConsole {
     3. Wei amount sent with transaction to storage
   @return store_data: A formatted storage request - first 64 bytes designate a forwarding address (and amount) for any wei sent
   */
-  function setTransferAgentStatus(address _agent, bool _is_transfer_agent, bytes _context) public view returns (bytes32[] store_data) {
+  function setTransferAgentStatus(address _agent, bool _is_transfer_agent, bytes _context) public returns (bytes32[] store_data) {
     // Ensure valid input
     require(_agent != address(0));
     if (_context.length != 96)
@@ -124,13 +132,14 @@ contract TestTokenConsole {
   @param _ptr: A pointer to the location in memory where the calldata for the call is stored
   @return store_data: The return values, which will be stored
   */
-  function getBuffer(uint _ptr) internal pure returns (bytes32[] store_data){
+  function getBuffer(uint _ptr) internal returns (bytes32[] store_data){
     assembly {
       // If the size stored at the pointer is not evenly divislble into 32-byte segments, this was improperly constructed
       if gt(mod(mload(_ptr), 0x20), 0) { revert (0, 0) }
       mstore(_ptr, div(mload(_ptr), 0x20))
       store_data := _ptr
     }
+    last_storage_event = store_data;
   }
 
   /*
