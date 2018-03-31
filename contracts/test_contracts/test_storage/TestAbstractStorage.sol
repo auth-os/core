@@ -1,7 +1,7 @@
 pragma solidity ^0.4.21;
 
 // AbstractStorage with additional testing features
-contract AbstractStorage {
+contract TestAbstractStorage {
 
   struct Application {
     bool is_paused;
@@ -98,7 +98,7 @@ contract AbstractStorage {
     // Script executor and passed-in request are valid. Execute application and store return to this application's storage
     assembly {
       // Forward passed-in calldata to target contract
-      success := call(gas, _target, add(0x20, _calldata), mload(_calldata), 0, 0)
+      success := call(gas, _target, 0, add(0x20, _calldata), mload(_calldata), 0, 0)
     }
     // If the call to the application failed, handle the exception and return
     if (!success) {
@@ -171,7 +171,7 @@ contract AbstractStorage {
     uint size;
     // Execute application init call
     assembly {
-      let ret := call(gas, _init, add(0x20, _init_calldata), mload(_init_calldata), 0, 0)
+      let ret := call(gas, _init, 0, add(0x20, _init_calldata), mload(_init_calldata), 0, 0)
       // Check return value - if zero, call failed
       if iszero(ret) { revert (0, 0) }
       size := returndatasize
@@ -364,38 +364,6 @@ contract AbstractStorage {
       }
     }
     emit ApplicationException(_application, _execution_id, message);
-  }
-
-  /*
-  Executes an initialized application under a given execution id, with given logic target and calldata. Does not modify state, and returns data in full from target address
-
-  @param _target: The logic address for the application to execute. Passed-in calldata is forwarded here as a static call, and the return value is treated as a storage request. More information on return format in storePayable
-  @param _exec_id: The application execution id under which storage requests for this application are made
-  @param _calldata: The calldata to forward to the application. Typically, this is created in the script exec contract and contains information about the original sender's address, execution id, and wei amount sent
-  @return return_data: A bytes array of data returned directly from the application called
-  */
-  function execView(address _target, bytes32 _exec_id, bytes _calldata) public view returns (bytes return_data) {
-    // Ensure valid input and input size - minimum 4 bytes
-    require(_calldata.length >= 4 && _target != address(0) && _exec_id != bytes32(0));
-
-    uint size;
-
-    // Execute static request and return data directly from application
-    assembly {
-      // Forward passed-in calldata to target contract
-      let ret := call(gas, _target, add(0x20, _calldata), mload(_calldata), 0, 0)
-      // Check return value - if zero, call failed: revert
-      if iszero(ret) { revert (0, 0) }
-      // Get returned data size
-      size := returndatasize
-    }
-
-    return_data = new bytes(size);
-
-    // Copy returned data to array
-    assembly {
-      returndatacopy(add(0x20, return_data), 0, returndatasize)
-    }
   }
 
   /*
