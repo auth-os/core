@@ -162,7 +162,7 @@ contract TestImplementationConsole {
     for (uint i = list_lengths; i < _function_sigs.length + list_lengths; i++) {
       // Place the end of the version function list in the storage buffer
       stPush(ptr, bytes32(32 + (i * 32) + uint(keccak256(VER_FUNCTION_LIST, temp))));
-      // Place function ssgnature in storage buffer
+      // Place function signature in storage buffer
       stPush(ptr, bytes32(_function_sigs[i - list_lengths]));
       // Place end of the version address list in storage buffer
       stPush(ptr, bytes32(32 + (i * 32) + uint(keccak256(VER_FUNCTION_ADDRESSES, temp))));

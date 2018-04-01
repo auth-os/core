@@ -25,6 +25,14 @@ contract TestAbstractStorage {
   // Maps execution ids to an array of allowed addresses
   mapping (bytes32 => address[]) public allowed_addr_list;
 
+  // Tracks the last storage request sent to the contract
+  bytes32[] public last_storage_event;
+
+  // Get the last chunk of data stored with getBuffer
+  function getLastStorage() public view returns (bytes32[] stored) {
+    return last_storage_event;
+  }
+
   /// EVENTS ///
 
   // GENERAL //
@@ -32,6 +40,7 @@ contract TestAbstractStorage {
   event ApplicationInitialized(bytes32 indexed execution_id, address indexed init_address, address script_exec, address updater);
   event ApplicationFinalization(bytes32 indexed execution_id, address indexed init_address);
   event ApplicationExecution(bytes32 indexed execution_id, address indexed script_exec);
+  event DeliveredPayment(bytes32 indexed execution_id, address indexed destination, uint amount);
 
   // EXCEPTION HANDLING //
 
@@ -109,10 +118,14 @@ contract TestAbstractStorage {
       (amount_paid, paid_to, amount_written) = storePayable(_exec_id);
 
       // Sanity check payment information
-      assert(paid_to != address(0) && amount_paid != 0 && amount_paid <= msg.value && paid_to != address(this));
+      assert(amount_paid <= msg.value);
 
-      // Forward payment to destination address - do not forward gas
-      address(paid_to).transfer(amount_paid);
+      // Forward payment to destination address, if it exists -
+      if (amount_paid > 0) {
+        address(paid_to).transfer(amount_paid);
+        // Emit payment event
+        emit DeliveredPayment(_exec_id, paid_to, amount_paid);
+      }
 
       // Return unspent wei to sender
       address(msg.sender).transfer(msg.value - amount_paid);
@@ -120,7 +133,7 @@ contract TestAbstractStorage {
       assembly {
         ret_data := add(0x20, msize)
         mstore(ret_data, 0x40) // Set return size
-        // Add amount paid and payment destination address written to to return data
+        // Add amount paid and payment destination address to return data
         mstore(add(0x20, ret_data), amount_paid)
         mstore(add(0x40, ret_data), paid_to)
       }
@@ -353,7 +366,7 @@ contract TestAbstractStorage {
       address(msg.sender).transfer(msg.value);
     bytes32 message;
     assembly {
-      // If returned data exists, get first 32 bytes set message
+      // If returned data exists, get first 32 bytes of message
       if eq(returndatasize, 0x20) {
         returndatacopy(0, 0, 0x20)
         message := mload(0)
@@ -373,49 +386,22 @@ contract TestAbstractStorage {
   function storeReturned(bytes32 _exec_id) internal returns (uint amount_written) {
     // Ensure no value transfer
     assert(msg.value == 0);
-    assembly {
-      // Get pointer to free memory for hashing
-      let hash_ptr := mload(0x40) // No need to update free memory pointer - it can be overwritten on completion of this function. If the pointer was valid before this function call, it will be valid after.
-      // Hash exec id and store in second slot of pointer
-      mstore(add(0x20, hash_ptr), _exec_id)
-      mstore(add(0x20, hash_ptr), keccak256(add(0x20, hash_ptr), 0x20))
-      // Get pointer to copy returned data to
-      let returndata_ptr := add(0x40, hash_ptr)
+    // Get data returned by application
+    bytes32[] memory returned_data = getReturnData();
+    // Place returned data in last_storage_event for reference when testing
+    last_storage_event = returned_data;
+    // Ensure valid length - must have at least 2 slots for payment info (ignored) and 2 slots for a storage request
+    assert(returned_data.length >= 4 && returned_data.length % 2 == 0);
+    // First two slots of returned data are payment address and amount to pay - ignore them -
+    // Loop over the remainder of the returned data, and store each requested location and data
+    for (uint i = 2; i < returned_data.length; i += 2)
+      store(_exec_id, returned_data[i], returned_data[i + 1]);
 
-      // Ensure correctly-formed returndata. Should be divisible by 64 bytes
-      // Valid return data is either exactly 64 bytes (store 32 bytes of data to one location), or
-      // a dynamic bytes32 array with format:
-      // [data read offset][array length][location 0][data 0][location 1][data 1]...
-      if gt(mod(returndatasize, 0x40), 0) { revert (0, 0) }
+    // Get amount of storage slots written to -
+    amount_written = (returned_data.length - 2) / 2;
 
-      // If returned data is larger than 64 bytes, assume a bytes32 array: [location][data][location][data]
-      // Hash locations with exec id seed, and store data:
-      if gt(returndatasize, 0x40) {
-
-        // Copy returned data to pointer
-        // Returned data should begin with a read offset, so we skip the first 32 bytes, but copy the rest (including array length)
-        returndatacopy(returndata_ptr, 0x20, sub(returndatasize, 0x20))
-        // Ensure return length is even (bytes32 array, in above-described format)
-        if gt(mod(mload(returndata_ptr), 2), 0) { revert (0, 0) }
-
-        // Loop from offset (0x20) to 0x20 + storage request length (stored at returndata_ptr)
-        for { let offset := 0x20 } lt(offset, add(0x20, mul(0x20, mload(returndata_ptr)))) { offset := add(0x20, offset) } {
-          // Place storage location at hash_ptr
-          mstore(hash_ptr, mload(add(offset, returndata_ptr)))
-          // Increment offset
-          offset := add(0x20, offset)
-          // Hash storage location and exec id seed, and store data
-          sstore(keccak256(hash_ptr, 0x40), mload(add(offset, returndata_ptr)))
-        }
-
-        // Get return value - number of storage slots written to
-        amount_written := div(sub(returndatasize, 0x40), 0x40)
-      }
-    }
     // Sanity check - ensure amount written is nonzero
-    assert(amount_written > 1);
-    // Remove payment fields from amount written
-    amount_written -= 1;
+    assert(amount_written > 0);
   }
 
   /*
@@ -427,96 +413,66 @@ contract TestAbstractStorage {
   @return amount_written: The number of storage slots written to. Can be 0, if payment information is valid.
   */
   function storePayable(bytes32 _exec_id) internal returns (uint amount_paid, address paid_to, uint amount_written) {
+    // Get data returned by application
+    bytes32[] memory returned_data = getReturnData();
+    // Place returned data in last_storage_event for reference when testing
+    last_storage_event = returned_data;
+    // Ensure valid length
+    assert(returned_data.length >= 2 && returned_data.length % 2 == 0);
+    // First two slots of returned data are payment address and amount to pay -
+    paid_to = address(returned_data[0]);
+    amount_paid = uint(returned_data[1]);
+    // Loop over the remainder of the returned data, if it exists, and store each requested location and data
+    for (uint i = 2; i < returned_data.length; i += 2)
+      store(_exec_id, returned_data[i], returned_data[i + 1]);
 
-    assembly {
-      // Get pointer to free memory for hashing
-      let hash_ptr := mload(0x40) // No need to update free memory pointer - it can be overwritten on completion of this function. If the pointer was valid before this function call, it will be valid after.
-      // Hash exec id and store in second slot of pointer
-      mstore(add(0x20, hash_ptr), _exec_id)
-      mstore(add(0x20, hash_ptr), keccak256(add(0x20, hash_ptr), 0x20))
-      // Get pointer to copy returned data to
-      let returndata_ptr := add(0x40, hash_ptr)
+    // Get amount of storage slots written to -
+    amount_written = (returned_data.length - 2) / 2;
 
-      // Ensure correctly-formed returndata. Should be divisible by 64 bytes
-      // The first 64 bytes should designate an amount of ether (can be 0) to send to a target address (if ether is nonzero, cannot be 0) [destination][amount]
-      // The rest of the data follows 'storeReturned' format.
-      if gt(mod(returndatasize, 0x20), 0) { revert (0, 0) }
-
-      // If returned data is exactly 64 bytes, assume single payment transfer: [destination][amount]
-      // Check valid transfer data, and forward funds (with gas stipend). Return rest of funds to sender (script executor address)
-      if eq(returndatasize, 0x40) {
-        // Sanity checks
-        if gt(amount_paid, 0) { revert (0, 0) }
-        if gt(paid_to, 0) { revert (0, 0) }
-        if gt(amount_written, 0) { revert (0, 0) }
-
-        // Copy returned data to pointer
-        returndatacopy(returndata_ptr, 0, returndatasize)
-
-        // Get payment destination address
-        paid_to := mload(returndata_ptr)
-        // Get payment amount
-        amount_paid := mload(add(0x20, returndata_ptr))
-      }
-
-      // If returned data is larger than 64 bytes, assume payment information, followed by a bytes32 array (ABI-encoded):
-      // [destination][amount][offset][array length][location 0][data 0][location 1][data 1]
-      // i.e: returned(address, uint, bytes32[])
-      // Hash locations with exec id seed, and store data:
-      if gt(returndatasize, 0x40) {
-        // Sanity checks
-        if gt(amount_paid, 0) { revert (0, 0) }
-        if gt(paid_to, 0) { revert (0, 0) }
-        if gt(amount_written, 0) { revert (0, 0) }
-
-        // Copy all returned data to pointer and get payment information (destination and amount now stored consecutively at pointer)
-        returndatacopy(returndata_ptr, 0, returndatasize)
-        // Get payment destination address
-        paid_to := mload(returndata_ptr)
-        // Get payment amount
-        amount_paid := mload(add(0x20, returndata_ptr))
-
-        // Rest of data is a storage request - skip data read offset, and loop over bytes32 array. Increment pointer to point to array length
-        returndata_ptr := add(0x60, returndata_ptr)
-
-        // Ensure return length is even (bytes32 array, in above-described format)
-        if gt(mod(mload(returndata_ptr), 2), 0) { revert (0, 0) }
-
-        // Loop from offset (0x20) to 0x20 + storage request length (stored at returndata_ptr)
-        for { let offset := 0x20 } lt(offset, add(0x20, mul(0x20, mload(returndata_ptr)))) { offset := add(0x20, offset) } {
-          // Place storage location at hash_ptr
-          mstore(hash_ptr, mload(add(offset, returndata_ptr)))
-          // Increment offset
-          offset := add(0x20, offset)
-          // Hash storage location and exec id seed, and store data
-          sstore(keccak256(hash_ptr, 0x40), mload(add(offset, returndata_ptr)))
-        }
-
-        // Get return value - number of storage slots written to
-        amount_written := div(sub(returndatasize, 0x80), 0x40)
-
-        // Sanity check - amount written must be nonzero
-        if iszero(gt(amount_written, 1)) { revert (0, 0) }
-        // Remove payment information from amount written
-        amount_written := sub(amount_written, 1)
-      }
-    }
-    // Sanity check - ensure valid, safe state change. If no storage occured, there must be valid payment. If storage occured, no payment is required
+    // Sanity check - ensure a valid, safe state change -
+    // If not storage occured, a valid payment must have occured (Otherwise, the state did not change and something went wrong)
     assert(paid_to != address(this));
     assert(
-      (amount_written != 0 && paid_to != address(0))
-      || (amount_written == 0 && paid_to != address(0) && amount_paid != 0)
+      amount_written != 0 ||
+      (amount_written == 0 && paid_to != address(0) && amount_paid != 0)
     );
+  }
+
+  // Gets data returned by an application
+  function getReturnData() internal pure returns (bytes32[] returned_data) {
+    assembly {
+      // Get memory location for returndata
+      returned_data := msize
+      // Ensure correctly-formed returndata. Should be divisible by 64 bytes
+      // Data returned follows the format:
+      // [read offset][array length][paid_to][amount_paid][store_to_1][store_data_1][store_to_2][store_data_2]...
+      if gt(mod(returndatasize, 0x40), 0) { revert (0, 0) }
+
+      // If returndatasize is not at least 128 bytes (0x80), returned data is invalid
+      if iszero(gt(returndatasize, 0x7f)) { revert (0, 0) }
+
+      // Copy returned data to array - places length directly in returned_data
+      returndatacopy(returned_data, 0x20, sub(returndatasize, 0x20))
+      // Update free-memory pointer
+      mstore(0x40, add(returndatasize, returned_data))
+    }
+  }
+
+  // Stores data to a given location, with a key (exec id)
+  function store(bytes32 _exec_id, bytes32 _location, bytes32 _data) internal {
+    // Get true location to store data to - hash of location hashed with exec id
+    _location = keccak256(keccak256(_location), _exec_id);
+    assembly {
+      // Store data
+      sstore(_location, _data)
+    }
   }
 
   /// GETTERS ///
 
   // Returns the addresses with permissioned storage access under the given execution id
   function getExecAllowed(bytes32 _exec_id) public view returns (address[] allowed) {
-    allowed = new address[](allowed_addr_list[_exec_id].length);
-    for (uint i = 0; i < allowed.length; i++) {
-      allowed[i] = allowed_addr_list[_exec_id][i];
-    }
+    allowed = allowed_addr_list[_exec_id];
   }
 
   /// STORAGE READS ///
@@ -528,8 +484,7 @@ contract TestAbstractStorage {
   @return data: The data stored at the location after hashing
   */
   function read(bytes32 _exec_id, bytes32 _location) public view returns (bytes32 data_read) {
-    bytes32 storage_loc = keccak256(_exec_id);
-    bytes32 location = keccak256(_location, storage_loc);
+    bytes32 location = keccak256(keccak256(_location), _exec_id);
     assembly {
       data_read := sload(location)
     }
@@ -542,19 +497,18 @@ contract TestAbstractStorage {
   @return data_read: The corresponding data stored in the requested locations
   */
   function readMulti(bytes32 _exec_id, bytes32[] _locations) public view returns (bytes32[] data_read) {
-    bytes32 storage_loc = keccak256(_exec_id);
     data_read = new bytes32[](_locations.length);
     assembly {
       // Get free-memory pointer for a hash location
       let hash_loc := mload(0x40)
-      // Store the hash of the exec id in the second slot of the hash pointer
-      mstore(add(0x20, hash_loc), storage_loc)
+      // Store the exec id in the second slot of the hash pointer
+      mstore(add(0x20, hash_loc), _exec_id)
 
       // Loop over input and store in return data
       for { let offset := 0x20 } lt(offset, add(0x20, mul(0x20, mload(_locations)))) { offset := add(0x20, offset) } {
-        // Get storage location from hash location ptr
-        mstore(hash_loc, mload(add(offset, _locations)))
-        // Hash exec id and location to get storage location
+        // Get storage location from hash of location in input array
+        mstore(hash_loc, keccak256(add(offset, _locations), 0x20))
+        // Hash exec id and location hash to get storage location
         let storage_location := keccak256(hash_loc, 0x40)
         // Copy data from storage to return array
         mstore(add(offset, data_read), sload(storage_location))
