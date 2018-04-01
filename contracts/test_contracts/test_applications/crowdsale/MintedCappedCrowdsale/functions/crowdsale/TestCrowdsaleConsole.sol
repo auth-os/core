@@ -75,6 +75,10 @@ contract TestCrowdsaleConsole {
 
   /// FUNCTION SELECTORS ///
 
+  // Function selector for storage "read"
+  // read(bytes32 _exec_id, bytes32 _location) view returns (bytes32 data_read);
+  bytes4 public constant RD_SING = bytes4(keccak256("read(bytes32,bytes32)"));
+
   // Function selector for storage 'readMulti'
   // readMulti(bytes32 exec_id, bytes32[] locations)
   bytes4 public constant RD_MULTI = bytes4(keccak256("readMulti(bytes32,bytes32[])"));
@@ -178,7 +182,7 @@ contract TestCrowdsaleConsole {
     (exec_id, sender, ) = parse(_context);
 
     // Create 'read' calldata buffer in memory
-    uint ptr = cdBuff(RD_MULTI);
+    uint ptr = cdBuff(RD_SING);
     // Push exec id to buffer
     cdPush(ptr, exec_id);
     // Push admin address storage location to buffer
