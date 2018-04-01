@@ -89,7 +89,7 @@ contract TestInitToken {
     stPush(ptr, bytes32(_total_supply));
     stPush(ptr, TOKEN_ADMIN);
     stPush(ptr, bytes32(_owner));
-    stPush(ptr, keccak256(keccak256(_owner), TOKEN_BALANCES));
+    stPush(ptr, keccak256(_owner, TOKEN_BALANCES));
     stPush(ptr, bytes32(_total_supply));
 
     // Get bytes32[] storage request array from buffer
@@ -112,7 +112,7 @@ contract TestInitToken {
     uint ptr = cdBuff(RD_SING);
     // Push exec id and owner balance location to buffer
     cdPush(ptr, _exec_id);
-    cdPush(ptr, keccak256(keccak256(_owner), TOKEN_BALANCES));
+    cdPush(ptr, keccak256(_owner, TOKEN_BALANCES));
     // Read from storage
     owner_balance = uint(readSingleFrom(ptr, _storage));
   }
@@ -132,7 +132,7 @@ contract TestInitToken {
     uint ptr = cdBuff(RD_SING);
     // Push exec id and spender allowance location to buffer
     cdPush(ptr, _exec_id);
-    cdPush(ptr, keccak256(keccak256(_spender), keccak256(keccak256(_owner), TOKEN_ALLOWANCES)));
+    cdPush(ptr, keccak256(_spender, keccak256(_owner, TOKEN_ALLOWANCES)));
     // Read from storage
     allowed = uint(readSingleFrom(ptr, _storage));
   }
@@ -224,7 +224,7 @@ contract TestInitToken {
     // Push exec id, data read offset, and read size to buffer
     cdPush(ptr, _exec_id);
     cdPush(ptr, 0x40);
-    cdPush(ptr, 4);
+    cdPush(ptr, bytes32(4));
     // Place token name, symbol, decimals, and total supply storage locations in buffer
     cdPush(ptr, TOKEN_NAME);
     cdPush(ptr, TOKEN_SYMBOL);

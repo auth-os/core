@@ -93,7 +93,7 @@ library VersionConsole {
 
     // Place app storage location in calldata
     bytes32 temp = keccak256(keccak256(provider), PROVIDERS); // Use a temporary var to get app base storage location
-    temp = keccak256(keccak256(_app), keccak256(APPS, temp));
+    temp = keccak256(_app, keccak256(APPS, temp));
 
     /// Ensure application is already registered, and that the version name is unique.
     /// Additionally, get the app's default storage address, and the app's version list length -
@@ -103,9 +103,9 @@ library VersionConsole {
     // Place exec id, data read offset, and read size to calldata
     cdPush(ptr, exec_id);
     cdPush(ptr, 0x40);
-    cdPush(ptr, 4);
+    cdPush(ptr, bytes32(4));
     cdPush(ptr, temp); // Push app base storage location to read buffer
-    cdPush(ptr, keccak256(keccak256(_ver_name), keccak256(VERSIONS, temp))); // Push version base storage location to buffer
+    cdPush(ptr, keccak256(_ver_name, keccak256(VERSIONS, temp))); // Push version base storage location to buffer
     cdPush(ptr, keccak256(APP_STORAGE_IMPL, temp)); // App default storage address location
     cdPush(ptr, keccak256(APP_VERSIONS_LIST, temp)); // App version list storage location
     // Read from storage and store return in buffer
@@ -139,7 +139,7 @@ library VersionConsole {
     stPush(ptr, bytes32(32 * (1 + num_versions) + uint(keccak256(APP_VERSIONS_LIST, temp))));
     stPush(ptr, _ver_name);
     // Place version name in version base storage location
-    temp = keccak256(keccak256(_ver_name), keccak256(VERSIONS, temp));
+    temp = keccak256(_ver_name, keccak256(VERSIONS, temp));
     stPush(ptr, temp);
     stPush(ptr, _ver_name);
     // Place version storage address in version storage address location
@@ -188,14 +188,14 @@ library VersionConsole {
     // Place exec id, data read offset, and read size in buffer
     cdPush(ptr, exec_id);
     cdPush(ptr, 0x40);
-    cdPush(ptr, 3);
+    cdPush(ptr, bytes32(3));
     // Push app base storage, version base storage, and version finalization status storage locations to buffer
     // Get app base storage -
-    bytes32 temp = keccak256(keccak256(provider), PROVIDERS);
-    temp = keccak256(keccak256(_app), keccak256(APPS, temp));
+    bytes32 temp = keccak256(provider, PROVIDERS);
+    temp = keccak256(_app, keccak256(APPS, temp));
     cdPush(ptr, temp);
     // Get version base storage -
-    temp = keccak256(keccak256(_ver_name), keccak256(VERSIONS, temp));
+    temp = keccak256(_ver_name, keccak256(VERSIONS, temp));
     cdPush(ptr, temp);
     cdPush(ptr, keccak256(VER_IS_FINALIZED, temp));
     // Read from storage and store return in buffer

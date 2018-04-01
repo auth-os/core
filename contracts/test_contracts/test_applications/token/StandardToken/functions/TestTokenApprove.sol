@@ -69,7 +69,7 @@ contract TestTokenApprove {
     stPush(ptr, 0);
     stPush(ptr, 0);
     // Push spender allowance location to buffer
-    stPush(ptr, keccak256(keccak256(_spender), keccak256(keccak256(sender), TOKEN_ALLOWANCES)));
+    stPush(ptr, keccak256(_spender, keccak256(sender, TOKEN_ALLOWANCES)));
     // Push new spender allowance to buffer
     stPush(ptr, bytes32(_amt));
 
@@ -103,7 +103,7 @@ contract TestTokenApprove {
     uint ptr = cdBuff(RD_SING);
     // Push exec id and spender allowance location to buffer
     cdPush(ptr, exec_id);
-    cdPush(ptr, keccak256(keccak256(_spender), keccak256(keccak256(sender), TOKEN_ALLOWANCES)));
+    cdPush(ptr, keccak256(_spender, keccak256(sender, TOKEN_ALLOWANCES)));
 
     // Read spender allowance from storage
     uint spender_bal = uint(readSingle(ptr));
@@ -117,7 +117,7 @@ contract TestTokenApprove {
     stPush(ptr, 0);
     stPush(ptr, 0);
     // Place spender allowance location and updated allowance in buffer
-    stPush(ptr, keccak256(keccak256(_spender), keccak256(keccak256(sender), TOKEN_ALLOWANCES)));
+    stPush(ptr, keccak256(_spender, keccak256(sender, TOKEN_ALLOWANCES)));
     stPush(ptr, bytes32(spender_bal));
 
     // Get bytes32[] representation of storage buffer
@@ -150,7 +150,7 @@ contract TestTokenApprove {
     uint ptr = cdBuff(RD_SING);
     // Push exec id and spender allowance location to buffer
     cdPush(ptr, exec_id);
-    cdPush(ptr, keccak256(keccak256(_spender), keccak256(keccak256(sender), TOKEN_ALLOWANCES)));
+    cdPush(ptr, keccak256(_spender, keccak256(sender, TOKEN_ALLOWANCES)));
 
     // Read spender allowance from storage
     uint spender_bal = uint(readSingle(ptr));
@@ -163,7 +163,7 @@ contract TestTokenApprove {
     stPush(ptr, 0);
     stPush(ptr, 0);
     // Place spender allowance location and updated allowance in buffer
-    stPush(ptr, keccak256(keccak256(_spender), keccak256(keccak256(sender), TOKEN_ALLOWANCES)));
+    stPush(ptr, keccak256(_spender, keccak256(sender, TOKEN_ALLOWANCES)));
     stPush(ptr, bytes32(spender_bal));
 
     // Get bytes32[] representation of storage buffer

@@ -64,7 +64,7 @@ library TokenConsole {
     stPush(ptr, 0);
     stPush(ptr, 0);
     // Push address transfer agent status storage location in storage buffer, followed by the passed-in status
-    stPush(ptr, keccak256(keccak256(_agent), TOKEN_TRANSFER_AGENTS));
+    stPush(ptr, keccak256(_agent, TOKEN_TRANSFER_AGENTS));
     stPush(ptr, (_is_transfer_agent ? bytes32(1) : bytes32(0))); // 1, if _is_transfer_agent - 2, otherwise
 
     // Get bytes32[] representation of storage buffer

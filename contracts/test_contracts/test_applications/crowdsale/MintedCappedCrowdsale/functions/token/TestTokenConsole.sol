@@ -117,7 +117,7 @@ contract TestTokenConsole {
     stPush(ptr, 0);
     stPush(ptr, 0);
     // Push address transfer agent status storage location in storage buffer, followed by the passed-in status
-    stPush(ptr, keccak256(keccak256(_agent), TOKEN_TRANSFER_AGENTS));
+    stPush(ptr, keccak256(_agent, TOKEN_TRANSFER_AGENTS));
     stPush(ptr, (_is_transfer_agent ? bytes32(1) : bytes32(0))); // 1, if _is_transfer_agent - 2, otherwise
 
     // Get bytes32[] representation of storage buffer
@@ -174,7 +174,7 @@ contract TestTokenConsole {
       // Ensure no invalid submitted addresses
       require(_destinations[i] != address(0));
       // Destination list index for all addresses is the first slot in the reserved address struct - no need to add an offset
-      cdPush(ptr, keccak256(keccak256(_destinations[i]), TOKEN_RESERVED_ADDR_INFO));
+      cdPush(ptr, keccak256(_destinations[i], TOKEN_RESERVED_ADDR_INFO));
     }
     // Read from storage, and store returned values in buffer
     bytes32[] memory read_values = readMulti(ptr);
@@ -224,16 +224,16 @@ contract TestTokenConsole {
         stPush(ptr, bytes32(32 * uint(read_values[2]) + uint(TOKEN_RESERVED_DESTINATIONS)));
         stPush(ptr, bytes32(to_add));
         // Store reservation information in struct at TOKEN_RESERVED_ADDR_INFO
-        stPush(ptr, keccak256(keccak256(to_add), TOKEN_RESERVED_ADDR_INFO));
+        stPush(ptr, keccak256(to_add, TOKEN_RESERVED_ADDR_INFO));
         stPush(ptr, bytes32(uint(read_values[2])));
       }
 
       // Push reservation information to storage request buffer
-      stPush(ptr, bytes32(32 + uint(keccak256(keccak256(to_add), TOKEN_RESERVED_ADDR_INFO))));
+      stPush(ptr, bytes32(32 + uint(keccak256(to_add, TOKEN_RESERVED_ADDR_INFO))));
       stPush(ptr, bytes32(_num_tokens[i - 3]));
-      stPush(ptr, bytes32(64 + uint(keccak256(keccak256(to_add), TOKEN_RESERVED_ADDR_INFO))));
+      stPush(ptr, bytes32(64 + uint(keccak256(to_add, TOKEN_RESERVED_ADDR_INFO))));
       stPush(ptr, bytes32(_num_percents[i - 3]));
-      stPush(ptr, bytes32(96 + uint(keccak256(keccak256(to_add), TOKEN_RESERVED_ADDR_INFO))));
+      stPush(ptr, bytes32(96 + uint(keccak256(to_add, TOKEN_RESERVED_ADDR_INFO))));
       stPush(ptr, bytes32(_percent_decimals[i - 3]));
     }
     // Finally, push new array length to storage buffer
@@ -270,12 +270,12 @@ contract TestTokenConsole {
     // Place exec id, data read offset, and read size in buffer
     cdPush(ptr, exec_id);
     cdPush(ptr, 0x40);
-    cdPush(ptr, 4);
+    cdPush(ptr, bytes32(4));
     // Place admin address, crowdsale initialization status, reserved token list length, and _destination list index storage locations in callata
     cdPush(ptr, ADMIN);
     cdPush(ptr, CROWDSALE_IS_INIT);
     cdPush(ptr, TOKEN_RESERVED_DESTINATIONS);
-    cdPush(ptr, keccak256(keccak256(_destination), TOKEN_RESERVED_ADDR_INFO));
+    cdPush(ptr, keccak256(_destination, TOKEN_RESERVED_ADDR_INFO));
     // Read from storage, and store returned values in buffer
     bytes32[] memory read_values = readMulti(ptr);
     // Ensure the length is 4
@@ -319,7 +319,7 @@ contract TestTokenConsole {
       stPush(ptr, 0);
       stPush(ptr, 0);
       // Push updated index (to_remove) for the address that was the final index in the destination list
-      stPush(ptr, keccak256(keccak256(last_index), TOKEN_RESERVED_ADDR_INFO));
+      stPush(ptr, keccak256(last_index, TOKEN_RESERVED_ADDR_INFO));
       stPush(ptr, bytes32(to_remove));
       // Push last index address to correct spot in TOKEN_RESERVED_DESTINATIONS list
       stPush(ptr, bytes32(32 * to_remove + uint(TOKEN_RESERVED_DESTINATIONS)));
@@ -329,7 +329,7 @@ contract TestTokenConsole {
     stPush(ptr, TOKEN_RESERVED_DESTINATIONS);
     stPush(ptr, bytes32(reservation_len - 1));
     // Push removed address's list index location and new value (0) to storage buffer
-    stPush(ptr, keccak256(keccak256(_destination), TOKEN_RESERVED_ADDR_INFO));
+    stPush(ptr, keccak256(_destination, TOKEN_RESERVED_ADDR_INFO));
     stPush(ptr, 0);
 
     // Get bytes32[] representation of storage buffer
@@ -412,9 +412,9 @@ contract TestTokenConsole {
     // For each address returned, place the locations of their balance, reserved tokens, reserved percents, and percent's precision in 'readMulti' buffer
     for (i = 0; i < _amt; i++) {
       // Destination balance location
-      cdPush(ptr, keccak256(keccak256(initial_read_values[i]), TOKEN_BALANCES));
+      cdPush(ptr, keccak256(initial_read_values[i], TOKEN_BALANCES));
       // Number of tokens reserved
-      cdPush(ptr, keccak256(keccak256(initial_read_values[i]), TOKEN_RESERVED_ADDR_INFO));
+      cdPush(ptr, keccak256(initial_read_values[i], TOKEN_RESERVED_ADDR_INFO));
       // Number of percent reserved - location is 32 bytes after number of tokens reserved
       cdPush(ptr, bytes32(32 + uint(top(ptr))));
       // Precision of percent - location is 32 bytes after number of percentage points reserved
@@ -455,7 +455,7 @@ contract TestTokenConsole {
       require(to_add + uint(read_reserved_info[i * 4]) >= uint(read_reserved_info[i * 4]));
       to_add += uint(read_reserved_info[i * 4]);
       // Add new balance and balance location to storage buffer
-      stPush(ptr, keccak256(keccak256(address(initial_read_values[i])), TOKEN_BALANCES));
+      stPush(ptr, keccak256(address(initial_read_values[i]), TOKEN_BALANCES));
       stPush(ptr, bytes32(to_add));
     }
     // Add new total supply to storage buffer

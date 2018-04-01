@@ -58,13 +58,13 @@ library TokenTransfer {
     // Place exec id, data read offset, and read size to calldata
     cdPush(ptr, exec_id);
     cdPush(ptr, 0x40);
-    cdPush(ptr, 4);
+    cdPush(ptr, bytes32(4));
     // Place sender and recipient balance locations in calldata buffer
-    cdPush(ptr, keccak256(keccak256(sender), TOKEN_BALANCES));
-    cdPush(ptr, keccak256(keccak256(_to), TOKEN_BALANCES));
+    cdPush(ptr, keccak256(sender, TOKEN_BALANCES));
+    cdPush(ptr, keccak256(_to, TOKEN_BALANCES));
     // Place crowdsale finalization status and sender transfer agent status storage locations in calldata buffer
     cdPush(ptr, CROWDSALE_IS_FINALIZED);
-    cdPush(ptr, keccak256(keccak256(sender), TOKEN_TRANSFER_AGENTS));
+    cdPush(ptr, keccak256(sender, TOKEN_TRANSFER_AGENTS));
     // Read from storage
     bytes32[] memory read_values = readMulti(ptr);
     // Ensure length of returned data is correct
@@ -91,10 +91,10 @@ library TokenTransfer {
     stPush(ptr, 0);
     stPush(ptr, 0);
     // Place owner balance location and updated balance in buffer
-    stPush(ptr, keccak256(keccak256(sender), TOKEN_BALANCES));
+    stPush(ptr, keccak256(sender, TOKEN_BALANCES));
     stPush(ptr, bytes32(sender_bal));
     // Place recipient balance location and updated balance in buffer
-    stPush(ptr, keccak256(keccak256(_to), TOKEN_BALANCES));
+    stPush(ptr, keccak256(_to, TOKEN_BALANCES));
     stPush(ptr, bytes32(recipient_bal));
 
     // Get bytes32[] representation of storage buffer

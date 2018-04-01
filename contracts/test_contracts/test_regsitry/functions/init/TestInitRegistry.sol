@@ -228,11 +228,11 @@ contract TestInitRegistry {
     // Place exec id, data read offset, and read size to calldata
     cdPush(ptr, _exec_id);
     cdPush(ptr, 0x40);
-    cdPush(ptr, 3);
+    cdPush(ptr, bytes32(3));
     // Push app version list count, app default storage, and app description size storage locations to calldata buffer
     // Get app base storage -
     bytes32 temp = keccak256(_provider, PROVIDERS);
-    temp = keccak256(keccak256(_app), keccak256(APPS, temp));
+    temp = keccak256(_app, keccak256(APPS, temp));
     cdPush(ptr, keccak256(APP_VERSIONS_LIST, temp)); // App version list location
     cdPush(ptr, keccak256(APP_STORAGE_IMPL, temp)); // App default storage address location
     cdPush(ptr, keccak256(APP_DESC, temp)); // App description size location
@@ -288,7 +288,7 @@ contract TestInitRegistry {
     // Get app base storage location
     bytes32 temp = keccak256(_provider, PROVIDERS);
     temp = keccak256(APPS, temp);
-    temp = keccak256(keccak256(_app), temp);
+    temp = keccak256(_app, temp);
     cdPush(ptr, keccak256(APP_VERSIONS_LIST, temp));
     // Read from storage and place return in buffer
     app_version_count = uint(readSingleFrom(ptr, _storage));
@@ -343,11 +343,10 @@ contract TestInitRegistry {
     // Push exec id, data read offset, and read size to calldata
     cdPush(ptr, _exec_id);
     cdPush(ptr, 0x40);
-    cdPush(ptr, 2);
+    cdPush(ptr, bytes32(2));
     // Get app base storage location
-    app_helper.temp = keccak256(_provider, PROVIDERS);
     app_helper.temp = keccak256(APPS, app_helper.temp);
-    app_helper.temp = keccak256(keccak256(_app), app_helper.temp);
+    app_helper.temp = keccak256(_app, app_helper.temp);
     // Push app default storage address location and app version list locations to buffer
     cdPush(ptr, keccak256(APP_STORAGE_IMPL, app_helper.temp));
     cdPush(ptr, keccak256(APP_VERSIONS_LIST, app_helper.temp));
@@ -376,14 +375,14 @@ contract TestInitRegistry {
       latest_version = readSingleFrom(ptr, _storage);
 
       // Hash returned version name and version storage seed
-      bytes32 latest_ver_storage = keccak256(keccak256(latest_version), app_helper.temp);
+      bytes32 latest_ver_storage = keccak256(latest_version, app_helper.temp);
 
       // Construct 'readMulti' calldata by overwriting previous 'read' calldata buffer
       cdOverwrite(ptr, RD_MULTI);
       // Push exec id, data read offset, and read size to buffer
       cdPush(ptr, _exec_id);
       cdPush(ptr, 0x40);
-      cdPush(ptr, 4);
+      cdPush(ptr, bytes32(4));
       // Push version status storage location to buffer
       cdPush(ptr, keccak256(VER_IS_FINALIZED, latest_ver_storage));
       // Push version init address storage location to buffer
@@ -423,7 +422,7 @@ contract TestInitRegistry {
     cdPush(ptr, 0x40);
     cdPush(ptr, bytes32(app_helper.list_length));
     // Get version addresses list base location
-    app_helper.temp = keccak256(keccak256(latest_version), app_helper.temp);
+    app_helper.temp = keccak256(latest_version, app_helper.temp);
     app_helper.temp = keccak256(VER_FUNCTION_ADDRESSES, app_helper.temp);
     // Loop over list length and place each index storage location in buffer
     for (i = 1; i <= app_helper.list_length; i++)
@@ -483,16 +482,16 @@ contract TestInitRegistry {
     });
     // Get version base storage location
     v_helper.temp = keccak256(APPS, v_helper.temp);
-    v_helper.temp = keccak256(keccak256(_app), v_helper.temp);
+    v_helper.temp = keccak256(_app, v_helper.temp);
     v_helper.temp = keccak256(VERSIONS, v_helper.temp);
-    v_helper.temp = keccak256(keccak256(_version), v_helper.temp);
+    v_helper.temp = keccak256(_version, v_helper.temp);
 
     // Create 'readMulti' calldata buffer in memory
     uint ptr = cdBuff(RD_MULTI);
     // Push exec id, data read offset, and read size to buffer
     cdPush(ptr, _exec_id);
     cdPush(ptr, 0x40);
-    cdPush(ptr, 4);
+    cdPush(ptr, bytes32(4));
     // Push version status, function count, storage address, and description array size storage locations to calldata buffer
     cdPush(ptr, keccak256(VER_IS_FINALIZED, v_helper.temp));
     cdPush(ptr, keccak256(VER_FUNCTION_LIST, v_helper.temp));
@@ -554,17 +553,16 @@ contract TestInitRegistry {
       desc_size_norm: 1
     });
     // Get version base storage location
-    v_helper.temp = keccak256(_provider, PROVIDERS);
     v_helper.temp = keccak256(APPS, v_helper.temp);
-    v_helper.temp = keccak256(keccak256(_app), v_helper.temp);
+    v_helper.temp = keccak256(_app, v_helper.temp);
     v_helper.temp = keccak256(VERSIONS, v_helper.temp);
-    v_helper.temp = keccak256(keccak256(_version), v_helper.temp);
+    v_helper.temp = keccak256(_version, v_helper.temp);
     // Create 'readMulti' calldata buffer in memory
     uint ptr = cdBuff(RD_MULTI);
     // Push exec id, data read offset, and read size to buffer
     cdPush(ptr, _exec_id);
     cdPush(ptr, 0x40);
-    cdPush(ptr, 3);
+    cdPush(ptr, bytes32(3));
     // Push init implementing address, init function signature, and init description size storage locations to calldata buffer
     cdPush(ptr, keccak256(VER_INIT_ADDR, v_helper.temp));
     cdPush(ptr, keccak256(VER_INIT_SIG, v_helper.temp));
@@ -619,16 +617,16 @@ contract TestInitRegistry {
     // Get version base storage location
     bytes32 temp = keccak256(_provider, PROVIDERS);
     temp = keccak256(APPS, temp);
-    temp = keccak256(keccak256(_app), temp);
+    temp = keccak256(_app, temp);
     temp = keccak256(VERSIONS, temp);
-    temp = keccak256(keccak256(_version), temp);
+    temp = keccak256(_version, temp);
 
     // Create 'readMulti' calldata buffer in memory
     uint ptr = cdBuff(RD_MULTI);
     // Push exec id, data read offset, and read size to calldata buffer
     cdPush(ptr, _exec_id);
     cdPush(ptr, 0x40);
-    cdPush(ptr, 2);
+    cdPush(ptr, bytes32(2));
     // Push version signature and address list storage locations to calldata
     cdPush(ptr, keccak256(VER_FUNCTION_LIST, temp));
     cdPush(ptr, keccak256(VER_FUNCTION_ADDRESSES, temp));
@@ -694,18 +692,18 @@ contract TestInitRegistry {
     });
     // Get function base storage location
     impl_helper.temp = keccak256(APPS, impl_helper.temp);
-    impl_helper.temp = keccak256(keccak256(_app), impl_helper.temp);
+    impl_helper.temp = keccak256(_app, impl_helper.temp);
     impl_helper.temp = keccak256(VERSIONS, impl_helper.temp);
-    impl_helper.temp = keccak256(keccak256(_version), impl_helper.temp);
+    impl_helper.temp = keccak256(_version, impl_helper.temp);
     impl_helper.temp = keccak256(FUNCTIONS, impl_helper.temp);
-    impl_helper.temp = keccak256(keccak256(_impl_signature), impl_helper.temp);
+    impl_helper.temp = keccak256(_impl_signature, impl_helper.temp);
 
     // Create 'readMulti' calldata buffer in memory
     uint ptr = cdBuff(RD_MULTI);
     // Push exec id, data read offset, and read size to calldata buffer
     cdPush(ptr, _exec_id);
     cdPush(ptr, 0x40);
-    cdPush(ptr, 2);
+    cdPush(ptr, bytes32(2));
     // Push function base and description size storage locations in buffer
     cdPush(ptr, keccak256(FUNC_IMPL_ADDR, impl_helper.temp));
     cdPush(ptr, keccak256(FUNC_DESC, impl_helper.temp));

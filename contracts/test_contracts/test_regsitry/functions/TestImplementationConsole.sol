@@ -110,7 +110,7 @@ contract TestImplementationConsole {
 
     // Get app base storage location -
     bytes32 temp = keccak256(keccak256(provider), PROVIDERS);
-    temp = keccak256(keccak256(_app), keccak256(APPS, temp));
+    temp = keccak256(_app, keccak256(APPS, temp));
 
     /// Ensure application and version are registered, and version is not finalized
     /// Additionally, read version function and address list lengths -
@@ -120,11 +120,11 @@ contract TestImplementationConsole {
     // Place exec id, data read offset, and read size to calldata
     cdPush(ptr, exec_id);
     cdPush(ptr, 0x40);
-    cdPush(ptr, 5);
+    cdPush(ptr, bytes32(5));
     // Push app base storage, version base storage, and version finalization status storage locations to buffer
     cdPush(ptr, temp);
     // Get version base storage -
-    temp = keccak256(keccak256(_version), keccak256(VERSIONS, temp));
+    temp = keccak256(_version, keccak256(VERSIONS, temp));
     cdPush(ptr, temp);
     cdPush(ptr, keccak256(VER_IS_FINALIZED, temp));
     // Push version function and address list length storage locations to calldata
@@ -172,21 +172,14 @@ contract TestImplementationConsole {
       // Push function information to buffer -
 
       // Hash function signature and function storage seed, and push to buffer
-      stPush(
-        ptr,
-        keccak256(
-          keccak256(_function_sigs[i - list_lengths]),
-          keccak256(FUNCTIONS, temp)
-        )
-      );
+      stPush(ptr, keccak256(_function_sigs[i - list_lengths], keccak256(FUNCTIONS, temp)));
       //Place function signature in buffer
       stPush(ptr, bytes32(_function_sigs[i - list_lengths]));
       // Hash function signature storage, and function implementation address storage seed, and place in buffer
       stPush(
         ptr,
-        keccak256(
-          FUNC_IMPL_ADDR,
-          keccak256(keccak256(_function_sigs[i - list_lengths]), keccak256(FUNCTIONS, temp))
+        keccak256(FUNC_IMPL_ADDR,
+          keccak256(_function_sigs[i - list_lengths], keccak256(FUNCTIONS, temp))
         )
       );
       // Place function address in storage buffer
@@ -225,7 +218,7 @@ contract TestImplementationConsole {
 
     // Get app base storage location -
     bytes32 temp = keccak256(keccak256(provider), PROVIDERS);
-    temp = keccak256(keccak256(_app), keccak256(APPS, temp));
+    temp = keccak256(_app, keccak256(APPS, temp));
 
     /// Ensure application and version are registered, and version is not finalized
     /// Additionally, ensure function exists -
@@ -235,15 +228,15 @@ contract TestImplementationConsole {
     // Place exec id, data read offset, and read size to calldata
     cdPush(ptr, exec_id);
     cdPush(ptr, 0x40);
-    cdPush(ptr, 4);
+    cdPush(ptr, bytes32(4));
     // Push app base storage, version base storage, and version finalization status storage locations to buffer
     cdPush(ptr, temp);
     // Get version base storage -
-    temp = keccak256(keccak256(_version), keccak256(VERSIONS, temp));
+    temp = keccak256(_version, keccak256(VERSIONS, temp));
     cdPush(ptr, temp);
     cdPush(ptr, keccak256(VER_IS_FINALIZED, temp));
     // Get function base storage location
-    temp = keccak256(keccak256(_function_sig), keccak256(FUNCTIONS, temp));
+    temp = keccak256(_function_sig, keccak256(FUNCTIONS, temp));
     // Push function base storage location in calldata buffer
     cdPush(ptr, temp);
 

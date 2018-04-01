@@ -68,10 +68,10 @@ contract TestTokenTransfer {
     // Place exec id, data read offset, and read size to calldata
     cdPush(ptr, exec_id);
     cdPush(ptr, 0x40);
-    cdPush(ptr, 2);
+    cdPush(ptr, bytes32(2));
     // Place owner and recipient balance storage locations in calldata
-    cdPush(ptr, keccak256(keccak256(sender), TOKEN_BALANCES));
-    cdPush(ptr, keccak256(keccak256(_to), TOKEN_BALANCES));
+    cdPush(ptr, keccak256(sender, TOKEN_BALANCES));
+    cdPush(ptr, keccak256(_to, TOKEN_BALANCES));
     // Read owner and recipient balances from storage
     bytes32[] memory read_values = readMulti(ptr);
     // Ensure length of returned data is correct
@@ -94,10 +94,10 @@ contract TestTokenTransfer {
     stPush(ptr, 0);
     stPush(ptr, 0);
     // Place owner balance location and updated balance in buffer
-    stPush(ptr, keccak256(keccak256(sender), TOKEN_BALANCES));
+    stPush(ptr, keccak256(sender, TOKEN_BALANCES));
     stPush(ptr, bytes32(sender_bal));
     // Place recipient balance location and updated balance in buffer
-    stPush(ptr, keccak256(keccak256(_to), TOKEN_BALANCES));
+    stPush(ptr, keccak256(_to, TOKEN_BALANCES));
     stPush(ptr, bytes32(recipient_bal));
 
     // Get bytes32[] representation of storage buffer

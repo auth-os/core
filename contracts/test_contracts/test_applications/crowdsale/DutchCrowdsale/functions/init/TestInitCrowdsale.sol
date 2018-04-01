@@ -148,7 +148,7 @@ contract TestInitCrowdsale {
     stPush(ptr, CROWDSALE_STARTS_AT);
     stPush(ptr, bytes32(_start_time));
     // Push admin balance and token sell cap to buffer
-    stPush(ptr, keccak256(keccak256(_admin), TOKEN_BALANCES));
+    stPush(ptr, keccak256(_admin, TOKEN_BALANCES));
     stPush(ptr, bytes32(_total_supply - _max_amount_to_sell));
     stPush(ptr, MAX_TOKEN_SELL_CAP);
     stPush(ptr, bytes32(_max_amount_to_sell));
@@ -320,7 +320,7 @@ contract TestInitCrowdsale {
     uint ptr = cdBuff(RD_SING);
     // Push exec id and owner balance location to buffer
     cdPush(ptr, _exec_id);
-    cdPush(ptr, keccak256(keccak256(_owner), TOKEN_BALANCES));
+    cdPush(ptr, keccak256(_owner, TOKEN_BALANCES));
     // Read from storage
     owner_balance = uint(readSingleFrom(ptr, _storage));
   }
@@ -340,7 +340,7 @@ contract TestInitCrowdsale {
     uint ptr = cdBuff(RD_SING);
     // Push exec id and spender allowance location to buffer
     cdPush(ptr, _exec_id);
-    cdPush(ptr, keccak256(keccak256(_spender), keccak256(keccak256(_owner), TOKEN_ALLOWANCES)));
+    cdPush(ptr, keccak256(_spender, keccak256(_owner, TOKEN_ALLOWANCES)));
     // Read from storage
     allowed = uint(readSingleFrom(ptr, _storage));
   }
@@ -462,7 +462,7 @@ contract TestInitCrowdsale {
     uint ptr = cdBuff(RD_SING);
     // Push exec id and transfer agent status storage location to buffer
     cdPush(ptr, _exec_id);
-    cdPush(ptr, keccak256(keccak256(_agent), TOKEN_TRANSFER_AGENTS));
+    cdPush(ptr, keccak256(_agent, TOKEN_TRANSFER_AGENTS));
     // Read from storage
     is_transfer_agent = (readSingleFrom(ptr, _storage) == bytes32(0) ? false : true);
   }

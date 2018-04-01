@@ -364,7 +364,7 @@ library InitCrowdsale {
     // Push exec id to buffer
     cdPush(ptr, _exec_id);
     // Push buyer whitelist status storage location to buffer
-    cdPush(ptr, keccak256(keccak256(_buyer), SALE_WHITELIST));
+    cdPush(ptr, keccak256(_buyer, SALE_WHITELIST));
     // Raed from storage and get return value
     is_whitelisted = (readSingleFrom(ptr, _storage) == bytes32(0) ? false : true);
   }
@@ -385,7 +385,7 @@ library InitCrowdsale {
     uint ptr = cdBuff(RD_SING);
     // Push exec id and owner balance location to buffer
     cdPush(ptr, _exec_id);
-    cdPush(ptr, keccak256(keccak256(_owner), TOKEN_BALANCES));
+    cdPush(ptr, keccak256(_owner, TOKEN_BALANCES));
     // Read from storage
     owner_balance = uint(readSingleFrom(ptr, _storage));
   }
@@ -405,7 +405,7 @@ library InitCrowdsale {
     uint ptr = cdBuff(RD_SING);
     // Push exec id and spender allowance location to buffer
     cdPush(ptr, _exec_id);
-    cdPush(ptr, keccak256(keccak256(_spender), keccak256(keccak256(_owner), TOKEN_ALLOWANCES)));
+    cdPush(ptr, keccak256(_spender, keccak256(_owner, TOKEN_ALLOWANCES)));
     // Read from storage
     allowed = uint(readSingleFrom(ptr, _storage));
   }
@@ -527,7 +527,7 @@ library InitCrowdsale {
     uint ptr = cdBuff(RD_SING);
     // Push exec id and transfer agent status storage location to buffer
     cdPush(ptr, _exec_id);
-    cdPush(ptr, keccak256(keccak256(_agent), TOKEN_TRANSFER_AGENTS));
+    cdPush(ptr, keccak256(_agent, TOKEN_TRANSFER_AGENTS));
     // Read from storage
     is_transfer_agent = (readSingleFrom(ptr, _storage) == bytes32(0) ? false : true);
   }
@@ -585,7 +585,7 @@ library InitCrowdsale {
     cdPush(ptr, 0x40);
     cdPush(ptr, bytes32(4));
     // Push reserved destination information storage locations to buffer -
-    uint base_loc = uint(keccak256(keccak256(_destination), TOKEN_RESERVED_ADDR_INFO));
+    uint base_loc = uint(keccak256(_destination, TOKEN_RESERVED_ADDR_INFO));
     cdPush(ptr, bytes32(base_loc));
     cdPush(ptr, bytes32(32 + base_loc));
     cdPush(ptr, bytes32(64 + base_loc));

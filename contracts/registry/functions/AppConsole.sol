@@ -71,10 +71,10 @@ library AppConsole {
     // Place exec id, data read offset, and read size to calldata
     cdPush(ptr, exec_id);
     cdPush(ptr, 0x40);
-    cdPush(ptr, 2);
+    cdPush(ptr, bytes32(2));
     // Place app storage location, and provider app list length in calldata
     bytes32 temp = keccak256(keccak256(provider), PROVIDERS); // Use a temporary var to get provider storage location
-    cdPush(ptr, keccak256(keccak256(_app_name), keccak256(APPS, temp))); // Push application storage location to buffer
+    cdPush(ptr, keccak256(_app_name, keccak256(APPS, temp))); // Push application storage location to buffer
     cdPush(ptr, keccak256(PROVIDER_APP_LIST, temp)); // Push provider app list locaiton to calldata
     // Read from storage and store return in buffer
     bytes32[] memory read_values = readMulti(ptr);
@@ -94,7 +94,7 @@ library AppConsole {
     stPush(ptr, 0);
     // Place app name in app storage location
     // Get app storage location
-    temp = keccak256(keccak256(_app_name), keccak256(APPS, temp));
+    temp = keccak256(_app_name, keccak256(APPS, temp));
     stPush(ptr, temp);
     stPush(ptr, _app_name);
     // Place app storage address in app default storage address location
@@ -113,7 +113,7 @@ library AppConsole {
     // Push description to storage buffer
     // Get app description storage location
     temp = keccak256(keccak256(provider), PROVIDERS);
-    temp = keccak256(keccak256(_app_name), keccak256(APPS, temp));
+    temp = keccak256(_app_name, keccak256(APPS, temp));
     temp = keccak256(APP_DESC, temp);
     stPushBytes(ptr, temp, _app_desc);
 

@@ -121,7 +121,7 @@ contract TestCrowdsaleBuyTokens {
     // Place wei raised, tokens remaining, and purchaser balance storage locations to calldata buffer
     cdPush(ptr, WEI_RAISED);
     cdPush(ptr, TOKENS_REMAINING);
-    cdPush(ptr, keccak256(keccak256(sender), TOKEN_BALANCES));
+    cdPush(ptr, keccak256(sender, TOKEN_BALANCES));
     // Push crowdsale initialization and finalization status storage locations to calldata buffer
     cdPush(ptr, CROWDSALE_IS_INIT);
     cdPush(ptr, CROWDSALE_IS_FINALIZED);
@@ -203,7 +203,7 @@ contract TestCrowdsaleBuyTokens {
     stPush(ptr, bytes32(spend_info.spend_amount));
     // Safely add purchased tokens to purchaser's balance, and check for overflow
     require(spend_info.tokens_purchased + spend_info.spender_token_balance > spend_info.spender_token_balance);
-    stPush(ptr, keccak256(keccak256(sender), TOKEN_BALANCES));
+    stPush(ptr, keccak256(sender, TOKEN_BALANCES));
     stPush(ptr, bytes32(spend_info.spender_token_balance + spend_info.tokens_purchased));
     // Safely subtract purchased token amount from tokens_remaining
     require(spend_info.tokens_purchased <= sale_stat.tokens_remaining);

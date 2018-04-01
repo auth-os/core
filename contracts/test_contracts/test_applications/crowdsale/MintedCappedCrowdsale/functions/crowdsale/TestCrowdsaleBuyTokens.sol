@@ -186,7 +186,7 @@ contract TestCrowdsaleBuyTokens {
     cdPush(ptr, CURRENT_TIER_TOKENS_REMAINING); // Number of tokens remaining in the current tier
     // Push token information storage locations to calldata buffer
     cdPush(ptr, TOKEN_TOTAL_SUPPLY); // Total number of tokens existing so far
-    cdPush(ptr, keccak256(keccak256(sender), TOKEN_BALANCES)); // Sender's token balance
+    cdPush(ptr, keccak256(sender, TOKEN_BALANCES)); // Sender's token balance
 
     // Read from storage, and return data to buffer
     bytes32[] memory read_values = readMulti(ptr);
@@ -301,7 +301,7 @@ contract TestCrowdsaleBuyTokens {
       cdOverwrite(ptr, RD_SING);
       // Push exec id and sender whitelist status storage location to buffer
       cdPush(ptr, exec_id);
-      cdPush(ptr, keccak256(keccak256(sender), SALE_WHITELIST));
+      cdPush(ptr, keccak256(sender, SALE_WHITELIST));
       // Read from storage - if returned value is false, sender cannot participate in this tier
       if (readSingle(ptr) == bytes32(0))
         triggerException(ERR_INSUFFICIENT_PERMISSIONS);
@@ -314,7 +314,7 @@ contract TestCrowdsaleBuyTokens {
     stPush(ptr, bytes32(spend_info.spend_amount));
     // Safely add to sender's token balance, and push their new balance and balance storage location
     require(spend_info.tokens_purchased + spend_info.sender_token_balance > spend_info.sender_token_balance);
-    stPush(ptr, keccak256(keccak256(sender), TOKEN_BALANCES));
+    stPush(ptr, keccak256(sender, TOKEN_BALANCES));
     stPush(ptr, bytes32(spend_info.tokens_purchased + spend_info.sender_token_balance));
     // Safely subtract purchased token amount from tier tokens remaining
     require(cur_tier.tokens_remaining >= spend_info.tokens_purchased);

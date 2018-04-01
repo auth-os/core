@@ -82,14 +82,14 @@ contract TestTokenTransferFrom {
     // Place exec id, data read offset, and read size to calldata
     cdPush(ptr, exec_id);
     cdPush(ptr, 0x40);
-    cdPush(ptr, 5);
+    cdPush(ptr, bytes32(5));
     // Place owner and recipient balance locations, and sender allowance location in calldata buffer
-    cdPush(ptr, keccak256(keccak256(_from), TOKEN_BALANCES));
-    cdPush(ptr, keccak256(keccak256(_to), TOKEN_BALANCES));
-    cdPush(ptr, keccak256(keccak256(sender), keccak256(keccak256(_from), TOKEN_ALLOWANCES)));
+    cdPush(ptr, keccak256(_from, TOKEN_BALANCES));
+    cdPush(ptr, keccak256(_to, TOKEN_BALANCES));
+    cdPush(ptr, keccak256(sender, keccak256(_from, TOKEN_ALLOWANCES)));
     // Place crowdsale finalization status and owner transfer agent status storage locations in calldata buffer
     cdPush(ptr, CROWDSALE_IS_FINALIZED);
-    cdPush(ptr, keccak256(keccak256(_from), TOKEN_TRANSFER_AGENTS));
+    cdPush(ptr, keccak256(_from, TOKEN_TRANSFER_AGENTS));
     // Read from storage
     bytes32[] memory read_values = readMulti(ptr);
     // Ensure length of returned data is correct
@@ -120,13 +120,13 @@ contract TestTokenTransferFrom {
     stPush(ptr, 0);
     stPush(ptr, 0);
     // Place owner balance location and updated balance in buffer
-    stPush(ptr, keccak256(keccak256(_from), TOKEN_BALANCES));
+    stPush(ptr, keccak256(_from, TOKEN_BALANCES));
     stPush(ptr, bytes32(owner_bal));
     // Place recipient balance location and updated balance in buffer
-    stPush(ptr, keccak256(keccak256(_to), TOKEN_BALANCES));
+    stPush(ptr, keccak256(_to, TOKEN_BALANCES));
     stPush(ptr, bytes32(recipient_bal));
     // Place sender allowance location and updated allowance in buffer
-    stPush(ptr, keccak256(keccak256(sender), keccak256(keccak256(_from), TOKEN_ALLOWANCES)));
+    stPush(ptr, keccak256(sender, keccak256(_from, TOKEN_ALLOWANCES)));
     stPush(ptr, bytes32(sender_allowance));
 
     // Get bytes32[] representation of storage buffer
