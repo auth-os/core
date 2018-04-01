@@ -150,6 +150,9 @@ contract TestInitCrowdsale {
 
     // Create storage data return buffer in memory
     uint ptr = stBuff();
+    // Push payment destination and amount to calldata buffer (0, 0)
+    stPush(ptr, 0);
+    stPush(ptr, 0);
     // Push admin address, team wallet, sale rate, crowdsale overall duration, and overall crowdsale start time
     stPush(ptr, ADMIN);
     stPush(ptr, bytes32(_admin));

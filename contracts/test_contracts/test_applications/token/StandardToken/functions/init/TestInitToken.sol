@@ -77,6 +77,9 @@ contract TestInitToken {
   returns (bytes32[] store_data) {
     // Create storage data return buffer in memory
     uint ptr = stBuff();
+    // Push payment destination and amount to calldata buffer (0, 0)
+    stPush(ptr, 0);
+    stPush(ptr, 0);
     // Push token name, symbol, and token decimals locations and values to storage buffer
     stPush(ptr, TOKEN_NAME);
     stPush(ptr, _name);

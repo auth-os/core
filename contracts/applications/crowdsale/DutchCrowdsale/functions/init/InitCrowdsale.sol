@@ -107,6 +107,9 @@ library InitCrowdsale {
 
     // Create storage data return buffer in memory
     uint ptr = stBuff();
+    // Push payment destination and amount to calldata buffer (0, 0)
+    stPush(ptr, 0);
+    stPush(ptr, 0);
     // Push admin address, team wallet, token sell cap, and start/end sale rates to buffer
     stPush(ptr, ADMIN);
     stPush(ptr, bytes32(_admin));
