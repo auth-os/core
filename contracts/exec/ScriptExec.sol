@@ -65,6 +65,10 @@ contract ScriptExec {
     default_provider = _app_provider_id;
   }
 
+  // Payable function - for abstract storage refunds
+  function () public payable {
+  }
+
   /// APPLICATION EXECUTION ///
 
   /*
