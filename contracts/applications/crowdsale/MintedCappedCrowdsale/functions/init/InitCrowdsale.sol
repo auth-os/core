@@ -598,6 +598,10 @@ library InitCrowdsale {
     bytes32[] memory read_values = readMultiFrom(ptr, _storage);
     // Get returned values -
     destination_list_index = uint(read_values[0]);
+    // If the returned list index for the destination is 0, destination is not in list
+    if (destination_list_index == 0)
+      return;
+    destination_list_index--;
     num_tokens = uint(read_values[1]);
     num_percent = uint(read_values[2]);
     percent_decimals = uint(read_values[3]);

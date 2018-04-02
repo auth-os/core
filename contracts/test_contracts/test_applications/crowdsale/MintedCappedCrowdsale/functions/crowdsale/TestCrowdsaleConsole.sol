@@ -482,7 +482,7 @@ contract TestCrowdsaleConsole {
     // Read from storage and check that the token name is nonzero and the start time has not passed yet
     bytes32[] memory read_values = readMulti(ptr);
     if (
-      read_values[0] > bytes32(now)
+      read_values[0] < bytes32(now)
       || read_values[1] == bytes32(0)
     ) triggerException(ERR_INSUFFICIENT_PERMISSIONS);
 

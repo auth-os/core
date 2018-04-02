@@ -10,7 +10,7 @@ contract TestCrowdsaleBuyTokens {
   bytes32[] public last_storage_event;
 
   // Constructor - set storage address
-  function TestCrowdsaleConsole(address _storage) public {
+  function TestCrowdsaleBuyTokens(address _storage) public {
     app_storage = _storage;
   }
 

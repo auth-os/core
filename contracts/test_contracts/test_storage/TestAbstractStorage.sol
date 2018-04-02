@@ -39,7 +39,7 @@ contract TestAbstractStorage {
 
   event ApplicationInitialized(bytes32 indexed execution_id, address indexed init_address, address script_exec, address updater);
   event ApplicationFinalization(bytes32 indexed execution_id, address indexed init_address);
-  event ApplicationExecution(bytes32 indexed execution_id, address indexed script_exec);
+  event ApplicationExecution(bytes32 indexed execution_id, address indexed script_target);
   event DeliveredPayment(bytes32 indexed execution_id, address indexed destination, uint amount);
 
   // EXCEPTION HANDLING //

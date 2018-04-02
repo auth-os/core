@@ -10,7 +10,7 @@ contract TestCrowdsaleBuyTokens {
   bytes32[] public last_storage_event;
 
   // Constructor - set storage address
-  function TestCrowdsaleConsole(address _storage) public {
+  function TestCrowdsaleBuyTokens(address _storage) public {
     app_storage = _storage;
   }
 
@@ -163,7 +163,10 @@ contract TestCrowdsaleBuyTokens {
     cdPush(ptr, exec_id);
     cdPush(ptr, CROWDSALE_CURRENT_TIER);
     // Read from storage, and place return in CrowdsaleTier struct
-    cur_tier.index = uint(readSingle(ptr)) - 1; // Indexes are off by one in storage
+    cur_tier.index = uint(readSingle(ptr));
+    // Indexes are off by one in storage - if zero was returned, tier index is invalid
+    require(cur_tier.index != 0);
+    cur_tier.index--;
 
     // Create 'readMulti' calldata buffer in memory - overwrite previous buffer
     cdOverwrite(ptr, RD_MULTI);
@@ -226,7 +229,7 @@ contract TestCrowdsaleBuyTokens {
     // Sanity checks - sale rate, wallet, and number of tiers should be nonzero
     assert(sale_stat.team_wallet != address(0) && sale_stat.sale_rate > 0 && sale_stat.num_tiers != 0);
     // Ensure current tier index is valid -
-    assert(cur_tier.index < sale_stat.num_tiers && cur_tier.index != 0);
+    assert(cur_tier.index < sale_stat.num_tiers);
 
     /// Assess current tier state (2 scenarios):
     /*

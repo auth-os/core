@@ -409,16 +409,38 @@ contract TestTokenConsole {
 
     // Create a new 'readMulti' buffer - we don't want to overwrite addresses
     ptr = cdBuff(RD_MULTI);
+    // Push exec id, data read offset, and read size to buffer
+    cdPush(ptr, exec_id);
+    cdPush(ptr, 0x40);
+    cdPush(ptr, bytes32(4 * _amt));
     // For each address returned, place the locations of their balance, reserved tokens, reserved percents, and percent's precision in 'readMulti' buffer
     for (i = 0; i < _amt; i++) {
       // Destination balance location
       cdPush(ptr, keccak256(keccak256(initial_read_values[i]), TOKEN_BALANCES));
       // Number of tokens reserved
-      cdPush(ptr, keccak256(keccak256(initial_read_values[i]), TOKEN_RESERVED_ADDR_INFO));
+      cdPush(
+        ptr,
+        bytes32(
+          32 +
+          uint(keccak256(keccak256(address(initial_read_values[i])), TOKEN_RESERVED_ADDR_INFO))
+        )
+      );
       // Number of percent reserved - location is 32 bytes after number of tokens reserved
-      cdPush(ptr, bytes32(32 + uint(top(ptr))));
+      cdPush(
+        ptr,
+        bytes32(
+          64 +
+          uint(keccak256(keccak256(address(initial_read_values[i])), TOKEN_RESERVED_ADDR_INFO))
+        )
+      );
       // Precision of percent - location is 32 bytes after number of percentage points reserved
-      cdPush(ptr, bytes32(32 + uint(top(ptr))));
+      cdPush(
+        ptr,
+        bytes32(
+          96 +
+          uint(keccak256(keccak256(address(initial_read_values[i])), TOKEN_RESERVED_ADDR_INFO))
+        )
+      );
     }
     // Read from storage, and store return in buffer
     bytes32[] memory read_reserved_info = readMulti(ptr);
@@ -427,15 +449,18 @@ contract TestTokenConsole {
 
     // Create storage buffer in free memory, to set up return value
     ptr = stBuff();
+    // Push payment destination and amount (0, 0) to buffer
+    stPush(ptr, 0);
+    stPush(ptr, 0);
     // Push new list length to storage buffer
     stPush(ptr, TOKEN_RESERVED_DESTINATIONS);
     stPush(ptr, bytes32(num_destinations - _amt));
     // For each address, get their new balance and add to storage buffer
     for (i = 0; i < _amt; i++) {
       // Get percent reserved and precision
-      uint to_add = uint(read_reserved_info[(i + 2) * 4]);
+      uint to_add = uint(read_reserved_info[(i * 4) + 2]);
       // Two points of precision are added to ensure at least a percent out of 100
-      uint precision = 2 + uint(read_reserved_info[(i + 3) * 4]);
+      uint precision = 2 + uint(read_reserved_info[(i * 4) + 3]);
       // Get percent divisor, and check for overflow
       assert(10 ** precision > precision);
       precision = 10 ** precision;
@@ -445,8 +470,8 @@ contract TestTokenConsole {
 
       // Add number of tokens reserved, and check for overflow
       // Additionally, check that the added amount does not overflow total supply
-      require(to_add + uint(read_reserved_info[(i + 1) * 4]) >= to_add);
-      to_add += uint(read_reserved_info[(i + 1) * 4]);
+      require(to_add + uint(read_reserved_info[(i * 4) + 1]) >= to_add);
+      to_add += uint(read_reserved_info[(i * 4) + 1]);
       require(total_supply + to_add >= total_supply);
       // Increment total supply
       total_supply += to_add;
@@ -463,20 +488,6 @@ contract TestTokenConsole {
     stPush(ptr, bytes32(total_supply));
     // Get bytes32[] representation of storage buffer
     store_data = getBuffer(ptr);
-  }
-
-  /*
-  Returns the last value stored in the buffer
-
-  @param _ptr: A pointer to the buffer
-  @return last_val: The final value stored in the buffer
-  */
-  function top(uint _ptr) internal pure returns (bytes32 last_val) {
-    assembly {
-      let len := mload(_ptr)
-      // Add 0x20 to length to account for the length itself
-      last_val := mload(add(0x20, add(len, _ptr)))
-    }
   }
 
   /*
