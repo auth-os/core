@@ -82,7 +82,7 @@ C. Deployment of ScriptExec, and initialization of crowdsale app:
   2. To initialize our application - get the calldata you want for the crowdsale, from InitCrowdsale.init. Pass that, and the app's name (MintedCappedCrowdsale), as well as 'true' for is_payable, into ScriptExec.initAppInstance. You should get back an exec id - this it the crowdsale's exec id, to be used only through the ScriptExec contract
   
 D. Initialization of MintedCappedCrowdsale:
-  1. MintedCappedCrowdsale's 'InitCrowdsale.init' function was already called during the previous step. However, we can now do a few things to finish the job and get an up-and-running crowdsale app. First, we need to initialize the crowdsale token. Get the calldata for CrowdsaleConsole.initCrowdsaleConsole, and pass that through ScriptExec.exec, with CrowdsaleConsole as the target address.
+  1. MintedCappedCrowdsale's 'InitCrowdsale.init' function was already called during the previous step. However, we can now do a few things to finish the job and get an up-and-running crowdsale app. First, we need to initialize the crowdsale token. Get the calldata for CrowdsaleConsole.initCrowdsaleToken, and pass that through ScriptExec.exec, with CrowdsaleConsole as the target address.
     - You can view info on the created token in InitCrowdsale: getCrowdsaleInfo, getCrowdsaleStartTime, getCurrentTierInfo, getCrowdsaleTier, getTokenInfo
   2. We can now call CrowdsaleConsole.initializeCrowdsale, or we can do any of the following:
     - Add whitelisted tiers and users (CrowdsaleConsole.createCrowdsaleTiers and CrowdsaleConsole.whitelistMulti)
