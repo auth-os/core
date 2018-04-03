@@ -57,6 +57,7 @@ The 'default' variables in ScriptExec.sol can be examined for information on the
 A. Initial Deployment (storage contract, registry contracts, application contracts):
   1. We first deploy all contracts, except the Script Exec contract. The Script Exec contract is built in such a way that it depends on already-deployed contracts, as well as the Script Registry contracts being initialized and in use.
   2. First round of deployment - RegistryStorage, InitRegistry, AppConsole, VersionConsole, ImplementationConsole, InitCrowdsale, CrowdsaleConsole, TokenConsole, CrowdsaleBuyTokens, TokenTransfer, TokenTransferFrom, TokenApprove
+  
 B. Initialization of Script Registry and registration/implementation of crowdsale contracts:
   1. We now need to initialize the script registry contracts, so that the ScriptExec contract is able to read information about the crowdsale we want to deploy. This is called from your personal address, as ScriptExec currently does not support initializing the registry contracts (it tries to look up initialization information on the registry contracts, but the registry contracts are not yet initialized themselves!)
   2. Call: RegistryStorage.initAndFinalize
@@ -75,9 +76,11 @@ B. Initialization of Script Registry and registration/implementation of crowdsal
     - The live crowdsale application was implemented in 3 'addFunction' batches - first, the token and purchase contracts, then the TokenConsole functions and address, and finally the CrowdsaleConsole functions and address.
   7. Finally - we want to finalize our version, marking it as the latest, 'stable' version. This finalization allows the ScriptExec contract to view the app we just registered. Call VersionConsole.finalizeVersion through the storage exec function.
     - View init information: getVersionInitInfo, getAppLatestInfo
+    
 C. Deployment of ScriptExec, and initialization of crowdsale app:
   1. We now have the registry storage address, an exec id we've been using with the registry, and the id of the the provider that registered the apps we want to initialize (the hash of the address that called all the RegistryStorage.exec functions). Put the appropriate informatino in the constructor, and deploy
   2. To initialize our application - get the calldata you want for the crowdsale, from InitCrowdsale.init. Pass that, and the app's name (MintedCappedCrowdsale), as well as 'true' for is_payable, into ScriptExec.initAppInstance. You should get back an exec id - this it the crowdsale's exec id, to be used only through the ScriptExec contract
+  
 D. Initialization of MintedCappedCrowdsale:
   1. MintedCappedCrowdsale's 'InitCrowdsale.init' function was already called during the previous step. However, we can now do a few things to finish the job and get an up-and-running crowdsale app. First, we need to initialize the crowdsale token. Get the calldata for CrowdsaleConsole.initCrowdsaleConsole, and pass that through ScriptExec.exec, with CrowdsaleConsole as the target address.
     - You can view info on the created token in InitCrowdsale: getCrowdsaleInfo, getCrowdsaleStartTime, getCurrentTierInfo, getCrowdsaleTier, getTokenInfo
@@ -86,9 +89,11 @@ D. Initialization of MintedCappedCrowdsale:
     - Update tier duration (must be before tier begins) (CrowdsaleConsole.updateTierDuration)
     - Set, update, or delete reserved tokens: (TokenConsole.updateMultipleReservedTokens, removeReservedTokens)
   3. Finally - call CrowdsaleConsole.initializeCrowdsale. This will open the app for purchasing (once the start time is reached)
-D. Buying tokens:
+  
+E. Buying tokens:
   1. Buying tokens is done through the CrowdsaleBuyTokens.buy function. It takes simply the context array, which should be the crowdsale app's exec id, the sender's address, and the amount of wei sent. Passing this into ScriptExec.exec and sending the correct amount of wei should net the sender tokens (if there are some to be sold)
-E. Finalization of crowdsale and ditribution of reserved tokens:
+  
+F. Finalization of crowdsale and ditribution of reserved tokens:
   1. The owner can finalize the crowdsale at any point - by calling CrowdsaleConsole.finalizeCrowdsale (through ScriptExec.exec). Finalization unlocks tokens for transfer, and allows reserved tokens to be distributed.
   2. Reserved tokens are distributed through TokenConsole.distributeReservedTokens. The function takes an 'amount' of destinations you want to cycle through and distribute to - so that batching is possible in the event of several destinations.
 
