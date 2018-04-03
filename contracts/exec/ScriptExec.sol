@@ -149,12 +149,13 @@ contract ScriptExec {
   and script registry exec id to get app information. Uses latest app version by default.
 
   @param _app: The name of the application to initialize
+  @param _is_payable: Whether the app will accept ether
   @param _init_calldata: Calldata to be forwarded to an application's initialization function
   @return app_storage: The storage address of the application - pulled from default_storage
   @return ver_name: The name of the most recent stable version of the application, which was used to register this app instance
   @return exec_id: The execution id (within the application's storage) of the created application instance
   */
-  function initAppInstance(bytes32 _app, bytes _init_calldata) public returns (address app_storage, bytes32 ver_name, bytes32 app_exec_id) {
+  function initAppInstance(bytes32 _app, bool _is_payable, bytes _init_calldata) public returns (address app_storage, bytes32 ver_name, bytes32 app_exec_id) {
     // Ensure valid input
     require(_app != bytes32(0) && _init_calldata.length != 0);
 
@@ -191,7 +192,6 @@ contract ScriptExec {
       returndatacopy(ptr, 0, 0xc0)
 
       // Get returned data -
-      let is_payable := mload(ptr)
       app_storage := mload(add(0x20, ptr))
       ver_name := mload(add(0x40, ptr))
       let app_init_addr := mload(add(0x60, ptr))
@@ -210,7 +210,7 @@ contract ScriptExec {
       mstore(ptr, mload(add(0x20, init_info)))
       // Place updater address, payable status, app init address, init calldata, and allowed addresses in calldata
       mstore(add(0x04, ptr), mload(add(0xa0, init_info)))
-      mstore(add(0x24, ptr), is_payable)
+      mstore(add(0x24, ptr), _is_payable)
       mstore(add(0x44, ptr), app_init_addr)
       // Get passed in init calldata, which will be forwarded to the application's init function
       mstore(add(0x64, ptr), 0xa0) // Data read offset - init calldata
