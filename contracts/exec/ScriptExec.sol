@@ -94,24 +94,16 @@ contract ScriptExec {
   function exec(address _target, bytes _app_calldata) public payable returns (bool failed, bytes returned_data) {
     address sender;
     bytes32 exec_id;
-    // Ensure valid calldata if wei was sent
-    if (msg.value > 0) {
-      // Ensure execution id and sender make up the calldata's first 64 bytes, after the function selector
-      // Ensure the next 32 bytes is equal to msg.value
-      uint wei_sent;
-      (exec_id, sender, wei_sent) = parse(_app_calldata);
-      require(sender == msg.sender && wei_sent == msg.value);
-
-      // Call target with calldata
+    uint wei_sent;
+    // Ensure execution id and sender make up the calldata's first 64 bytes, after the function selector
+    // Ensure the next 32 bytes is equal to msg.value
+    (exec_id, sender, wei_sent) = parse(_app_calldata);
+    require(sender == msg.sender && wei_sent == msg.value);
+    // Call target with calldata
+    if (msg.value > 0)
       require(default_storage.call.value(msg.value)(APP_EXEC, _target, exec_id, uint(96), uint(_app_calldata.length), _app_calldata));
-    } else {
-      // Otherwise, ensure valid calldata - execution id and sender make up the calldata's first 64 bytes, after the function selector
-      (exec_id, sender, ) = parse(_app_calldata);
-      require(sender == msg.sender);
-
-      // Call target with calldata
+    else
       require(default_storage.call(APP_EXEC, _target, exec_id, uint(96), uint(_app_calldata.length), _app_calldata));
-    }
 
     // Get returned data
     assembly {
@@ -215,7 +207,7 @@ contract ScriptExec {
       // Get passed in init calldata, which will be forwarded to the application's init function
       mstore(add(0x64, ptr), 0xa0) // Data read offset - init calldata
       mstore(add(0x84, ptr), add(0xc0, cd_len)) // Data read offset - _allowed array
-      calldatacopy(add(0xa4, ptr), 0x44, add(0x20, mload(_init_calldata)))
+      calldatacopy(add(0xa4, ptr), 0x64, add(0x20, mload(_init_calldata)))
       // Get returned 'allowed' array list and add to calldata
       returndatacopy(add(add(0xc4, cd_len), ptr), 0xa0, sub(returndatasize, 0xa0))
 

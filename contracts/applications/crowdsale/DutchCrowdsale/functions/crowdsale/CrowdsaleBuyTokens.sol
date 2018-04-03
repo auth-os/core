@@ -127,7 +127,7 @@ library CrowdsaleBuyTokens {
 
     // Get SpendInfo struct from returned token and balance information
     SpendInfo memory spend_info = SpendInfo({
-      spender_token_balance: uint(read_values[11]),
+      spender_token_balance: uint(read_values[2]),
       team_wallet: address(read_values[9]),
       spend_amount: 0,
       tokens_purchased: 0
@@ -140,7 +140,7 @@ library CrowdsaleBuyTokens {
         sale_stat.tokens_remaining == 0                            // No tokens remaining to purchase
         || read_values[3] == bytes32(0)                            // Crowdsale not yet initialized
         || read_values[4] != bytes32(0)                            // Crowdsale already finalized
-        || sale_stat.start_time < now                              // Crowdsale has not begun yet
+        || sale_stat.start_time > now                              // Crowdsale has not begun yet
         || sale_stat.start_time + sale_stat.duration <= now        // Crowdsale has already ended
     ) triggerException(ERR_INSUFFICIENT_PERMISSIONS);
 
