@@ -1,4 +1,4 @@
-![auth_os](https://media.discordapp.net/attachments/376127621940903958/418225246559272981/auth_os-Logo-Authio.png)
+![auth_os](https://uploads-ssl.webflow.com/59fdc220cd54e70001a36846/5ac504590012b0bc9d789ab8_auth_os%20Logo%20Blue.png)
 
 ### Description:
 
