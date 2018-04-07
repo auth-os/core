@@ -38,6 +38,7 @@ contract ScriptExec {
   // EXCEPTION HANDLING //
 
   event StorageException(address indexed storage_addr, bytes32 indexed exec_id, address sender, uint wei_sent);
+  event AppInstanceCreated(address indexed creator, bytes32 indexed exec_id, address storage_addr, bytes32 app_name, bytes32 version_name);
 
   struct AppInstance {
     address deployer;
@@ -222,6 +223,8 @@ contract ScriptExec {
       // Get returned app_exec_id
       app_exec_id := mload(ptr)
     }
+    // Emit event
+    emit AppInstanceCreated(msg.sender, app_exec_id, app_storage, _app, ver_name);
     // Update sender's deployed instances
     deployed_apps[app_storage][app_exec_id] = AppInstance({
       deployer: msg.sender,

@@ -37,7 +37,7 @@ library CrowdsaleConsole {
   // Storage location of the end time of the current tier. Purchase attempts beyond this time will update the current tier (if another is available)
   bytes32 public constant CURRENT_TIER_ENDS_AT = keccak256("crowdsale_tier_ends_at");
 
-  // Storage seed for crowdsale whitelist mapping - maps addresses to a boolean value indicating whether they are on the whitelist
+  // Storage seed for crowdsale whitelist mappings - maps each tier's index to a whitelist mapping, which maps adddresses to their whitelist status (bool)
   bytes32 public constant SALE_WHITELIST = keccak256("crowdsale_purchase_whitelist");
 
   /// TOKEN STORAGE ///
@@ -138,8 +138,9 @@ library CrowdsaleConsole {
   }
 
   /*
-  Allows the admin of a crowdsale to update the whitelist status for several addresses simultaneously
+  Allows the admin of a crowdsale to update the whitelist status for several addresses simultaneously within a tier
 
+  @param _tier_index: The index of the tier to update the whitelist for
   @param _to_update: An array of addresses for which whitelist status will be updated
   @param _new_status: The new whitelist status of the address. If true, address is whitelisted
   @param _context: The execution context for this application - a 96-byte array containing (in order):
@@ -148,7 +149,7 @@ library CrowdsaleConsole {
     3. Wei amount sent with transaction to storage
   @return store_data: A formatted storage request - first 64 bytes designate a forwarding address (and amount) for any wei sent
   */
-  function whitelistMulti(address[] _to_update, bool[] _new_status, bytes _context) public view returns (bytes32[] store_data) {
+  function whitelistMultiForTier(uint _tier_index, address[] _to_update, bool[] _new_status, bytes _context) public view returns (bytes32[] store_data) {
     // Ensure valid input
     require(_to_update.length == _new_status.length);
     if (_context.length != 96)
@@ -176,7 +177,7 @@ library CrowdsaleConsole {
     stPush(ptr, 0);
     // Loop over input and add whitelist storage information to buffer
     for (uint i = 0; i < _to_update.length; i++) {
-      stPush(ptr, keccak256(keccak256(_to_update[i]), SALE_WHITELIST));
+      stPush(ptr, keccak256(keccak256(_to_update[i]), keccak256(_tier_index, SALE_WHITELIST)));
       stPush(ptr, (_new_status[i] ? bytes32(1) : bytes32(0)));
     }
     // Get bytes32[] storage request array from buffer

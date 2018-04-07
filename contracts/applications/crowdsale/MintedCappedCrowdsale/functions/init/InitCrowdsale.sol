@@ -46,10 +46,10 @@ library InitCrowdsale {
   // Storage location of amount of wei raised during the crowdsale, total
   bytes32 public constant WEI_RAISED = keccak256("crowdsale_wei_raised");
 
-  // Storage location of token per wei rate
+  // Storage location of wei per token rate
   bytes32 public constant SALE_RATE = keccak256("crowdsale_sale_rate");
 
-  // Storage seed for crowdsale whitelist mapping - maps addresses to a boolean value indicating whether they are on the whitelist
+  // Storage seed for crowdsale whitelist mappings - maps each tier's index to a whitelist mapping, which maps adddresses to their whitelist status (bool)
   bytes32 public constant SALE_WHITELIST = keccak256("crowdsale_purchase_whitelist");
 
   /// TOKEN STORAGE ///
@@ -105,7 +105,7 @@ library InitCrowdsale {
   as any additional tiers of the crowdsale that will exist, followed by finalizing the initialization of the crowdsale.
 
   @param _team_wallet: The team funds wallet, where crowdsale purchases are forwarded
-  @param _sale_rate: The amount of tokens purchased per wei spent
+  @param _sale_rate: The amount of wei spent for each token purchased
   @param _start_time: The start time of the initial tier of the crowdsale
   @param _initial_tier_name: The name of the initial tier of the crowdsale
   @param _initial_tier_duration: The duration of the initial tier of the crowdsale
@@ -176,6 +176,24 @@ library InitCrowdsale {
     store_data = getBuffer(ptr);
   }
 
+  /*
+  Returns the address of the admin of the crowdsale
+
+  @param _storage: The application's storage address
+  @param _exec_id: The execution id to pull the admin address from
+  @return admin: The address of the admin of the crowdsale
+  */
+  function getAdmin(address _storage, bytes32 _exec_id) public view returns (address admin) {
+    // Create 'read' calldata buffer in memory
+    uint ptr = cdBuff(RD_SING);
+    // Push exec id and admin address storage location to buffer
+    cdPush(ptr, _exec_id);
+    cdPush(ptr, ADMIN);
+
+    // Read from storage and get return value
+    admin = address(readSingleFrom(ptr, _storage));
+  }
+
   /// CROWDSALE GETTERS ///
 
   /*
@@ -183,7 +201,7 @@ library InitCrowdsale {
 
   @param _storage: The address where application storage is located
   @param _exec_id: The application execution id under which storage for this instance is located
-  @return sale_rate: The number of tokens recieved per wei spent
+  @return sale_rate: The number of wei spent per token purchased
   @return wei_raised: The amount of wei raised in the crowdsale so far
   @return team_wallet: The address to which funds are forwarded during this crowdsale
   @return is_initialized: Whether or not the crowdsale has been completely initialized by the admin
@@ -327,6 +345,48 @@ library InitCrowdsale {
   }
 
   /*
+  Loops through all tiers and their durations, and returns the passed-in index's start and end dates
+
+  @param _storage: The address where application storage is located
+  @param _exec_id: The application execution id under which storage for this instance is located
+  @param _index: The index of the tier in the crowdsale tier list. Input index should be like a normal array index (lowest index: 0)
+  @return tier_start: The time when the given tier starts
+  @return tier_end: The time at which the given tier ends
+  */
+  function getTierStartAndEndDates(address _storage, bytes32 _exec_id, uint _index) public view returns (uint tier_start, uint tier_end) {
+    // Create 'readMulti' calldata buffer in memory
+    uint ptr = cdBuff(RD_MULTI);
+    // Push exec id, data read offset, and read size to calldata buffer
+    cdPush(ptr, _exec_id);
+    cdPush(ptr, 0x40);
+    cdPush(ptr, bytes32(3 + _index));
+    // Add crowdsale tier list length and crowdsale start time to buffer
+    cdPush(ptr, CROWDSALE_TIERS);
+    cdPush(ptr, CROWDSALE_START_TIME);
+    // Get storage read offset for initial tier duration, then loop over each tier until _index and add their duration storage locations to the read buffer
+    bytes32 duration_offset = bytes32(96 + uint(CROWDSALE_TIERS));
+    for (uint i = 0; i <= _index; i++) {
+      cdPush(ptr, duration_offset);
+      // Increment the duration offset to the next index in the array
+      duration_offset = bytes32(160 + uint(duration_offset));
+    }
+    // Read from storage and store return in buffer
+    uint[] memory read_values = readMultiUintFrom(ptr, _storage);
+
+    // Check that the passed-in index is within the range of the tier list
+    if (read_values[0] <= _index)
+      return (0, 0);
+
+    // Get returned start time, then loop through each returned duration and get the start time for the tier
+    tier_start = read_values[1];
+    for (i = 0; i < _index; i++) {
+      tier_start += read_values[2 + i];
+    }
+    // Get the tier end time - start time plus the duration of the tier, the last read value in the list
+    tier_end = tier_start + read_values[read_values.length - 1];
+  }
+
+  /*
   Returns the number of tokens sold so far this crowdsale, calculated from crowdsale sale rate and wei raised
 
   @param _storage: The address where application storage is located
@@ -350,25 +410,28 @@ library InitCrowdsale {
     // Get return value -
     uint wei_raised = uint(read_values[0]);
     uint sale_rate = uint(read_values[1]);
-    tokens_sold = wei_raised * sale_rate;
+    tokens_sold = wei_raised / sale_rate;
   }
 
   /*
-  Returns whether a given buyer is whitelisted for the crowdsale
+  Returns whether a given buyer is whitelisted for a given tier
 
   @param _storage: The address where application storage is located
   @param _exec_id: The application execution id under which storage for this instance is located
+  @param _tier_index: The index of the tier about which the whitelist information will be pulled
   @param _buyer: The address of the user whose whitelist status will be returned
   @return is_whitelisted: Whether or not the buyer is whitelisted for the crowdsale
   */
-  function getWhitelistStatus(address _storage, bytes32 _exec_id, address _buyer) public view returns (bool is_whitelisted) {
+  function getWhitelistStatus(address _storage, bytes32 _exec_id, uint _tier_index, address _buyer) public view returns (bool is_whitelisted) {
     // Create 'read' calldata buffer in memory
     uint ptr = cdBuff(RD_SING);
     // Push exec id to buffer
     cdPush(ptr, _exec_id);
-    // Push buyer whitelist status storage location to buffer
-    cdPush(ptr, keccak256(keccak256(_buyer), SALE_WHITELIST));
-    // Raed from storage and get return value
+    // Get buyer whitelist location for the tier -
+    bytes32 location = keccak256(keccak256(_buyer), keccak256(_tier_index, SALE_WHITELIST));
+    // Push whitelist location to read buffer
+    cdPush(ptr, location);
+    // Read and return
     is_whitelisted = (readSingleFrom(ptr, _storage) == bytes32(0) ? false : true);
   }
 
@@ -770,6 +833,35 @@ library InitCrowdsale {
   @return read_values: The values read from storage
   */
   function readMultiAddressFrom(uint _ptr, address _storage) internal view returns (address[] read_values) {
+    bool success;
+    assembly {
+      // Minimum length for 'readMulti' - 1 location is 0x84
+      if lt(mload(_ptr), 0x84) { revert (0, 0) }
+      // Read from storage
+      success := staticcall(gas, _storage, add(0x20, _ptr), mload(_ptr), 0, 0)
+      // If call succeed, get return information
+      if gt(success, 0) {
+        // Ensure data will not be copied beyond the pointer
+        if gt(sub(returndatasize, 0x20), mload(_ptr)) { revert (0, 0) }
+        // Copy returned data to pointer, overwriting it in the process
+        // Copies returndatasize, but ignores the initial read offset so that the bytes32[] returned in the read is sitting directly at the pointer
+        returndatacopy(_ptr, 0x20, sub(returndatasize, 0x20))
+        // Set return bytes32[] to pointer, which should now have the stored length of the returned array
+        read_values := _ptr
+      }
+    }
+    if (!success)
+      triggerException(ERR_READ_FAILED);
+  }
+
+  /*
+  Executes a 'readMulti' function call, given a pointer to a calldata buffer
+
+  @param _ptr: A pointer to the location in memory where the calldata for the call is stored
+  @param _storage: The address to read from
+  @return read_values: The values read from storage
+  */
+  function readMultiUintFrom(uint _ptr, address _storage) internal view returns (uint[] read_values) {
     bool success;
     assembly {
       // Minimum length for 'readMulti' - 1 location is 0x84

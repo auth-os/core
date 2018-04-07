@@ -282,7 +282,7 @@ library CrowdsaleBuyTokens {
       cdOverwrite(ptr, RD_SING);
       // Push exec id and sender whitelist status storage location to buffer
       cdPush(ptr, exec_id);
-      cdPush(ptr, keccak256(keccak256(sender), SALE_WHITELIST));
+      cdPush(ptr, keccak256(keccak256(sender), keccak256(cur_tier.index, SALE_WHITELIST)));
       // Read from storage - if returned value is false, sender cannot participate in this tier
       if (readSingle(ptr) == bytes32(0))
         triggerException(ERR_INSUFFICIENT_PERMISSIONS);
