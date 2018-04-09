@@ -19,11 +19,22 @@ library InitCrowdsale {
   // Storage location of the amount of time the crowdsale will take, accounting for all tiers
   bytes32 public constant CROWDSALE_TOTAL_DURATION = keccak256("crowdsale_total_duration");
 
+  // Storage location of the amount of tokens sold in the crowdsale so far. Does not include reserved tokens
+  bytes32 public constant CROWDSALE_TOKENS_SOLD = keccak256("crowdsale_tokens_sold");
+
+  // Storage location of the minimum amount of wei allowed to be contributed for each purchase
+  bytes32 public constant CROWDSALE_MINIMUM_CONTRIBUTION = keccak256("crowdsale_min_cap");
+
+  // Maps addresses to a boolean indicating whether or not this address has contributed
+  // At its base location, stores the amount of unique contributors so far in this crowdsale
+  bytes32 public constant CROWDSALE_UNIQUE_CONTRIBUTORS = keccak256("crowdsale_contributors");
+
   // Storage location of a list of the tiers the crowdsale will have
   /* Each tier mimics the following struct:
   struct CrowdsaleTier {
     bytes32 _tier_name;                 // The name of the crowdsale tier
     uint _tier_token_sell_cap;          // The maximum number of tokens that will be sold during this tier
+    uint _tier_purchase_price;          // The price of a token in wei for this tier
     uint _duration;                     // The amount of time this tier will be active for
     bool _tier_duration_is_modifiable;  // Whether the crowdsale admin is allowed to modify the duration of a tier before it goes live
     bool _tier_is_whitelist_enabled     // Whether this tier of the crowdsale requires users to be on a purchase whitelist
@@ -46,10 +57,13 @@ library InitCrowdsale {
   // Storage location of amount of wei raised during the crowdsale, total
   bytes32 public constant WEI_RAISED = keccak256("crowdsale_wei_raised");
 
-  // Storage location of wei per token rate
-  bytes32 public constant SALE_RATE = keccak256("crowdsale_sale_rate");
-
-  // Storage seed for crowdsale whitelist mappings - maps each tier's index to a whitelist mapping, which maps adddresses to their whitelist status (bool)
+  // Storage seed for crowdsale whitelist mappings - maps each tier's index to a mapping of addresses to whtielist information
+  /* Each whitelist entry mimics this struct:
+  struct WhitelistListing {
+    uint minimum_contribution;
+    uint max_contribution;
+  }
+  */
   bytes32 public constant SALE_WHITELIST = keccak256("crowdsale_purchase_whitelist");
 
   /// TOKEN STORAGE ///
@@ -105,21 +119,29 @@ library InitCrowdsale {
   as any additional tiers of the crowdsale that will exist, followed by finalizing the initialization of the crowdsale.
 
   @param _team_wallet: The team funds wallet, where crowdsale purchases are forwarded
-  @param _sale_rate: The amount of wei spent for each token purchased
   @param _start_time: The start time of the initial tier of the crowdsale
   @param _initial_tier_name: The name of the initial tier of the crowdsale
+  @param _initial_tier_price: The price of each token purchased in wei, for the initial crowdsale tier
   @param _initial_tier_duration: The duration of the initial tier of the crowdsale
   @param _initial_tier_token_sell_cap: The maximum number of tokens that can be sold during the initial tier
   @param _initial_tier_is_whitelisted: Whether the initial tier of the crowdsale requires an address be whitelisted for successful purchase
   @param _admin: A privileged address which is able to complete the crowdsale initialization process
   @return store_data: A formatted storage request
   */
-  function init(address _team_wallet, uint _sale_rate, uint _start_time, bytes32 _initial_tier_name, uint _initial_tier_duration, uint _initial_tier_token_sell_cap, bool _initial_tier_is_whitelisted, address _admin) public view
-  returns (bytes32[] store_data) {
+  function init(
+    address _team_wallet,
+    uint _start_time,
+    bytes32 _initial_tier_name,
+    uint _initial_tier_price,
+    uint _initial_tier_duration,
+    uint _initial_tier_token_sell_cap,
+    bool _initial_tier_is_whitelisted,
+    address _admin
+  ) public view returns (bytes32[] store_data) {
     // Ensure valid input
     if (
       _team_wallet == address(0)
-      || _sale_rate == 0
+      || _initial_tier_price == 0
       || _start_time < now
       || _start_time + _initial_tier_duration <= _start_time
       || _initial_tier_token_sell_cap == 0
@@ -128,16 +150,11 @@ library InitCrowdsale {
 
     // Create storage data return buffer in memory
     uint ptr = stBuff();
-    // Push payment destination and amount to calldata buffer (0, 0)
-    stPush(ptr, 0);
-    stPush(ptr, 0);
-    // Push admin address, team wallet, sale rate, crowdsale overall duration, and overall crowdsale start time
+    // Push admin address, team wallet, crowdsale overall duration, and overall crowdsale start time
     stPush(ptr, ADMIN);
     stPush(ptr, bytes32(_admin));
     stPush(ptr, WALLET);
     stPush(ptr, bytes32(_team_wallet));
-    stPush(ptr, SALE_RATE);
-    stPush(ptr, bytes32(_sale_rate));
     stPush(ptr, CROWDSALE_TOTAL_DURATION);
     stPush(ptr, bytes32(_initial_tier_duration));
     stPush(ptr, CROWDSALE_START_TIME);
@@ -152,17 +169,20 @@ library InitCrowdsale {
     // Tier token sell cap
     stPush(ptr, bytes32(64 + uint(CROWDSALE_TIERS)));
     stPush(ptr, bytes32(_initial_tier_token_sell_cap));
-    // Tier active duration
+    // Tier purchase price
     stPush(ptr, bytes32(96 + uint(CROWDSALE_TIERS)));
+    stPush(ptr, bytes32(_initial_tier_price));
+    // Tier active duration
+    stPush(ptr, bytes32(128 + uint(CROWDSALE_TIERS)));
     stPush(ptr, bytes32(_initial_tier_duration));
     // Whether this tier's duration is modifiable prior to its start time (automatically true for initial tiers)
-    stPush(ptr, bytes32(128 + uint(CROWDSALE_TIERS)));
+    stPush(ptr, bytes32(160 + uint(CROWDSALE_TIERS)));
     stPush(ptr, bytes32(1));
     // Whether this tier requires an address be whitelisted to complete token purchase
-    stPush(ptr, bytes32(160 + uint(CROWDSALE_TIERS)));
+    stPush(ptr, bytes32(192 + uint(CROWDSALE_TIERS)));
     stPush(ptr, (_initial_tier_is_whitelisted ? bytes32(1) : bytes32(0)));
 
-    // Push current crowdsale tier to buffer (initial tier is '1')
+    // Push current crowdsale tier to buffer (initial tier is '1' - index is 0, but offset by 1 in storage)
     stPush(ptr, CROWDSALE_CURRENT_TIER);
     stPush(ptr, bytes32(1));
     // Push end time of initial tier to buffer
@@ -201,24 +221,24 @@ library InitCrowdsale {
 
   @param _storage: The address where application storage is located
   @param _exec_id: The application execution id under which storage for this instance is located
-  @return sale_rate: The number of wei spent per token purchased
   @return wei_raised: The amount of wei raised in the crowdsale so far
   @return team_wallet: The address to which funds are forwarded during this crowdsale
+  @return minimum_contribution: The minimum amount of wei that must be sent with each purchase
   @return is_initialized: Whether or not the crowdsale has been completely initialized by the admin
   @return is_finalized: Whether or not the crowdsale has been completely finalized by the admin
   */
   function getCrowdsaleInfo(address _storage, bytes32 _exec_id) public view
-  returns (uint sale_rate, uint wei_raised, address team_wallet, bool is_initialized, bool is_finalized) {
+  returns (uint wei_raised, address team_wallet, uint minimum_contribution, bool is_initialized, bool is_finalized) {
     // Create 'readMulti' calldata buffer in memory
     uint ptr = cdBuff(RD_MULTI);
     // Push exec id, data read offset, and read size to buffer
     cdPush(ptr, _exec_id);
     cdPush(ptr, 0x40);
     cdPush(ptr, bytes32(5));
-    // Push sale rate, wei raised, and team wallet storage locations to calldata buffer
-    cdPush(ptr, SALE_RATE);
+    // Push wei raised, team wallet, and minimum contribution amount storage locations to calldata buffer
     cdPush(ptr, WEI_RAISED);
     cdPush(ptr, WALLET);
+    cdPush(ptr, CROWDSALE_MINIMUM_CONTRIBUTION);
     // Push crowdsale initialization and finalization status storage locations to buffer
     cdPush(ptr, CROWDSALE_IS_INIT);
     cdPush(ptr, CROWDSALE_IS_FINALIZED);
@@ -226,28 +246,52 @@ library InitCrowdsale {
     bytes32[] memory read_values = readMultiFrom(ptr, _storage);
 
     // Get returned data -
-    sale_rate = uint(read_values[0]);
-    wei_raised = uint(read_values[1]);
-    team_wallet = address(read_values[2]);
+    wei_raised = uint(read_values[0]);
+    team_wallet = address(read_values[1]);
+    minimum_contribution = uint(read_values[2]);
     is_initialized = (read_values[3] == bytes32(0) ? false : true);
     is_finalized = (read_values[4] == bytes32(0) ? false : true);
   }
 
   /*
-  Returns the start time of the initial tier of a crowdsale
+  Returns the number of unique contributors to a crowdsale
+
+  @param _storage: The address where application storage is located
+  @param _exec_id: The application execution id under which storage for this instance is located
+  @return num_unique: The number of unique contributors in a crowdsale so far
+  */
+  function getCrowdsaleUniqueBuyers(address _storage, bytes32 _exec_id) public view returns (uint num_unique) {
+    // Create 'read' calldata buffer in memory
+    uint ptr = cdBuff(RD_SING);
+    // Push exec id and unique contributor storage location to buffer
+    cdPush(ptr, _exec_id);
+    cdPush(ptr, CROWDSALE_UNIQUE_CONTRIBUTORS);
+    // Read from storage and return
+    num_unique = uint(readSingleFrom(ptr, _storage));
+  }
+
+  /*
+  Returns the start and end time of the crowdsale
 
   @param _storage: The address where application storage is located
   @param _exec_id: The application execution id under which storage for this instance is located
   @return start_time: The start time of the first tier of a crowdsale
+  @return end_time: The time at which the crowdsale ends
   */
-  function getCrowdsaleStartTime(address _storage, bytes32 _exec_id) public view returns (uint start_time) {
-    // Create 'read' calldata buffer in memory
-    uint ptr = cdBuff(RD_SING);
-    // Push exec id and start time location to buffer
+  function getCrowdsaleStartAndEndTimes(address _storage, bytes32 _exec_id) public view returns (uint start_time, uint end_time) {
+    // Create 'readMulti' calldata buffer in memory
+    uint ptr = cdBuff(RD_MULTI);
+    // Push exec id, data read offset, read size, start time, and total duration locations to buffer
     cdPush(ptr, _exec_id);
+    cdPush(ptr, 0x40);
+    cdPush(ptr, bytes32(2));
     cdPush(ptr, CROWDSALE_START_TIME);
+    cdPush(ptr, CROWDSALE_TOTAL_DURATION);
     // Read from storage
-    start_time = uint(readSingleFrom(ptr, _storage));
+    uint[] memory read_values = readMultiUintFrom(ptr, _storage);
+    // Get return values
+    start_time = read_values[0];
+    end_time = start_time + read_values[1];
   }
 
   /*
@@ -259,11 +303,12 @@ library InitCrowdsale {
   @return tier_index: The current tier's index in the CROWDSALE_TIERS list
   @return tier_ends_at: The time at which purcahses for the current tier are forcibly locked
   @return tier_tokens_remaining: The amount of tokens remaining to be purchased in the current tier
+  @return tier_price: The price of each token purchased this tier, in wei
   @return duration_is_modifiable: Whether the crowdsale admin can update the duration of this tier before it starts
   @return whitelist_enabled: Whether an address must be whitelisted to participate in this tier
   */
   function getCurrentTierInfo(address _storage, bytes32 _exec_id) public view
-  returns (bytes32 tier_name, uint tier_index, uint tier_ends_at, uint tier_tokens_remaining, bool duration_is_modifiable, bool whitelist_enabled) {
+  returns (bytes32 tier_name, uint tier_index, uint tier_ends_at, uint tier_tokens_remaining, uint tier_price, bool duration_is_modifiable, bool whitelist_enabled) {
     // Create 'readMulti' calldata buffer in memory
     uint ptr = cdBuff(RD_MULTI);
     // Push exec id, data read offset, and read size to calldata buffer
@@ -275,34 +320,36 @@ library InitCrowdsale {
     cdPush(ptr, CROWDSALE_CURRENT_TIER);
     cdPush(ptr, CURRENT_TIER_TOKENS_REMAINING);
     // Read from storage and store return in buffer
-    bytes32[] memory read_values = readMultiFrom(ptr, _storage);
+    uint[] memory read_values = readMultiUintFrom(ptr, _storage);
 
     // If the returned index was 0, current tier does not exist: return now
-    if (read_values[1] == bytes32(0))
+    if (read_values[1] == 0)
       return;
 
     // Get returned values -
-    tier_ends_at = uint(read_values[0]);
+    tier_ends_at = read_values[0];
     // Indices are stored as 1 + (actual index), to avoid conflicts with a default 0 value
-    tier_index = uint(read_values[1]) - 1;
-    tier_tokens_remaining = uint(read_values[2]);
+    tier_index = read_values[1] - 1;
+    tier_tokens_remaining = read_values[2];
 
     // Overwrite previous buffer, and create new 'readMulti' calldata buffer
     cdOverwrite(ptr, RD_MULTI);
     // Push exec id, data read offset, and read size to buffer
     cdPush(ptr, _exec_id);
     cdPush(ptr, 0x40);
-    cdPush(ptr, bytes32(3));
-    // Push tier name, modifiable status, and tier whitelist status storage locations to buffer
-    uint name_storage_offset = 32 + (160 * tier_index);
-    cdPush(ptr, bytes32(name_storage_offset + uint(CROWDSALE_TIERS)));
-    cdPush(ptr, bytes32(96 + name_storage_offset + uint(CROWDSALE_TIERS)));
-    cdPush(ptr, bytes32(128 + name_storage_offset + uint(CROWDSALE_TIERS)));
+    cdPush(ptr, bytes32(4));
+    // Push tier name, tier token price, modifiable status, and tier whitelist status storage locations to buffer
+    uint name_storage_offset = 32 + (192 * tier_index) + uint(CROWDSALE_TIERS);
+    cdPush(ptr, bytes32(name_storage_offset)); // Tier name
+    cdPush(ptr, bytes32(64 + name_storage_offset)); // Tier purchase price
+    cdPush(ptr, bytes32(128 + name_storage_offset)); // Tier modifiability status
+    cdPush(ptr, bytes32(160 + name_storage_offset)); // Tier whitelist status
     // Read from storage and get return values
-    read_values = readMultiFrom(ptr, _storage);
-    tier_name = read_values[0];
-    duration_is_modifiable = (read_values[1] == bytes32(0) ? false : true);
-    whitelist_enabled = (read_values[2] == bytes32(0) ? false : true);
+    read_values = readMultiUintFrom(ptr, _storage);
+    tier_name = bytes32(read_values[0]);
+    tier_price = read_values[1];
+    duration_is_modifiable = (read_values[2] == 0 ? false : true);
+    whitelist_enabled = (read_values[3] == 0 ? false : true);
   }
 
   /*
@@ -313,35 +360,106 @@ library InitCrowdsale {
   @param _index: The index of the tier in the crowdsale tier list. Input index should be like a normal array index (lowest index: 0)
   @return tier_name: The name of the returned tier
   @return tier_sell_cap: The amount of tokens designated to be sold during this tier
+  @return tier_price: The price of each token in wei for this tier
   @return tier_duration: The duration of the given tier
   @return duration_is_modifiable: Whether the crowdsale admin can change the duration of this tier prior to its start time
   @return whitelist_enabled: Whether an address must be whitelisted to participate in this tier
   */
   function getCrowdsaleTier(address _storage, bytes32 _exec_id, uint _index) public view
-  returns (bytes32 tier_name, uint tier_sell_cap, uint tier_duration, bool duration_is_modifiable, bool whitelist_enabled) {
+  returns (bytes32 tier_name, uint tier_sell_cap, uint tier_price, uint tier_duration, bool duration_is_modifiable, bool whitelist_enabled) {
     // Create 'readMulti' calldata buffer in memory
     uint ptr = cdBuff(RD_MULTI);
     // Push exec id, data read offset, and read size to calldata buffer
     cdPush(ptr, _exec_id);
     cdPush(ptr, 0x40);
-    cdPush(ptr, bytes32(5));
+    cdPush(ptr, bytes32(6));
     // Get tier offset storage location
-    uint tier_info_location = 32 + (160 * _index) + uint(CROWDSALE_TIERS);
+    uint tier_info_location = 32 + (192 * _index) + uint(CROWDSALE_TIERS);
     // Push tier name, sell cap, duration, and modifiable status storage locations to buffer
     cdPush(ptr, bytes32(tier_info_location)); // Name
     cdPush(ptr, bytes32(32 + tier_info_location)); // Token sell cap
-    cdPush(ptr, bytes32(64 + tier_info_location)); // Tier duration
-    cdPush(ptr, bytes32(96 + tier_info_location)); // Modifiability status
-    cdPush(ptr, bytes32(128 + tier_info_location)); // Whitelist enabled status
+    cdPush(ptr, bytes32(64 + tier_info_location)); // Tier purchase price
+    cdPush(ptr, bytes32(96 + tier_info_location)); // Tier duration
+    cdPush(ptr, bytes32(128 + tier_info_location)); // Modifiability status
+    cdPush(ptr, bytes32(160 + tier_info_location)); // Whitelist enabled status
     // Read from storage and store return in buffer
     bytes32[] memory read_values = readMultiFrom(ptr, _storage);
 
     // Get returned values -
     tier_name = read_values[0];
     tier_sell_cap = uint(read_values[1]);
-    tier_duration = uint(read_values[2]);
-    duration_is_modifiable = (read_values[3] == 0 ? false : true);
-    whitelist_enabled = (read_values[4] == 0 ? false : true);
+    tier_price = uint(read_values[2]);
+    tier_duration = uint(read_values[3]);
+    duration_is_modifiable = (read_values[4] == bytes32(0) ? false : true);
+    whitelist_enabled = (read_values[5] == bytes32(0) ? false : true);
+  }
+
+  /*
+  Returns the maximum amount of wei to raise, as well as the total amount of tokens that can be sold
+
+  @param _storage: The storage address of the crowdsale application
+  @param _exec_id: The execution id of the application
+  @return wei_raise_cap: The maximum amount of wei to raise
+  @return total_sell_cap: The maximum amount of tokens to sell
+  */
+  function getCrowdsaleMaxRaise(address _storage, bytes32 _exec_id) public view returns (uint wei_raise_cap, uint total_sell_cap) {
+    // Create 'read' calldata buffer in memory
+    uint ptr = cdBuff(RD_SING);
+    // Push exec id and tier list length location to buffer
+    cdPush(ptr, _exec_id);
+    cdPush(ptr, CROWDSALE_TIERS);
+    // Read from storage
+    uint num_tiers = uint(readSingleFrom(ptr, _storage));
+
+    // Overwrite previous buffer - push exec id, data read offset, and read size to buffer
+    cdOverwrite(ptr, RD_MULTI);
+    cdPush(ptr, _exec_id);
+    cdPush(ptr, 0x40);
+    cdPush(ptr, bytes32(2 * num_tiers));
+    // Loop through tiers and get sell cap and purchase price for each tier
+    for (uint i = 0; i < num_tiers; i++) {
+      cdPush(ptr, bytes32(64 + (192 * i) + uint(CROWDSALE_TIERS))); // token sell cap
+      cdPush(ptr, bytes32(96 + (192 * i) + uint(CROWDSALE_TIERS))); // tier purchase price
+    }
+
+    // Read from storage
+    uint[] memory read_values = readMultiUintFrom(ptr, _storage);
+    // Loop through and get wei raise cap and token sell cap
+    for (i = 0; i < read_values.length; i+=2) {
+      total_sell_cap += read_values[i];
+      // Increase maximum wei to raise by tier token sell cap * tier purchase price
+      wei_raise_cap += (read_values[i] * read_values[i + 1]);
+    }
+  }
+
+  /*
+  Returns a list of the named tiers of the crowdsale
+
+  @param _storage: The storage address of the crowdsale application
+  @param _exec_id: The execution id of the application
+  @return crowdsale_tiers: A list of each tier of the crowdsale
+  */
+  function getCrowdsaleTierList(address _storage, bytes32 _exec_id) public view returns (bytes32[] memory crowdsale_tiers) {
+    // Create 'read' calldata buffer in memory
+    uint ptr = cdBuff(RD_SING);
+    // Push exec id and crowdsale tier list length location to buffer
+    cdPush(ptr, _exec_id);
+    cdPush(ptr, CROWDSALE_TIERS);
+    // Read from storage and get list length
+    uint list_length = uint(readSingleFrom(ptr, _storage));
+
+    // Overwrite previous buffer, and create 'readMulti' calldata buffer
+    cdOverwrite(ptr, RD_MULTI);
+    // Push exec id, data read offset, and read size to buffer
+    cdPush(ptr, _exec_id);
+    cdPush(ptr, 0x40);
+    cdPush(ptr, bytes32(list_length));
+    // Loop over each tier name list location and add to buffer
+    for (uint i = 0; i < list_length; i++)
+      cdPush(ptr, bytes32(32 + (192 * i) + uint(CROWDSALE_TIERS)));
+
+    // Read from storage and return
+    crowdsale_tiers = readMultiFrom(ptr, _storage);
   }
 
   /*
@@ -364,11 +482,11 @@ library InitCrowdsale {
     cdPush(ptr, CROWDSALE_TIERS);
     cdPush(ptr, CROWDSALE_START_TIME);
     // Get storage read offset for initial tier duration, then loop over each tier until _index and add their duration storage locations to the read buffer
-    bytes32 duration_offset = bytes32(96 + uint(CROWDSALE_TIERS));
+    bytes32 duration_offset = bytes32(128 + uint(CROWDSALE_TIERS));
     for (uint i = 0; i <= _index; i++) {
       cdPush(ptr, duration_offset);
       // Increment the duration offset to the next index in the array
-      duration_offset = bytes32(160 + uint(duration_offset));
+      duration_offset = bytes32(192 + uint(duration_offset));
     }
     // Read from storage and store return in buffer
     uint[] memory read_values = readMultiUintFrom(ptr, _storage);
@@ -379,15 +497,15 @@ library InitCrowdsale {
 
     // Get returned start time, then loop through each returned duration and get the start time for the tier
     tier_start = read_values[1];
-    for (i = 0; i < _index; i++) {
+    for (i = 0; i < _index; i++)
       tier_start += read_values[2 + i];
-    }
+
     // Get the tier end time - start time plus the duration of the tier, the last read value in the list
     tier_end = tier_start + read_values[read_values.length - 1];
   }
 
   /*
-  Returns the number of tokens sold so far this crowdsale, calculated from crowdsale sale rate and wei raised
+  Returns the number of tokens sold so far this crowdsale
 
   @param _storage: The address where application storage is located
   @param _exec_id: The application execution id under which storage for this instance is located
@@ -395,44 +513,45 @@ library InitCrowdsale {
   */
   function getTokensSold(address _storage, bytes32 _exec_id) public view
   returns (uint tokens_sold) {
+    // Create 'read' calldata buffer in memory
+    uint ptr = cdBuff(RD_SING);
+    // Push exec id to buffer
+    cdPush(ptr, _exec_id);
+    // Push crowdsale total tokens sold location to buffer
+    cdPush(ptr, CROWDSALE_TOKENS_SOLD);
+    // Read from storage and return
+    tokens_sold = uint(readSingleFrom(ptr, _storage));
+  }
+
+  /*
+  Returns whitelist information for a given buyer
+
+  @param _storage: The address where application storage is located
+  @param _exec_id: The application execution id under which storage for this instance is located
+  @param _tier_index: The index of the tier about which the whitelist information will be pulled
+  @param _buyer: The address of the user whose whitelist status will be returned
+  @return minimum_contribution: The minimum ammount of wei this address must sent with each purchase
+  @return max_spend_remaining: The maximum amount of wei able to be spent
+  */
+  function getWhitelistStatus(address _storage, bytes32 _exec_id, uint _tier_index, address _buyer) public view
+  returns (uint minimum_contribution, uint max_spend_remaining) {
     // Create 'readMulti' calldata buffer in memory
     uint ptr = cdBuff(RD_MULTI);
     // Push exec id, data read offset, and read size to buffer
     cdPush(ptr, _exec_id);
     cdPush(ptr, 0x40);
     cdPush(ptr, bytes32(2));
-    // Push crowdsale wei raised and sale rate storage locations to buffer
-    cdPush(ptr, WEI_RAISED);
-    cdPush(ptr, SALE_RATE);
-    // Raed from storage, and store return in buffer
-    bytes32[] memory read_values = readMultiFrom(ptr, _storage);
-
-    // Get return value -
-    uint wei_raised = uint(read_values[0]);
-    uint sale_rate = uint(read_values[1]);
-    tokens_sold = wei_raised / sale_rate;
-  }
-
-  /*
-  Returns whether a given buyer is whitelisted for a given tier
-
-  @param _storage: The address where application storage is located
-  @param _exec_id: The application execution id under which storage for this instance is located
-  @param _tier_index: The index of the tier about which the whitelist information will be pulled
-  @param _buyer: The address of the user whose whitelist status will be returned
-  @return is_whitelisted: Whether or not the buyer is whitelisted for the crowdsale
-  */
-  function getWhitelistStatus(address _storage, bytes32 _exec_id, uint _tier_index, address _buyer) public view returns (bool is_whitelisted) {
-    // Create 'read' calldata buffer in memory
-    uint ptr = cdBuff(RD_SING);
-    // Push exec id to buffer
-    cdPush(ptr, _exec_id);
     // Get buyer whitelist location for the tier -
     bytes32 location = keccak256(keccak256(_buyer), keccak256(_tier_index, SALE_WHITELIST));
-    // Push whitelist location to read buffer
+    // Push whitelist minimum contribution location to buffer
     cdPush(ptr, location);
-    // Read and return
-    is_whitelisted = (readSingleFrom(ptr, _storage) == bytes32(0) ? false : true);
+    // Push whitlist maximum spend amount remaining location to buffer
+    cdPush(ptr, bytes32(32 + uint(location)));
+
+    // Read from storage and return
+    uint[] memory read_values = readMultiUintFrom(ptr, _storage);
+    minimum_contribution = read_values[0];
+    max_spend_remaining = read_values[1];
   }
 
   /// TOKEN GETTERS ///

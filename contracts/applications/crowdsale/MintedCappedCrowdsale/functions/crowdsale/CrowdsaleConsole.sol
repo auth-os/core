@@ -19,11 +19,15 @@ library CrowdsaleConsole {
   // Storage location of the amount of time the crowdsale will take, accounting for all tiers
   bytes32 public constant CROWDSALE_TOTAL_DURATION = keccak256("crowdsale_total_duration");
 
+  // Storage location of the minimum amount of wei allowed to be contributed for each purchase
+  bytes32 public constant CROWDSALE_MINIMUM_CONTRIBUTION = keccak256("crowdsale_min_cap");
+
   // Storage location of a list of the tiers the crowdsale will have
   /* Each tier mimics the following struct:
   struct CrowdsaleTier {
     bytes32 _tier_name;                 // The name of the crowdsale tier
     uint _tier_token_sell_cap;          // The maximum number of tokens that will be sold during this tier
+    uint _tier_purchase_price;          // The price of a token in wei for this tier
     uint _duration;                     // The amount of time this tier will be active for
     bool _tier_duration_is_modifiable;  // Whether the crowdsale admin is allowed to modify the duration of a tier before it goes live
     bool _tier_is_whitelist_enabled     // Whether this tier of the crowdsale requires users to be on a purchase whitelist
@@ -98,7 +102,6 @@ library CrowdsaleConsole {
     _;
   }
 
-
   /*
   Allows the admin of a crowdsale to add token information, prior to crowdsale initialization completion
 
@@ -138,20 +141,48 @@ library CrowdsaleConsole {
   }
 
   /*
-  Allows the admin of a crowdsale to update the whitelist status for several addresses simultaneously within a tier
+  Allows the admin of a crowdsale to update the global minimum contribution cap for a crowdsale prior to its start
 
-  @param _tier_index: The index of the tier to update the whitelist for
-  @param _to_update: An array of addresses for which whitelist status will be updated
-  @param _new_status: The new whitelist status of the address. If true, address is whitelisted
+  @param _new_min_contribution: The new minimum wei contribution amount for the crowdsale
   @param _context: The execution context for this application - a 96-byte array containing (in order):
     1. Application execution id
     2. Original script sender (address, padded to 32 bytes)
     3. Wei amount sent with transaction to storage
   @return store_data: A formatted storage request - first 64 bytes designate a forwarding address (and amount) for any wei sent
   */
-  function whitelistMultiForTier(uint _tier_index, address[] _to_update, bool[] _new_status, bytes _context) public view returns (bytes32[] store_data) {
+  function updateGlobalMinContribution(uint _new_min_contribution, bytes _context) public onlyAdminAndNotInit(_context) view
+  returns (bytes32[] store_data) {
+    // Create memory buffer for return data
+    uint ptr = stBuff();
+
+    // First two slots, information on wei sent and destination, are blank (this function does not use eth)
+    stPush(ptr, 0);
+    stPush(ptr, 0);
+    // Place new crowdsale minimum wei contribution cap and min cap storage location in buffer
+    stPush(ptr, CROWDSALE_MINIMUM_CONTRIBUTION);
+    stPush(ptr, bytes32(_new_min_contribution));
+
+    // Get bytes32[] storage request array from buffer
+    store_data = getBuffer(ptr);
+  }
+
+  /*
+  Allows the admin of a crowdsale to update the whitelist status for several addresses simultaneously within a tier
+
+  @param _tier_index: The index of the tier to update the whitelist for
+  @param _to_update: An array of addresses for which whitelist status will be updated
+  @param _minimum_contribution: The minimum contribution amount for the given address during the tier
+  @param _max_spend_amt: The maximum amount of wei able to be spent for the address during this tier
+  @param _context: The execution context for this application - a 96-byte array containing (in order):
+    1. Application execution id
+    2. Original script sender (address, padded to 32 bytes)
+    3. Wei amount sent with transaction to storage
+  @return store_data: A formatted storage request - first 64 bytes designate a forwarding address (and amount) for any wei sent
+  */
+  function whitelistMultiForTier(uint _tier_index, address[] _to_update, uint[] _minimum_contribution, uint[] _max_spend_amt, bytes _context) public view
+  returns (bytes32[] store_data) {
     // Ensure valid input
-    require(_to_update.length == _new_status.length);
+    require(_to_update.length == _minimum_contribution.length && _to_update.length == _max_spend_amt.length);
     if (_context.length != 96)
       triggerException(ERR_UNKNOWN_CONTEXT);
 
@@ -177,11 +208,21 @@ library CrowdsaleConsole {
     stPush(ptr, 0);
     // Loop over input and add whitelist storage information to buffer
     for (uint i = 0; i < _to_update.length; i++) {
-      stPush(ptr, keccak256(keccak256(_to_update[i]), keccak256(_tier_index, SALE_WHITELIST)));
-      stPush(ptr, (_new_status[i] ? bytes32(1) : bytes32(0)));
+      // Get storage location for address whitelist struct
+      bytes32 whitelist_status_loc = keccak256(keccak256(_to_update[i]), keccak256(_tier_index, SALE_WHITELIST));
+      stPush(ptr, whitelist_status_loc);
+      stPush(ptr, bytes32(_minimum_contribution[i]));
+      stPush(ptr, bytes32(32 + uint(whitelist_status_loc)));
+      stPush(ptr, bytes32(_max_spend_amt[i]));
     }
     // Get bytes32[] storage request array from buffer
     store_data = getBuffer(ptr);
+  }
+
+  struct TiersHelper {
+    uint total_duration;
+    uint num_tiers;
+    uint base_list_storage;
   }
 
   /*
@@ -190,6 +231,7 @@ library CrowdsaleConsole {
 
   @param _tier_names: An array of names for each tier
   @param _tier_durations: An array of durations each tier will last
+  @param _tier_prices: Each tier's token purchase price, in wei
   @param _tier_caps: The maximum amount of tokens to be sold during each tier
   @param _tier_is_modifiable: Whether each tier's duration may be changed prior to its start time
   @param _tier_is_whitelisted: Whether each tier requires purchasers to be whitelisted
@@ -199,11 +241,12 @@ library CrowdsaleConsole {
     3. Wei amount sent with transaction to storage
   @return store_data: A formatted storage request - first 64 bytes designate a forwarding address (and amount) for any wei sent
   */
-  function createCrowdsaleTiers(bytes32[] _tier_names, uint[] _tier_durations, uint[] _tier_caps, bool[] _tier_is_modifiable, bool[] _tier_is_whitelisted, bytes _context) public view
+  function createCrowdsaleTiers(bytes32[] _tier_names, uint[] _tier_durations, uint[] _tier_prices, uint[] _tier_caps, bool[] _tier_is_modifiable, bool[] _tier_is_whitelisted, bytes _context) public view
   returns (bytes32[] store_data) {
     // Ensure valid input
     require(
       _tier_names.length == _tier_durations.length
+      && _tier_names.length == _tier_prices.length
       && _tier_names.length == _tier_caps.length
       && _tier_names.length == _tier_is_modifiable.length
       && _tier_is_modifiable.length == _tier_is_whitelisted.length
@@ -232,8 +275,11 @@ library CrowdsaleConsole {
     bytes32[] memory read_values = readMulti(ptr);
 
     // Get current number of tiers and total duration
-    uint total_duration = uint(read_values[0]);
-    uint num_tiers = uint(read_values[1]);
+    TiersHelper memory tiers = TiersHelper({
+      total_duration: uint(read_values[0]),
+      num_tiers: uint(read_values[1]),
+      base_list_storage: 0
+    });
 
     // Check that the sender is the crowdsale admin, and that the crowdsale is not initialized
     if (
@@ -248,34 +294,40 @@ library CrowdsaleConsole {
     stPush(ptr, 0);
     // Push new tier list length to buffer
     stPush(ptr, CROWDSALE_TIERS);
-    stPush(ptr, bytes32(num_tiers + _tier_names.length));
+    stPush(ptr, bytes32(tiers.num_tiers + _tier_names.length));
 
     // Place crowdsale tier storage base location in num_tiers
-    num_tiers = 32 + (160 * num_tiers) + uint(CROWDSALE_TIERS);
+    tiers.base_list_storage = 32 + (192 * tiers.num_tiers) + uint(CROWDSALE_TIERS);
     // Loop over each new tier, and add to storage buffer. Keep track of the added duration
     for (uint i = 0; i < _tier_names.length; i++) {
       // Ensure valid input -
-      require(_tier_caps[i] > 0 && total_duration + _tier_durations[i] > total_duration);
+      require(
+        _tier_caps[i] > 0
+        && tiers.total_duration + _tier_durations[i] > tiers.total_duration
+        && _tier_prices[i] > 0
+      );
 
       // Increment total duration of the crowdsale
-      total_duration += _tier_durations[i];
-      // Get crowdsale tier index storage offset
-      num_tiers += (160 * i);
+      tiers.total_duration += _tier_durations[i];
       // Push name, token sell cap, initial duration, and modifiability to storage buffer
-      stPush(ptr, bytes32(num_tiers)); // Name and name storage location
+      stPush(ptr, bytes32(tiers.base_list_storage)); // Name and name storage location
       stPush(ptr, _tier_names[i]);
-      stPush(ptr, bytes32(32 + num_tiers)); // Token sell cap and sell cap storage location
+      stPush(ptr, bytes32(32 + tiers.base_list_storage)); // Token sell cap and sell cap storage location
       stPush(ptr, bytes32(_tier_caps[i]));
-      stPush(ptr, bytes32(64 + num_tiers)); // Tier duration and duration storage location
+      stPush(ptr, bytes32(64 + tiers.base_list_storage)); // Token purchase price and purchase price storage location
+      stPush(ptr, bytes32(_tier_prices[i]));
+      stPush(ptr, bytes32(96 + tiers.base_list_storage)); // Tier duration and duration storage location
       stPush(ptr, bytes32(_tier_durations[i]));
-      stPush(ptr, bytes32(96 + num_tiers)); // Tier modifiability status and modifiability status storage location
+      stPush(ptr, bytes32(128 + tiers.base_list_storage)); // Tier modifiability status and modifiability status storage location
       stPush(ptr, bytes32((_tier_is_modifiable[i] ? bytes32(1) : bytes32(0))));
-      stPush(ptr, bytes32(128 + num_tiers)); // Tier whitelist requirement status and status storage location
+      stPush(ptr, bytes32(160 + tiers.base_list_storage)); // Tier whitelist requirement status and status storage location
       stPush(ptr, bytes32((_tier_is_whitelisted[i] ? bytes32(1) : bytes32(0))));
+      // Increment base storage location -
+      tiers.base_list_storage += 192;
     }
     // Push new total crowdsale duration to storage buffer
     stPush(ptr, CROWDSALE_TOTAL_DURATION);
-    stPush(ptr, bytes32(total_duration));
+    stPush(ptr, bytes32(tiers.total_duration));
 
     // Get bytes32[] storage request array from buffer
     store_data = getBuffer(ptr);
@@ -328,8 +380,8 @@ library CrowdsaleConsole {
     cdPush(ptr, CROWDSALE_CURRENT_TIER);
     cdPush(ptr, CURRENT_TIER_ENDS_AT);
     // Push storage locations of information of the tier to be updated (tier duration and tier modifiability status)
-    cdPush(ptr, bytes32(96 + (160 * _tier_index) + uint(CROWDSALE_TIERS))); // Storage location of tier-to-update's duration (used to update crowdsale total duration)
-    cdPush(ptr, bytes32(128 + (160 * _tier_index) + uint(CROWDSALE_TIERS))); // Storage location of tier-to-update's modifiability status (whether the tier's duration can be updated)
+    cdPush(ptr, bytes32(128 + (192 * _tier_index) + uint(CROWDSALE_TIERS))); // Storage location of tier-to-update's duration (used to update crowdsale total duration)
+    cdPush(ptr, bytes32(160 + (192 * _tier_index) + uint(CROWDSALE_TIERS))); // Storage location of tier-to-update's modifiability status (whether the tier's duration can be updated)
     // Read from storage, and store return to buffer
     bytes32[] memory read_values = readMulti(ptr);
 
@@ -384,7 +436,7 @@ library CrowdsaleConsole {
       cdPush(ptr, bytes32(_tier_index - uint(read_values[5])));
       // Loop through the difference in the returned 'current' index and the requested update index, and push the location of each in-between tier's duration to the buffer
       for (uint i = uint(read_values[5]); i < _tier_index; i++)
-        cdPush(ptr, bytes32(96 + (160 * i) + uint(CROWDSALE_TIERS)));
+        cdPush(ptr, bytes32(128 + (192 * i) + uint(CROWDSALE_TIERS)));
 
       // Read from storage, and store return to buffer
       uint[] memory read_durations = readMultiUint(ptr);
@@ -424,7 +476,7 @@ library CrowdsaleConsole {
       tier_update.total_duration += (_new_duration - tier_update.prev_duration);
 
     // Push new tier duration to crowdsale tier list in storage buffer
-    stPush(ptr, bytes32(96 + (160 * _tier_index) + uint(CROWDSALE_TIERS)));
+    stPush(ptr, bytes32(128 + (192 * _tier_index) + uint(CROWDSALE_TIERS)));
     stPush(ptr, bytes32(_new_duration));
     // Push updated overall crowdsale duration to buffer
     stPush(ptr, CROWDSALE_TOTAL_DURATION);

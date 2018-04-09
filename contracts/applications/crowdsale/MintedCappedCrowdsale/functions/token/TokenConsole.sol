@@ -13,11 +13,11 @@ library TokenConsole {
   // Whether or not the crowdsale is post-purchase
   bytes32 public constant CROWDSALE_IS_FINALIZED = keccak256("crowdsale_is_finalized");
 
+  // Storage location of the amount of tokens sold in the crowdsale so far. Does not include reserved tokens
+  bytes32 public constant CROWDSALE_TOKENS_SOLD = keccak256("crowdsale_tokens_sold");
+
   // Storage location of amount of wei raised during the crowdsale, total
   bytes32 public constant WEI_RAISED = keccak256("crowdsale_wei_raised");
-
-  // Storage location of token per wei rate
-  bytes32 public constant SALE_RATE = keccak256("crowdsale_sale_rate");
 
   /// TOKEN STORAGE ///
 
@@ -248,7 +248,7 @@ library TokenConsole {
     // Place exec id, data read offset, and read size in buffer
     cdPush(ptr, exec_id);
     cdPush(ptr, 0x40);
-    cdPush(ptr, 4);
+    cdPush(ptr, bytes32(4));
     // Place admin address, crowdsale initialization status, reserved token list length, and _destination list index storage locations in callata
     cdPush(ptr, ADMIN);
     cdPush(ptr, CROWDSALE_IS_INIT);
@@ -342,26 +342,25 @@ library TokenConsole {
     // Place exec id, data read offset, and read size in buffer
     cdPush(ptr, exec_id);
     cdPush(ptr, 0x40);
-    cdPush(ptr, bytes32(5));
-    // Place crowdsale finalization status, wei raised, sale rate, total token supply, and reserved destination length storage locations to calldata
+    cdPush(ptr, bytes32(4));
+    // Place crowdsale finalization status, total tokens sold, total token supply, and reserved destination length storage locations to calldata
     cdPush(ptr, CROWDSALE_IS_FINALIZED);
-    cdPush(ptr, WEI_RAISED);
-    cdPush(ptr, SALE_RATE);
+    cdPush(ptr, CROWDSALE_TOKENS_SOLD);
     cdPush(ptr, TOKEN_TOTAL_SUPPLY);
     cdPush(ptr, TOKEN_RESERVED_DESTINATIONS);
     // Read from storage, and store returned values in buffer
     bytes32[] memory initial_read_values = readMulti(ptr);
     // Ensure the length is 4
-    assert(initial_read_values.length == 5);
+    assert(initial_read_values.length == 4);
 
     // If the crowdsale is not finalized, revert
-    if (initial_read_values[0] != bytes32(1))
+    if (initial_read_values[0] == bytes32(0))
       triggerException(ERR_INSUFFICIENT_PERMISSIONS);
 
-    // Get total tokens minted, total token supply, and reserved destinations list length
-    uint total_sold = uint(initial_read_values[1]) * uint(initial_read_values[2]);
-    uint total_supply = uint(initial_read_values[3]);
-    uint num_destinations = uint(initial_read_values[4]);
+    // Get total tokens sold, total token supply, and reserved destinations list length
+    uint total_sold = uint(initial_read_values[1]);
+    uint total_supply = uint(initial_read_values[2]);
+    uint num_destinations = uint(initial_read_values[3]);
 
     // If _amt is greater than the reserved destinations list length, set amt equal to the list length
     if (_amt > num_destinations)
@@ -399,29 +398,26 @@ library TokenConsole {
       cdPush(
         ptr,
         bytes32(
-          32 +
-          uint(keccak256(keccak256(address(initial_read_values[i])), TOKEN_RESERVED_ADDR_INFO))
+          32 + uint(keccak256(keccak256(address(initial_read_values[i])), TOKEN_RESERVED_ADDR_INFO))
         )
       );
       // Number of percent reserved - location is 32 bytes after number of tokens reserved
       cdPush(
         ptr,
         bytes32(
-          64 +
-          uint(keccak256(keccak256(address(initial_read_values[i])), TOKEN_RESERVED_ADDR_INFO))
+          64 + uint(keccak256(keccak256(address(initial_read_values[i])), TOKEN_RESERVED_ADDR_INFO))
         )
       );
       // Precision of percent - location is 32 bytes after number of percentage points reserved
       cdPush(
         ptr,
         bytes32(
-          96 +
-          uint(keccak256(keccak256(address(initial_read_values[i])), TOKEN_RESERVED_ADDR_INFO))
+          96 + uint(keccak256(keccak256(address(initial_read_values[i])), TOKEN_RESERVED_ADDR_INFO))
         )
       );
     }
     // Read from storage, and store return in buffer
-    bytes32[] memory read_reserved_info = readMulti(ptr);
+    uint[] memory read_reserved_info = readMultiUint(ptr);
     // Ensure valid return length -
     assert(read_reserved_info.length == 4 * _amt);
 
@@ -436,9 +432,9 @@ library TokenConsole {
     // For each address, get their new balance and add to storage buffer
     for (i = 0; i < _amt; i++) {
       // Get percent reserved and precision
-      uint to_add = uint(read_reserved_info[(i * 4) + 2]);
+      uint to_add = read_reserved_info[(i * 4) + 2];
       // Two points of precision are added to ensure at least a percent out of 100
-      uint precision = 2 + uint(read_reserved_info[(i * 4) + 3]);
+      uint precision = 2 + read_reserved_info[(i * 4) + 3];
       // Get percent divisor, and check for overflow
       assert(10 ** precision > precision);
       precision = 10 ** precision;
@@ -448,15 +444,15 @@ library TokenConsole {
 
       // Add number of tokens reserved, and check for overflow
       // Additionally, check that the added amount does not overflow total supply
-      require(to_add + uint(read_reserved_info[(i * 4) + 1]) >= to_add);
-      to_add += uint(read_reserved_info[(i * 4) + 1]);
+      require(to_add + read_reserved_info[(i * 4) + 1] >= to_add);
+      to_add += read_reserved_info[(i * 4) + 1];
       require(total_supply + to_add >= total_supply);
       // Increment total supply
       total_supply += to_add;
 
       // Add destination's current token balance to to_add, and check for overflow
-      require(to_add + uint(read_reserved_info[i * 4]) >= uint(read_reserved_info[i * 4]));
-      to_add += uint(read_reserved_info[i * 4]);
+      require(to_add + read_reserved_info[i * 4] >= read_reserved_info[i * 4]);
+      to_add += read_reserved_info[i * 4];
       // Add new balance and balance location to storage buffer
       stPush(ptr, keccak256(keccak256(address(initial_read_values[i])), TOKEN_BALANCES));
       stPush(ptr, bytes32(to_add));
@@ -592,6 +588,34 @@ library TokenConsole {
   @return read_values: The values read from storage
   */
   function readMulti(uint _ptr) internal view returns (bytes32[] read_values) {
+    bool success;
+    assembly {
+      // Minimum length for 'readMulti' - 1 location is 0x84
+      if lt(mload(_ptr), 0x84) { revert (0, 0) }
+      // Read from storage
+      success := staticcall(gas, caller, add(0x20, _ptr), mload(_ptr), 0, 0)
+      // If call succeed, get return information
+      if gt(success, 0) {
+        // Ensure data will not be copied beyond the pointer
+        if gt(sub(returndatasize, 0x20), mload(_ptr)) { revert (0, 0) }
+        // Copy returned data to pointer, overwriting it in the process
+        // Copies returndatasize, but ignores the initial read offset so that the bytes32[] returned in the read is sitting directly at the pointer
+        returndatacopy(_ptr, 0x20, sub(returndatasize, 0x20))
+        // Set return bytes32[] to pointer, which should now have the stored length of the returned array
+        read_values := _ptr
+      }
+    }
+    if (!success)
+      triggerException(ERR_READ_FAILED);
+  }
+
+  /*
+  Executes a 'readMulti' function call, given a pointer to a calldata buffer
+
+  @param _ptr: A pointer to the location in memory where the calldata for the call is stored
+  @return read_values: The values read from storage
+  */
+  function readMultiUint(uint _ptr) internal view returns (uint[] read_values) {
     bool success;
     assembly {
       // Minimum length for 'readMulti' - 1 location is 0x84
