@@ -1,1 +1,1 @@
-exports.EVM_ERR_REVERT = "VM Exception while processing transaction: revert"
+exports.EVM_ERR_REVERT = 'VM Exception while processing transaction: revert'

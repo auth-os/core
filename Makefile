@@ -14,6 +14,7 @@ flat_os:
 
 	cp contracts/*.sol tmp/
 	cp contracts/exec/* tmp/
+	cp contracts/lib/* tmp/
 	cp contracts/registry/functions/*.sol tmp/
 	cp contracts/registry/functions/init/* tmp/
 	cp contracts/registry/storage/* tmp/

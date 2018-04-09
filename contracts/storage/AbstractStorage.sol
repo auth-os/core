@@ -504,6 +504,7 @@ contract AbstractStorage {
   }
 
   // Ensure no funds are stuck in this address
+  // FIXME-- this puts any Ether up for grabs to the first person to call #withdraw
   function withdraw() public {
     address(msg.sender).transfer(address(this).balance);
   }

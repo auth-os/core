@@ -1,5 +1,6 @@
-pragma solidity ^0.4.20;
+pragma solidity ^0.4.21;
 
-import '../../contracts/registry/RegistryStorage.sol';
+import "../../contracts/registry/storage/RegistryStorage.sol";
+
 
 contract RegistryStorageMock is RegistryStorage {}
