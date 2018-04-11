@@ -1,5 +1,6 @@
 build/
 flat/
+mochawesome-reports/
 node_modules/
 tmp/
 
