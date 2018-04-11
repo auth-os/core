@@ -324,7 +324,7 @@ library CrowdsaleBuyTokens {
     if (cur_tier.updated_tier == true) {
       // Push new current tier index
       stPush(ptr, CROWDSALE_CURRENT_TIER);
-      stPush(ptr, bytes32(cur_tier.index));
+      stPush(ptr, bytes32(cur_tier.index + 1));
       // Push updated current tier end time
       stPush(ptr, CURRENT_TIER_ENDS_AT);
       stPush(ptr, bytes32(cur_tier.tier_ends_at));
@@ -423,7 +423,7 @@ library CrowdsaleBuyTokens {
     // While the updated end time of each tier is still prior to the current time,
     // and while the updated tier's index is within a valid range -
     uint[] memory read_values;
-    while (cur_tier.tier_ends_at < now && cur_tier.index < _num_tiers) {
+    while (cur_tier.tier_ends_at < now && ++cur_tier.index < _num_tiers) {
       // Read next tier info from storage -
       uint ptr = cdBuff(RD_MULTI);
       // Push exec id, data read offset, and read size to calldata buffer
@@ -443,8 +443,6 @@ library CrowdsaleBuyTokens {
       // Add returned duration to previous tier end time
       require(cur_tier.tier_ends_at + read_values[2] > cur_tier.tier_ends_at);
       cur_tier.tier_ends_at += read_values[2];
-      // Increment tier index
-      cur_tier.index++;
     }
     // If the updated current tier's index is not in the valid range, or the end time is still in the past, throw
     if (cur_tier.tier_ends_at < now || cur_tier.index >= _num_tiers)

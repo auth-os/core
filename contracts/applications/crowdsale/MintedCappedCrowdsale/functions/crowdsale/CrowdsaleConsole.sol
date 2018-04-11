@@ -287,8 +287,8 @@ library CrowdsaleConsole {
       || read_values[3] != bytes32(sender)
     ) triggerException(ERR_INSUFFICIENT_PERMISSIONS);
 
-    // Overwrite previous buffer to create a storage return buffer
-    stOverwrite(ptr);
+    // Create storage return buffer in free memory
+    ptr = stBuff();
     // Push payment destination and value (0, 0) to storage buffer
     stPush(ptr, 0);
     stPush(ptr, 0);
