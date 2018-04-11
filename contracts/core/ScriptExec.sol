@@ -74,16 +74,29 @@ contract ScriptExec {
   }
 
   // Constructor - gives the sender administrative permissions and sets default registry and update sources
-  function ScriptExec(address _update_source, address _registry_storage, bytes32 _registry_exec_id, bytes32 _app_provider_id) public {
+  constructor(address _update_source, address _registry_storage, bytes32 _app_provider_id) public {
     exec_admin = msg.sender;
     default_updater = _update_source;
     default_storage = _registry_storage;
-    default_registry_exec_id = _registry_exec_id;
     default_provider = _app_provider_id;
   }
 
   // Payable function - for abstract storage refunds
   function () public payable {
+  }
+
+  /// REGISTRY BOOTSTRAP ///
+
+  function initRegistryWithCalldata(bytes _calldata) public onlyAdmin() returns (bytes32 exec_id) {
+    require(default_storage != address(0) && default_updater != address(0));
+    require(default_storage.call(_calldata));
+    assembly {
+      if eq(returndatasize, 0x20) {
+        returndatacopy(0x0, 0x0, 0x20)
+        exec_id := mload(0x0)
+      }
+    }
+    default_registry_exec_id = exec_id;
   }
 
   /// APPLICATION EXECUTION ///
@@ -160,7 +173,7 @@ contract ScriptExec {
   @param _app: The name of the application to initialize
   @param _is_payable: Whether the app will accept ether
   @param _init_calldata: Calldata to be forwarded to an application's initialization function
-  @return app_storage: The storage address of the application - pulled from default_storage
+  @return app_storage: The storage address of the application - pulled from default_registry
   @return ver_name: The name of the most recent stable version of the application, which was used to register this app instance
   @return exec_id: The execution id (within the application's storage) of the created application instance
   */
@@ -297,8 +310,8 @@ contract ScriptExec {
     new_script_exec = _new_exec;
   }
 
-  // Allows the admin to change the source for application registry
-  function changeSource(address _new_storage) public onlyAdmin() {
+  // Allows the admin to change the registry storage for application registry
+  function changeStorage(address _new_storage) public onlyAdmin() {
     default_storage = _new_storage;
   }
 

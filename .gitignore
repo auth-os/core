@@ -1,7 +1,10 @@
 build/
 flat/
+mochawesome-report/
 mochawesome-reports/
 node_modules/
 tmp/
 
 package.json  # using npm-shrinkwrap to pin truffle's solc version
+
+convert_bytes.py*
