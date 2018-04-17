@@ -46,10 +46,19 @@ contract ScriptExec {
     bytes32 version_name;
   }
 
+  struct ActiveInstance {
+    bytes32 exec_id;
+    bytes32 app_name;
+    bytes32 version_name;
+  }
+
   // Framework bootstrap method - keeps track of all deployed apps (through exec ids), and information on them
   // Maps app storage address -> app execution id -> AppInstance
   mapping (address => mapping (bytes32 => AppInstance)) public deployed_apps;
   mapping (address => bytes32[]) public exec_id_lists;
+
+  // Maps a deployer to an array of applications they have deployed
+  mapping (address => ActiveInstance[]) public deployer_instances;
 
   // Modifier - The sender must be the contract administrator
   modifier onlyAdmin() {
@@ -232,6 +241,11 @@ contract ScriptExec {
       version_name: ver_name
     });
     exec_id_lists[app_storage].push(app_exec_id);
+    deployer_instances[msg.sender].push(ActiveInstance({
+      exec_id: app_exec_id,
+      app_name: _app,
+      version_name: ver_name
+    }));
   }
 
   /// STORAGE GETTERS ///
