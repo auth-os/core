@@ -16,7 +16,7 @@ library CrowdsaleBuyTokens {
   // Storage location of the amount of tokens sold in the crowdsale so far. Does not include reserved tokens
   bytes32 public constant CROWDSALE_TOKENS_SOLD = keccak256("crowdsale_tokens_sold");
 
-  // Storage location of the minimum amount of wei allowed to be contributed for each purchase
+  // Storage location of the minimum amount of tokens allowed to be purchased
   bytes32 public constant CROWDSALE_MINIMUM_CONTRIBUTION = keccak256("crowdsale_min_cap");
 
   // Maps addresses to a boolean indicating whether or not this address has contributed
@@ -282,6 +282,11 @@ library CrowdsaleBuyTokens {
     // Sanity check - calculated spent amount must be nonzero and not greater than the amount sent
     assert(spend_info.spend_amount != 0 && spend_info.spend_amount <= wei_sent);
     spend_info.tokens_purchased = spend_info.spend_amount / cur_tier.purchase_price;
+
+    // Number of tokens purchased must be above the minimum contribution cap for the sender
+    // If tier is whitelisted, this value was checked in the previous block
+    if (!cur_tier.tier_is_whitelisted)
+      require(spend_info.tokens_purchased >= spend_info.minimum_contribution_amount);
 
     // Overwrite previous read buffer, and create storage return buffer
     stOverwrite(ptr);

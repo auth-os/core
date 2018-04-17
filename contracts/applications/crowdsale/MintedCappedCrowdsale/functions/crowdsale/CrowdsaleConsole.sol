@@ -19,7 +19,7 @@ library CrowdsaleConsole {
   // Storage location of the amount of time the crowdsale will take, accounting for all tiers
   bytes32 public constant CROWDSALE_TOTAL_DURATION = keccak256("crowdsale_total_duration");
 
-  // Storage location of the minimum amount of wei allowed to be contributed for each purchase
+  // Storage location of the minimum amount of tokens allowed to be purchased
   bytes32 public constant CROWDSALE_MINIMUM_CONTRIBUTION = keccak256("crowdsale_min_cap");
 
   // Storage location of a list of the tiers the crowdsale will have
@@ -141,9 +141,9 @@ library CrowdsaleConsole {
   }
 
   /*
-  Allows the admin of a crowdsale to update the global minimum contribution cap for a crowdsale prior to its start
+  Allows the admin of a crowdsale to update the global minimum contribution amount in tokens for a crowdsale prior to its start
 
-  @param _new_min_contribution: The new minimum wei contribution amount for the crowdsale
+  @param _new_min_contribution: The new minimum amount of tokens that must be bought for the crowdsale
   @param _context: The execution context for this application - a 96-byte array containing (in order):
     1. Application execution id
     2. Original script sender (address, padded to 32 bytes)

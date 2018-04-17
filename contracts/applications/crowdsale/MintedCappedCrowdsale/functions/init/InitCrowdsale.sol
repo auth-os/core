@@ -22,7 +22,7 @@ library InitCrowdsale {
   // Storage location of the amount of tokens sold in the crowdsale so far. Does not include reserved tokens
   bytes32 public constant CROWDSALE_TOKENS_SOLD = keccak256("crowdsale_tokens_sold");
 
-  // Storage location of the minimum amount of wei allowed to be contributed for each purchase
+  // Storage location of the minimum amount of tokens allowed to be purchased
   bytes32 public constant CROWDSALE_MINIMUM_CONTRIBUTION = keccak256("crowdsale_min_cap");
 
   // Maps addresses to a boolean indicating whether or not this address has contributed
@@ -226,7 +226,7 @@ library InitCrowdsale {
   @param _exec_id: The application execution id under which storage for this instance is located
   @return wei_raised: The amount of wei raised in the crowdsale so far
   @return team_wallet: The address to which funds are forwarded during this crowdsale
-  @return minimum_contribution: The minimum amount of wei that must be sent with each purchase
+  @return minimum_contribution: The minimum amount of tokens that must be purchased
   @return is_initialized: Whether or not the crowdsale has been completely initialized by the admin
   @return is_finalized: Whether or not the crowdsale has been completely finalized by the admin
   */
