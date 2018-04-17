@@ -31,6 +31,9 @@ library TokenConsole {
   // Transfer agents can transfer tokens, even if the crowdsale has not yet been finalized
   bytes32 public constant TOKEN_TRANSFER_AGENTS = keccak256("token_transfer_agents");
 
+  // Whether or not the token is unlocked for transfers
+  bytes32 public constant TOKENS_ARE_UNLOCKED = keccak256("tokens_are_unlocked");
+
   /// Storage location for an array of addresses with some form of reserved tokens
   bytes32 public constant TOKEN_RESERVED_DESTINATIONS = keccak256("token_reserved_dest_list");
 
@@ -198,6 +201,8 @@ library TokenConsole {
 
         // Increment length
         read_values[2] = bytes32(uint(read_values[2]) + 1);
+        // Ensure reserved destination amount does not exceed 20
+        require(read_values[2] <= 20);
         // Get storage position (end of TOKEN_RESERVED_DESTINATIONS list), and push to buffer
         stPush(ptr, bytes32(32 * uint(read_values[2]) + uint(TOKEN_RESERVED_DESTINATIONS)));
         stPush(ptr, bytes32(to_add));
@@ -460,6 +465,150 @@ library TokenConsole {
     // Add new total supply to storage buffer
     stPush(ptr, TOKEN_TOTAL_SUPPLY);
     stPush(ptr, bytes32(total_supply));
+    // Get bytes32[] representation of storage buffer
+    store_data = getBuffer(ptr);
+  }
+
+  /*
+  Allows anyone to distribute reserved tokens, as well as unlock token transfers following crowdsale finalization
+
+  @param _context: The execution context for this application - a 96-byte array containing (in order):
+    1. Application execution id
+    2. Original script sender (address, padded to 32 bytes)
+    3. Wei amount sent with transaction to storage
+  @return store_data: A formatted storage request - first 64 bytes designate a forwarding address (and amount) for any wei sents
+  */
+  function distributeAndUnlockTokens(bytes _context) public view returns (bytes32[] store_data) {
+    // Ensure valid input
+    if (_context.length != 96)
+      triggerException(ERR_UNKNOWN_CONTEXT);
+
+    // Parse context array and get sender address and execution id
+    address sender;
+    bytes32 exec_id;
+    (exec_id, sender, ) = parse(_context);
+
+    // Create 'readMulti' calldata buffer in memory
+    uint ptr = cdBuff(RD_MULTI);
+    // Place exec id, data read offset, and read size in buffer
+    cdPush(ptr, exec_id);
+    cdPush(ptr, 0x40);
+    cdPush(ptr, bytes32(4));
+    // Place crowdsale finalization status, total tokens sold, total token supply, and reserved destination length storage locations to calldata
+    cdPush(ptr, CROWDSALE_IS_FINALIZED);
+    cdPush(ptr, CROWDSALE_TOKENS_SOLD);
+    cdPush(ptr, TOKEN_TOTAL_SUPPLY);
+    cdPush(ptr, TOKEN_RESERVED_DESTINATIONS);
+    // Read from storage, and store returned values in buffer
+    bytes32[] memory initial_read_values = readMulti(ptr);
+    // Ensure the length is 4
+    assert(initial_read_values.length == 4);
+
+    // If the crowdsale is not finalized, revert
+    if (initial_read_values[0] == bytes32(0))
+      triggerException(ERR_INSUFFICIENT_PERMISSIONS);
+
+    // Get total tokens sold, total token supply, and reserved destinations list length
+    uint total_sold = uint(initial_read_values[1]);
+    uint total_supply = uint(initial_read_values[2]);
+    uint num_destinations = uint(initial_read_values[3]);
+
+    // Overwrite calldata pointer to create new 'readMulti' request
+    cdOverwrite(ptr, RD_MULTI);
+    // Place exec id, data read offset, and read size in buffer
+    cdPush(ptr, exec_id);
+    cdPush(ptr, 0x40);
+    cdPush(ptr, bytes32(num_destinations));
+    // Get the locations of all destinations to be paid out
+    for (uint i = 0; i < num_destinations; i++)
+      cdPush(ptr, bytes32(32 + (32 * i) + uint(TOKEN_RESERVED_DESTINATIONS)));
+
+    // Read from storage, and store returned values in buffer
+    initial_read_values = readMulti(ptr);
+    // Ensure valid return length -
+    assert(initial_read_values.length == num_destinations);
+
+    // Finally - for each returned address, we want to read the reservation information for that address as well as that address's current token balance -
+
+    // Create a new 'readMulti' buffer - we don't want to overwrite addresses
+    ptr = cdBuff(RD_MULTI);
+    // Push exec id, data read offset, and read size to buffer
+    cdPush(ptr, exec_id);
+    cdPush(ptr, 0x40);
+    cdPush(ptr, bytes32(4 * num_destinations));
+    // For each address returned, place the locations of their balance, reserved tokens, reserved percents, and percent's precision in 'readMulti' buffer
+    for (i = 0; i < num_destinations; i++) {
+      // Destination balance location
+      cdPush(ptr, keccak256(keccak256(initial_read_values[i]), TOKEN_BALANCES));
+      // Number of tokens reserved
+      cdPush(
+        ptr,
+        bytes32(
+          32 + uint(keccak256(keccak256(address(initial_read_values[i])), TOKEN_RESERVED_ADDR_INFO))
+        )
+      );
+      // Number of percent reserved - location is 32 bytes after number of tokens reserved
+      cdPush(
+        ptr,
+        bytes32(
+          64 + uint(keccak256(keccak256(address(initial_read_values[i])), TOKEN_RESERVED_ADDR_INFO))
+        )
+      );
+      // Precision of percent - location is 32 bytes after number of percentage points reserved
+      cdPush(
+        ptr,
+        bytes32(
+          96 + uint(keccak256(keccak256(address(initial_read_values[i])), TOKEN_RESERVED_ADDR_INFO))
+        )
+      );
+    }
+    // Read from storage, and store return in buffer
+    uint[] memory read_reserved_info = readMultiUint(ptr);
+    // Ensure valid return length -
+    assert(read_reserved_info.length == 4 * num_destinations);
+
+    // Create storage buffer in free memory, to set up return value
+    ptr = stBuff();
+    // Push payment destination and amount (0, 0) to buffer
+    stPush(ptr, 0);
+    stPush(ptr, 0);
+    // Push new list length to storage buffer
+    stPush(ptr, TOKEN_RESERVED_DESTINATIONS);
+    stPush(ptr, bytes32(0));
+    // For each address, get their new balance and add to storage buffer
+    for (i = 0; i < num_destinations; i++) {
+      // Get percent reserved and precision
+      uint to_add = read_reserved_info[(i * 4) + 2];
+      // Two points of precision are added to ensure at least a percent out of 100
+      uint precision = 2 + read_reserved_info[(i * 4) + 3];
+      // Get percent divisor, and check for overflow
+      assert(10 ** precision > precision);
+      precision = 10 ** precision;
+
+      // Get number of tokens to add frmo total_sold and precent reserved
+      to_add = total_sold * to_add / precision;
+
+      // Add number of tokens reserved, and check for overflow
+      // Additionally, check that the added amount does not overflow total supply
+      require(to_add + read_reserved_info[(i * 4) + 1] >= to_add);
+      to_add += read_reserved_info[(i * 4) + 1];
+      require(total_supply + to_add >= total_supply);
+      // Increment total supply
+      total_supply += to_add;
+
+      // Add destination's current token balance to to_add, and check for overflow
+      require(to_add + read_reserved_info[i * 4] >= read_reserved_info[i * 4]);
+      to_add += read_reserved_info[i * 4];
+      // Add new balance and balance location to storage buffer
+      stPush(ptr, keccak256(keccak256(address(initial_read_values[i])), TOKEN_BALANCES));
+      stPush(ptr, bytes32(to_add));
+    }
+    // Add new total supply to storage buffer
+    stPush(ptr, TOKEN_TOTAL_SUPPLY);
+    stPush(ptr, bytes32(total_supply));
+    // Unlock tokens by adding token 'unlock' status to storage buffer
+    stPush(ptr, TOKENS_ARE_UNLOCKED);
+    stPush(ptr, bytes32(1));
     // Get bytes32[] representation of storage buffer
     store_data = getBuffer(ptr);
   }

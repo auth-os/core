@@ -90,6 +90,9 @@ library InitCrowdsale {
   // Transfer agents can transfer tokens, even if the crowdsale has not yet been finalized
   bytes32 public constant TOKEN_TRANSFER_AGENTS = keccak256("token_transfer_agents");
 
+  // Whether or not the token is unlocked for transfers
+  bytes32 public constant TOKENS_ARE_UNLOCKED = keccak256("tokens_are_unlocked");
+
   /// Storage location for an array of addresses with some form of reserved tokens
   bytes32 public constant TOKEN_RESERVED_DESTINATIONS = keccak256("token_reserved_dest_list");
 
@@ -765,7 +768,7 @@ library InitCrowdsale {
   @return percent_decimals: The number of decimals in the above percent reserved - used to calculate with precision
   */
   function getReservedDestinationInfo(address _storage, bytes32 _exec_id, address _destination) public view
-  returns (uint destination_list_index, uint num_tokens, uint num_percent, uint percent_decimals ) {
+  returns (uint destination_list_index, uint num_tokens, uint num_percent, uint percent_decimals) {
     // Create 'readMulti' calldata buffer in memory
     uint ptr = cdBuff(RD_MULTI);
     // Push exec id, data read offset, and read size to buffer

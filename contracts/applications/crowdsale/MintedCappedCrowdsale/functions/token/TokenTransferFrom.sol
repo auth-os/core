@@ -2,11 +2,6 @@ pragma solidity ^0.4.21;
 
 library TokenTransferFrom {
 
-  /// CROWDSALE STORAGE ///
-
-  // Whether or not the crowdsale is post-purchase
-  bytes32 public constant CROWDSALE_IS_FINALIZED = keccak256("crowdsale_is_finalized");
-
   /// TOKEN STORAGE ///
 
   // Storage seed for user balances mapping
@@ -18,6 +13,9 @@ library TokenTransferFrom {
   // Storage seed for token 'transfer agent' status for any address
   // Transfer agents can transfer tokens, even if the crowdsale has not yet been finalized
   bytes32 public constant TOKEN_TRANSFER_AGENTS = keccak256("token_transfer_agents");
+
+  // Whether or not the token is unlocked for transfers
+  bytes32 public constant TOKENS_ARE_UNLOCKED = keccak256("tokens_are_unlocked");
 
   /// FUNCTION SELECTORS ///
 
@@ -65,15 +63,15 @@ library TokenTransferFrom {
     cdPush(ptr, keccak256(keccak256(_from), TOKEN_BALANCES));
     cdPush(ptr, keccak256(keccak256(_to), TOKEN_BALANCES));
     cdPush(ptr, keccak256(keccak256(sender), keccak256(keccak256(_from), TOKEN_ALLOWANCES)));
-    // Place crowdsale finalization status and owner transfer agent status storage locations in calldata buffer
-    cdPush(ptr, CROWDSALE_IS_FINALIZED);
+    // Place token unlock status and owner transfer agent status storage locations in calldata buffer
+    cdPush(ptr, TOKENS_ARE_UNLOCKED);
     cdPush(ptr, keccak256(keccak256(_from), TOKEN_TRANSFER_AGENTS));
     // Read from storage
     bytes32[] memory read_values = readMulti(ptr);
     // Ensure length of returned data is correct
     assert(read_values.length == 5);
 
-    // If the crowdsale is not finalized, and the token owner is not a transfer agent, throw exception
+    // If the token is not unlocked, and the token owner is not a transfer agent, throw exception
     if (read_values[3] == bytes32(0) && read_values[4] == bytes32(0))
       triggerException(ERR_INSUFFICIENT_PERMISSIONS);
 
