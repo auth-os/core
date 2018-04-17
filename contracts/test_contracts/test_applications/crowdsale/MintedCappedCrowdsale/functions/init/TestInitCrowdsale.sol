@@ -1081,6 +1081,35 @@ contract TestInitCrowdsale {
   }
 
   /*
+  Executes a 'readMulti' function call, given a pointer to a calldata buffer
+
+  @param _ptr: A pointer to the location in memory where the calldata for the call is stored
+  @param _storage: The address to read from
+  @return read_values: The values read from storage
+  */
+  function readMultiUintFrom(uint _ptr, address _storage) internal view returns (uint[] read_values) {
+    bool success;
+    assembly {
+      // Minimum length for 'readMulti' - 1 location is 0x84
+      if lt(mload(_ptr), 0x84) { revert (0, 0) }
+      // Read from storage
+      success := staticcall(gas, _storage, add(0x20, _ptr), mload(_ptr), 0, 0)
+      // If call succeed, get return information
+      if gt(success, 0) {
+        // Ensure data will not be copied beyond the pointer
+        if gt(sub(returndatasize, 0x20), mload(_ptr)) { revert (0, 0) }
+        // Copy returned data to pointer, overwriting it in the process
+        // Copies returndatasize, but ignores the initial read offset so that the bytes32[] returned in the read is sitting directly at the pointer
+        returndatacopy(_ptr, 0x20, sub(returndatasize, 0x20))
+        // Set return bytes32[] to pointer, which should now have the stored length of the returned array
+        read_values := _ptr
+      }
+    }
+    if (!success)
+      triggerException(ERR_READ_FAILED);
+  }
+
+  /*
   Reverts state changes, but passes message back to caller
 
   @param _message: The message to return to the caller
