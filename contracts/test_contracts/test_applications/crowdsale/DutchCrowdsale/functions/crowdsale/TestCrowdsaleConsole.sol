@@ -95,7 +95,6 @@ contract TestCrowdsaleConsole {
     _;
   }
 
-
   /*
   Allows the admin of a crowdsale to add token information, prior to crowdsale initialization completion
 
@@ -114,6 +113,7 @@ contract TestCrowdsaleConsole {
       _name == bytes32(0)
       || _symbol == bytes32(0)
       || _decimals == 0
+      || _decimals > 18
     ) triggerException(ERR_IMPROPER_INITIALIZATION);
 
     // Create memory buffer for return data

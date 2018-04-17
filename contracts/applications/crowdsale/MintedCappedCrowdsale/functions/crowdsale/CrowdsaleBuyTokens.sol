@@ -62,6 +62,9 @@ library CrowdsaleBuyTokens {
 
   /// TOKEN STORAGE ///
 
+  // Storage location for token decimals
+  bytes32 public constant TOKEN_DECIMALS = keccak256("token_decimals");
+
   // Storage location for token totalSupply
   bytes32 public constant TOKEN_TOTAL_SUPPLY = keccak256("token_total_supply");
 
@@ -101,6 +104,7 @@ library CrowdsaleBuyTokens {
     address team_wallet;
     uint wei_raised;
     uint tokens_sold;
+    uint token_decimals;
     uint start_time;
     uint num_tiers;
     uint num_contributors;
@@ -162,7 +166,7 @@ library CrowdsaleBuyTokens {
     // Push exec id, data read offset, and read size to buffer
     cdPush(ptr, exec_id);
     cdPush(ptr, 0x40);
-    cdPush(ptr, bytes32(16));
+    cdPush(ptr, bytes32(17));
     // Push general crowdsale information storage locations to calldata buffer
     cdPush(ptr, WALLET); // Team funds wallet
     cdPush(ptr, WEI_RAISED); // Amount of wei raised during the crowdsale so far
@@ -183,6 +187,7 @@ library CrowdsaleBuyTokens {
     cdPush(ptr, CROWDSALE_UNIQUE_CONTRIBUTORS); // Number of unique contributors to the crowdsale
     cdPush(ptr, keccak256(keccak256(sender), CROWDSALE_UNIQUE_CONTRIBUTORS)); // Whether or not the sender has already contributed
     cdPush(ptr, CROWDSALE_MINIMUM_CONTRIBUTION); // Crowdsale minimum wei contribution amount
+    cdPush(ptr, TOKEN_DECIMALS); // Token decimal count storage location
 
     // Read from storage, and return data to buffer
     bytes32[] memory read_values = readMulti(ptr);
@@ -192,6 +197,7 @@ library CrowdsaleBuyTokens {
       team_wallet: address(read_values[0]),
       wei_raised: uint(read_values[1]),
       tokens_sold: uint(read_values[2]),
+      token_decimals: uint(read_values[16]),
       start_time: uint(read_values[5]),
       num_tiers: uint(read_values[6]),
       num_contributors: uint(read_values[13]),
@@ -224,10 +230,15 @@ library CrowdsaleBuyTokens {
       || now < sale_stat.start_time             // Current time is prior to crowdsale start time
     ) triggerException(ERR_INSUFFICIENT_PERMISSIONS);
 
-    // Sanity checks - purchase price, wallet, and number of tiers should be nonzero
-    assert(sale_stat.team_wallet != address(0) && cur_tier.purchase_price > 0 && sale_stat.num_tiers != 0);
-    // Ensure current tier index is valid -
-    assert(cur_tier.index < sale_stat.num_tiers);
+    // Sanity checks -
+    assert(
+      sale_stat.team_wallet != address(0)        // Team wallet address should be nonzero
+      && cur_tier.purchase_price > 0             // Purchase price should be nonzero
+      && sale_stat.num_tiers != 0                // Number of tiers should be nonzero
+      && sale_stat.token_decimals > 0            // Token decimals must be in a valid range
+      && sale_stat.token_decimals <= 18          //
+      && cur_tier.index < sale_stat.num_tiers    // Valid current tier index
+    );
 
     /// Get amount of wei able to be spent and tokens able to be purchased -
 
@@ -238,8 +249,8 @@ library CrowdsaleBuyTokens {
     /// Get amount of wei able to be spent, given the number of tokens remaining -
 
     // If amount to buy is over the amount of tokens remaining:
-    if (wei_sent / cur_tier.purchase_price > cur_tier.tokens_remaining) {
-      spend_info.spend_amount = cur_tier.purchase_price * cur_tier.tokens_remaining;
+    if ((wei_sent * 10 ** sale_stat.token_decimals) / cur_tier.purchase_price > cur_tier.tokens_remaining) {
+      spend_info.spend_amount = (cur_tier.purchase_price * cur_tier.tokens_remaining) / (10 ** sale_stat.token_decimals);
 
       // No tokens are able to be purchased
       if (spend_info.spend_amount == 0)
@@ -272,21 +283,21 @@ library CrowdsaleBuyTokens {
       // Ensure spend amount is within range
       if (spend_info.spend_amount > spend_info.spend_amount_remaining) {
         // Spend all remaining wei allowed
-        spend_info.spend_amount = spend_info.spend_amount_remaining;
+        spend_info.spend_amount =
+            spend_info.spend_amount_remaining -
+            (spend_info.spend_amount_remaining % cur_tier.purchase_price);
       }
 
       spend_info.spend_amount_remaining -= spend_info.spend_amount;
-
     }
 
     // Sanity check - calculated spent amount must be nonzero and not greater than the amount sent
     assert(spend_info.spend_amount != 0 && spend_info.spend_amount <= wei_sent);
-    spend_info.tokens_purchased = spend_info.spend_amount / cur_tier.purchase_price;
+    spend_info.tokens_purchased = (spend_info.spend_amount * 10 ** sale_stat.token_decimals) / cur_tier.purchase_price;
 
     // Number of tokens purchased must be above the minimum contribution cap for the sender
-    // If tier is whitelisted, this value was checked in the previous block
-    if (!cur_tier.tier_is_whitelisted)
-      require(spend_info.tokens_purchased >= spend_info.minimum_contribution_amount);
+    // If the tier is whitelisted, spend_info.minimum_contribution_amount was set to the whitelist-specific minimum cap. Otherwise, defaults to global min cap
+    require(spend_info.tokens_purchased >= spend_info.minimum_contribution_amount);
 
     // Overwrite previous read buffer, and create storage return buffer
     stOverwrite(ptr);

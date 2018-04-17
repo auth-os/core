@@ -457,13 +457,22 @@ library InitCrowdsale {
   @return total_sell_cap: The maximum amount of tokens to sell
   */
   function getCrowdsaleMaxRaise(address _storage, bytes32 _exec_id) public view returns (uint wei_raise_cap, uint total_sell_cap) {
-    // Create 'read' calldata buffer in memory
-    uint ptr = cdBuff(RD_SING);
-    // Push exec id and tier list length location to buffer
+    // Create 'readMulti' calldata buffer in memory
+    uint ptr = cdBuff(RD_MULTI);
+    // Push exec id, data read offset, and read size to buffer
     cdPush(ptr, _exec_id);
+    cdPush(ptr, 0x40);
+    cdPush(ptr, bytes32(2));
+    // Push crowdsale tier list length and token decimals storage locations to buffer
     cdPush(ptr, CROWDSALE_TIERS);
+    cdPush(ptr, TOKEN_DECIMALS);
     // Read from storage
-    uint num_tiers = uint(readSingleFrom(ptr, _storage));
+    uint[] memory read_values = readMultiUintFrom(ptr, _storage);
+
+    // Get number of crowdsale tiers
+    uint num_tiers = read_values[0];
+    // Get number of token decimals
+    uint num_decimals = read_values[1];
 
     // Overwrite previous buffer - push exec id, data read offset, and read size to buffer
     cdOverwrite(ptr, RD_MULTI);
@@ -477,12 +486,12 @@ library InitCrowdsale {
     }
 
     // Read from storage
-    uint[] memory read_values = readMultiUintFrom(ptr, _storage);
+    read_values = readMultiUintFrom(ptr, _storage);
     // Loop through and get wei raise cap and token sell cap
     for (i = 0; i < read_values.length; i+=2) {
       total_sell_cap += read_values[i];
-      // Increase maximum wei to raise by tier token sell cap * tier purchase price
-      wei_raise_cap += (read_values[i] * read_values[i + 1]);
+      // Increase maximum wei able to be raised - (tier token sell cap) * (tier price in wei) / (10 ^ decimals)
+      wei_raise_cap += (read_values[i] * read_values[i + 1]) / (10 ** num_decimals);
     }
   }
 

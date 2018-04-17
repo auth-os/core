@@ -63,7 +63,13 @@ contract TestCrowdsaleConsole {
   // Storage location of the end time of the current tier. Purchase attempts beyond this time will update the current tier (if another is available)
   bytes32 public constant CURRENT_TIER_ENDS_AT = keccak256("crowdsale_tier_ends_at");
 
-  // Storage seed for crowdsale whitelist mappings - maps each tier's index to a whitelist mapping, which maps adddresses to their whitelist status (bool)
+  // Storage seed for crowdsale whitelist mappings - maps each tier's index to a mapping of addresses to whtielist information
+  /* Each whitelist entry mimics this struct:
+  struct WhitelistListing {
+    uint minimum_contribution;
+    uint max_contribution;
+  }
+  */
   bytes32 public constant SALE_WHITELIST = keccak256("crowdsale_purchase_whitelist");
 
   /// TOKEN STORAGE ///
@@ -142,6 +148,7 @@ contract TestCrowdsaleConsole {
       _name == bytes32(0)
       || _symbol == bytes32(0)
       || _decimals == 0
+      || _decimals > 18
     ) triggerException(ERR_IMPROPER_INITIALIZATION);
 
     // Create memory buffer for return data
@@ -214,7 +221,7 @@ contract TestCrowdsaleConsole {
     (exec_id, sender, ) = parse(_context);
 
     // Create 'readMulti' calldata buffer in memory
-    uint ptr = cdBuff(RD_SING);
+    uint ptr = cdBuff(RD_MULTI);
     // Push exec id, data read offset, and read size to buffer
     cdPush(ptr, exec_id);
     cdPush(ptr, 0x40);
@@ -338,7 +345,7 @@ contract TestCrowdsaleConsole {
     stPush(ptr, CROWDSALE_TIERS);
     stPush(ptr, bytes32(tiers.num_tiers + _tier_names.length));
 
-    // Place crowdsale tier storage base location in num_tiers
+    // Place crowdsale tier storage base location in tiers struct
     tiers.base_list_storage = 32 + (192 * tiers.num_tiers) + uint(CROWDSALE_TIERS);
     // Loop over each new tier, and add to storage buffer. Keep track of the added duration
     for (uint i = 0; i < _tier_names.length; i++) {
