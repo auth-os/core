@@ -128,6 +128,7 @@ library InitCrowdsale {
   @param _initial_tier_duration: The duration of the initial tier of the crowdsale
   @param _initial_tier_token_sell_cap: The maximum number of tokens that can be sold during the initial tier
   @param _initial_tier_is_whitelisted: Whether the initial tier of the crowdsale requires an address be whitelisted for successful purchase
+  @param _initial_tier_duration_is_modifiable: Whether the initial tier of the crowdsale has a modifiable duration
   @param _admin: A privileged address which is able to complete the crowdsale initialization process
   @return store_data: A formatted storage request
   */
@@ -139,6 +140,7 @@ library InitCrowdsale {
     uint _initial_tier_duration,
     uint _initial_tier_token_sell_cap,
     bool _initial_tier_is_whitelisted,
+    bool _initial_tier_duration_is_modifiable,
     address _admin
   ) public view returns (bytes32[] store_data) {
     // Ensure valid input
@@ -181,9 +183,9 @@ library InitCrowdsale {
     // Tier active duration
     stPush(ptr, bytes32(128 + uint(CROWDSALE_TIERS)));
     stPush(ptr, bytes32(_initial_tier_duration));
-    // Whether this tier's duration is modifiable prior to its start time (automatically true for initial tiers)
+    // Whether this tier's duration is modifiable prior to its start time
     stPush(ptr, bytes32(160 + uint(CROWDSALE_TIERS)));
-    stPush(ptr, bytes32(1));
+    stPush(ptr, bytes32(_initial_tier_duration_is_modifiable ? bytes32(1) : bytes32(0)));
     // Whether this tier requires an address be whitelisted to complete token purchase
     stPush(ptr, bytes32(192 + uint(CROWDSALE_TIERS)));
     stPush(ptr, (_initial_tier_is_whitelisted ? bytes32(1) : bytes32(0)));
