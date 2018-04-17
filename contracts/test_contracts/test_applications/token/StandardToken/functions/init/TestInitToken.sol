@@ -252,6 +252,8 @@ contract TestInitToken {
     assembly {
       // Get buffer location - free memory
       ptr := mload(0x40)
+      // Ensure free-memory pointer is cleared
+      mstore(ptr, 0)
       // Update free-memory pointer - it's important to note that this is not actually free memory, if the pointer is meant to expand
       mstore(0x40, add(0x20, ptr))
     }
