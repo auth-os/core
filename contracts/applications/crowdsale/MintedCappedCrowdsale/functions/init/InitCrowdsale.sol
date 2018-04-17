@@ -260,6 +260,52 @@ library InitCrowdsale {
   }
 
   /*
+  Returns true if all tiers have been completely sold out
+
+  @param _storage: The address where application storage is located
+  @param _exec_id: The application execution id under which storage for this instance is located
+  @return is_crowdsale_full: Whether or not the total number of tokens to sell in the crowdsale has been reached
+  @return max_sellable: The total number of tokens that can be sold in the crowdsale
+  */
+  function isCrowdsaleFull(address _storage, bytes32 _exec_id) public view returns (bool is_crowdsale_full, uint max_sellable) {
+    // Create 'readMulti' calldata buffer in memory
+    uint ptr = cdBuff(RD_MULTI);
+    // Push exec id, data read offset, and read size to buffer
+    cdPush(ptr, _exec_id);
+    cdPush(ptr, 0x40);
+    cdPush(ptr, bytes32(2));
+    // Push crowdsale tier list length and total tokens sold storage locations to buffer
+    cdPush(ptr, CROWDSALE_TIERS);
+    cdPush(ptr, CROWDSALE_TOKENS_SOLD);
+    // Read from storage
+    uint[] memory read_values = readMultiUintFrom(ptr, _storage);
+
+    // Get number of tiers and tokens sold
+    uint num_tiers = read_values[0];
+    uint tokens_sold = read_values[1];
+
+    // Overwrite previous buffer and create new calldata buffer
+    cdOverwrite(ptr, RD_MULTI);
+    // Push exec id, read offset, and read size to buffer
+    cdPush(ptr, _exec_id);
+    cdPush(ptr, 0x40);
+    cdPush(ptr, bytes32(num_tiers));
+    // Loop through tier cap locations, and add each to the calldata buffer
+    for (uint i = 0; i < num_tiers; i++)
+      cdPush(ptr, bytes32(64 + (192 * i) + uint(CROWDSALE_TIERS)));
+
+    // Read from storage
+    read_values = readMultiUintFrom(ptr, _storage);
+
+    // Loop through returned values, and get the sum of all tier token sell caps
+    for (i = 0; i < read_values.length; i++)
+      max_sellable += read_values[i];
+
+    // Get return value
+    is_crowdsale_full = (tokens_sold >= max_sellable ? true : false);
+  }
+
+  /*
   Returns the number of unique contributors to a crowdsale
 
   @param _storage: The address where application storage is located
