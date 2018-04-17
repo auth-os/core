@@ -24,21 +24,17 @@ contract TestTokenTransfer {
     return last_storage_event;
   }
 
-  /// CROWDSALE STORAGE ///
-
-  // Whether or not the crowdsale is post-purchase
-  bytes32 public constant CROWDSALE_IS_FINALIZED = keccak256("crowdsale_is_finalized");
-
   /// TOKEN STORAGE ///
+
+  // Storage seed for user balances mapping
+  bytes32 public constant TOKEN_BALANCES = keccak256("token_balances");
 
   // Storage seed for token 'transfer agent' status for any address
   // Transfer agents can transfer tokens, even if the crowdsale has not yet been finalized
   bytes32 public constant TOKEN_TRANSFER_AGENTS = keccak256("token_transfer_agents");
 
-  /// TOKEN STORAGE ///
-
-  // Storage seed for user balances mapping
-  bytes32 public constant TOKEN_BALANCES = keccak256("token_balances");
+  // Whether or not the token is unlocked for transfers
+  bytes32 public constant TOKENS_ARE_UNLOCKED = keccak256("tokens_are_unlocked");
 
   /// FUNCTION SELECTORS ///
 
@@ -84,15 +80,15 @@ contract TestTokenTransfer {
     // Place sender and recipient balance locations in calldata buffer
     cdPush(ptr, keccak256(keccak256(sender), TOKEN_BALANCES));
     cdPush(ptr, keccak256(keccak256(_to), TOKEN_BALANCES));
-    // Place crowdsale finalization status and sender transfer agent status storage locations in calldata buffer
-    cdPush(ptr, CROWDSALE_IS_FINALIZED);
+    // Place token unlock status and sender transfer agent status storage locations in calldata buffer
+    cdPush(ptr, TOKENS_ARE_UNLOCKED);
     cdPush(ptr, keccak256(keccak256(sender), TOKEN_TRANSFER_AGENTS));
     // Read from storage
     bytes32[] memory read_values = readMulti(ptr);
     // Ensure length of returned data is correct
     assert(read_values.length == 4);
 
-    // If the crowdsale is not finalized, and the sender is not a transfer agent, throw exception
+    // If the token is not unlocked, and the sender is not a transfer agent, throw exception
     if (read_values[2] == bytes32(0) && read_values[3] == bytes32(0))
       triggerException(ERR_INSUFFICIENT_PERMISSIONS);
 

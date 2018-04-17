@@ -35,14 +35,25 @@ contract TestCrowdsaleBuyTokens {
   // Storage location of the crowdsale's start time
   bytes32 public constant CROWDSALE_START_TIME = keccak256("crowdsale_start_time");
 
+  // Storage location of the amount of tokens sold in the crowdsale so far. Does not include reserved tokens
+  bytes32 public constant CROWDSALE_TOKENS_SOLD = keccak256("crowdsale_tokens_sold");
+
+  // Storage location of the minimum amount of tokens allowed to be purchased
+  bytes32 public constant CROWDSALE_MINIMUM_CONTRIBUTION = keccak256("crowdsale_min_cap");
+
+  // Maps addresses to a boolean indicating whether or not this address has contributed
+  // At its base location, stores the amount of unique contributors so far in this crowdsale
+  bytes32 public constant CROWDSALE_UNIQUE_CONTRIBUTORS = keccak256("crowdsale_contributors");
+
   // Storage location of a list of the tiers the crowdsale will have
   /* Each tier mimics the following struct:
   struct CrowdsaleTier {
     bytes32 _tier_name;                 // The name of the crowdsale tier
     uint _tier_token_sell_cap;          // The maximum number of tokens that will be sold during this tier
+    uint _tier_purchase_price;          // The price of a token in wei for this tier
     uint _duration;                     // The amount of time this tier will be active for
     bool _tier_duration_is_modifiable;  // Whether the crowdsale admin is allowed to modify the duration of a tier before it goes live
-    bool _tier_is_whitelist_enabled     // Whether this tier of the crowdsale requires users to be on a purchase whitelist
+    bool _tier_is_whitelist_enabled;    // Whether this tier of the crowdsale requires users to be on a purchase whitelist
   }
   */
   bytes32 public constant CROWDSALE_TIERS = keccak256("crowdsale_tier_list");
@@ -62,10 +73,13 @@ contract TestCrowdsaleBuyTokens {
   // Storage location of amount of wei raised during the crowdsale, total
   bytes32 public constant WEI_RAISED = keccak256("crowdsale_wei_raised");
 
-  // Storage location of token per wei rate
-  bytes32 public constant SALE_RATE = keccak256("crowdsale_sale_rate");
-
-  // Storage seed for crowdsale whitelist mapping - maps addresses to a boolean value indicating whether they are on the whitelist
+  // Storage seed for crowdsale whitelist mappings - maps each tier's index to a mapping of addresses to whtielist information
+  /* Each whitelist entry mimics this struct:
+  struct WhitelistListing {
+    uint minimum_contribution;
+    uint max_contribution;
+  }
+  */
   bytes32 public constant SALE_WHITELIST = keccak256("crowdsale_purchase_whitelist");
 
   /// TOKEN STORAGE ///
@@ -98,6 +112,7 @@ contract TestCrowdsaleBuyTokens {
   struct CrowdsaleTier {
     uint index;
     uint tokens_remaining;
+    uint purchase_price;
     uint time_remaining;
     uint tier_ends_at;
     bool tier_is_whitelisted;
@@ -107,15 +122,19 @@ contract TestCrowdsaleBuyTokens {
   struct CrowdsaleInfo {
     address team_wallet;
     uint wei_raised;
-    uint sale_rate;
+    uint tokens_sold;
     uint start_time;
     uint num_tiers;
+    uint num_contributors;
+    bool sender_has_contributed;
   }
 
   struct SpendInfo {
     uint token_total_supply;
     uint sender_token_balance;
     uint spend_amount;
+    uint minimum_contribution_amount;
+    uint spend_amount_remaining;
     uint tokens_purchased;
     bool valid_state;
   }
@@ -147,6 +166,7 @@ contract TestCrowdsaleBuyTokens {
     CrowdsaleTier memory cur_tier = CrowdsaleTier({
       index: 0,
       tokens_remaining: 0,
+      purchase_price: 0,
       time_remaining: 0,
       tier_ends_at: 0,
       tier_is_whitelisted: false,
@@ -156,40 +176,35 @@ contract TestCrowdsaleBuyTokens {
 
     /// Read crowdsale and tier information from storage -
 
-    // Initial read - current tier index
-    // Create 'read' calldata buffer in memory
-    uint ptr = cdBuff(RD_SING);
-    // Push exec id and current tier index storage location to buffer
-    cdPush(ptr, exec_id);
-    cdPush(ptr, CROWDSALE_CURRENT_TIER);
-    // Read from storage, and place return in CrowdsaleTier struct
-    cur_tier.index = uint(readSingle(ptr));
-    // Indexes are off by one in storage - if zero was returned, tier index is invalid
-    require(cur_tier.index != 0);
-    cur_tier.index--;
+    // Get the index of the current crowdsale tier
+    cur_tier.index = getCurrentTierIndex(exec_id);
 
-    // Create 'readMulti' calldata buffer in memory - overwrite previous buffer
-    cdOverwrite(ptr, RD_MULTI);
+    // Create 'readMulti' calldata buffer in memory
+    uint ptr = cdBuff(RD_MULTI);
     // Push exec id, data read offset, and read size to buffer
     cdPush(ptr, exec_id);
     cdPush(ptr, 0x40);
-    cdPush(ptr, bytes32(12));
+    cdPush(ptr, bytes32(16));
     // Push general crowdsale information storage locations to calldata buffer
     cdPush(ptr, WALLET); // Team funds wallet
     cdPush(ptr, WEI_RAISED); // Amount of wei raised during the crowdsale so far
-    cdPush(ptr, SALE_RATE); // Sale rate - number of tokens recieved per wei spent
+    cdPush(ptr, CROWDSALE_TOKENS_SOLD); // Tokens sold so far
     // Push crowdsale status storage locations to calldata buffer
     cdPush(ptr, CROWDSALE_IS_INIT); // Whether the crowdsale is initialized or not
     cdPush(ptr, CROWDSALE_IS_FINALIZED); // Whether the crowdsale is finalized or not
     cdPush(ptr, CROWDSALE_START_TIME); // Start time for the crowdsale
     cdPush(ptr, CROWDSALE_TIERS); // Number of tiers in the crowdsale
     // Push crowdsale tier information storage locations to calldata buffer
-    cdPush(ptr, bytes32(160 + (160 * cur_tier.index) + uint(CROWDSALE_TIERS))); // Location of current tier 'whitelist-enabled' storage location
+    cdPush(ptr, bytes32(96 + (192 * cur_tier.index) + uint(CROWDSALE_TIERS))); // Location of current tier token purchase price
+    cdPush(ptr, bytes32(192 + (192 * cur_tier.index) + uint(CROWDSALE_TIERS))); // Location of current tier 'whitelist-enabled' storage location
     cdPush(ptr, CURRENT_TIER_ENDS_AT); // Time at which the current crowdsale tier ends
     cdPush(ptr, CURRENT_TIER_TOKENS_REMAINING); // Number of tokens remaining in the current tier
     // Push token information storage locations to calldata buffer
     cdPush(ptr, TOKEN_TOTAL_SUPPLY); // Total number of tokens existing so far
     cdPush(ptr, keccak256(keccak256(sender), TOKEN_BALANCES)); // Sender's token balance
+    cdPush(ptr, CROWDSALE_UNIQUE_CONTRIBUTORS); // Number of unique contributors to the crowdsale
+    cdPush(ptr, keccak256(keccak256(sender), CROWDSALE_UNIQUE_CONTRIBUTORS)); // Whether or not the sender has already contributed
+    cdPush(ptr, CROWDSALE_MINIMUM_CONTRIBUTION); // Crowdsale minimum wei contribution amount
 
     // Read from storage, and return data to buffer
     bytes32[] memory read_values = readMulti(ptr);
@@ -198,22 +213,27 @@ contract TestCrowdsaleBuyTokens {
     CrowdsaleInfo memory sale_stat = CrowdsaleInfo({
       team_wallet: address(read_values[0]),
       wei_raised: uint(read_values[1]),
-      sale_rate: uint(read_values[2]),
+      tokens_sold: uint(read_values[2]),
       start_time: uint(read_values[5]),
-      num_tiers: uint(read_values[6])
+      num_tiers: uint(read_values[6]),
+      num_contributors: uint(read_values[13]),
+      sender_has_contributed: (read_values[14] == bytes32(0) ? false : true)
     });
 
     // Update CrowdsaleTier struct with returned data
-    cur_tier.tokens_remaining = uint(read_values[9]);
-    cur_tier.time_remaining = (now < uint(read_values[8]) ? uint(read_values[8]) - now : 0);
-    cur_tier.tier_ends_at = uint(read_values[8]);
-    cur_tier.tier_is_whitelisted = (read_values[7] == bytes32(0) ? false : true);
+    cur_tier.tokens_remaining = uint(read_values[10]);
+    cur_tier.purchase_price = uint(read_values[7]);
+    cur_tier.time_remaining = (now < uint(read_values[9]) ? uint(read_values[9]) - now : 0);
+    cur_tier.tier_ends_at = uint(read_values[9]);
+    cur_tier.tier_is_whitelisted = (read_values[8] == bytes32(0) ? false : true);
 
     // Get SpendInfo struct from returned token and balance information
     SpendInfo memory spend_info = SpendInfo({
-      token_total_supply: uint(read_values[10]),
-      sender_token_balance: uint(read_values[11]),
+      token_total_supply: uint(read_values[11]),
+      sender_token_balance: uint(read_values[12]),
       spend_amount: 0,
+      minimum_contribution_amount: uint(read_values[15]),
+      spend_amount_remaining: 0, // Only applies if this tier is whitelisted
       tokens_purchased: 0,
       // This flag is updated if the crowdsale is in a valid state to execute purchase of tokens
       valid_state: false
@@ -226,89 +246,69 @@ contract TestCrowdsaleBuyTokens {
       || now < sale_stat.start_time             // Current time is prior to crowdsale start time
     ) triggerException(ERR_INSUFFICIENT_PERMISSIONS);
 
-    // Sanity checks - sale rate, wallet, and number of tiers should be nonzero
-    assert(sale_stat.team_wallet != address(0) && sale_stat.sale_rate > 0 && sale_stat.num_tiers != 0);
+    // Sanity checks - purchase price, wallet, and number of tiers should be nonzero
+    assert(sale_stat.team_wallet != address(0) && cur_tier.purchase_price > 0 && sale_stat.num_tiers != 0);
     // Ensure current tier index is valid -
     assert(cur_tier.index < sale_stat.num_tiers);
 
-    /// Assess current tier state (2 scenarios):
-    /*
-    Assuming previous checks have passed -
-    1. Current tier is the final tier:
-      A. time_remaining == 0                    => Throw - crowdsale has ended
-      B. tokens_remaining < sale_rate           => Throw - crowdsale is sold out
-      C. tokens_remaining >= sale_rate          => Valid - execute purchase
-    2. Current tier is not the final tier:
-      A. time_remaining == 0                    => Update - get actual current tier info and update
-      B. time_remaining != 0:
-        a. tokens_remaining < sale_rate         => Throw - tier is sold out
-        b. tokens_remaining >= sale_rate        => Valid - execute purchase
+    /// Get amount of wei able to be spent and tokens able to be purchased -
 
-    */
-
-    // Current tier is the final tier:
-    if (cur_tier.index >= sale_stat.num_tiers) {
-      // If no time remains in the current tier, the crowdsale has ended -
-      if (cur_tier.time_remaining == 0)
-        triggerException(ERR_INSUFFICIENT_PERMISSIONS);
-
-      // If not enough tokens are available for purchase, the crowdsale has sold out -
-      if (cur_tier.tokens_remaining < sale_stat.sale_rate)
-        triggerException(ERR_SALE_SOLD_OUT);
-
-      // Sanity check - then set 'valid_state' flag to true, so that spend amount and tokens purchased can be calculated
-      assert(spend_info.valid_state == false);
-      spend_info.valid_state = true;
-
-    // Current tier is not the final tier in the crowdsale:
-    } else {
-      // If current tier time remaining is 0, read from storage and find the actual current tier, then update the information in cur_tier
-      if (cur_tier.time_remaining == 0)
-        getCurrentTier(cur_tier, sale_stat.num_tiers, exec_id);
-
-      // If no tokens are available for sale, this tier is sold out
-      if (cur_tier.tokens_remaining < sale_stat.sale_rate)
-        triggerException(ERR_TIER_SOLD_OUT);
-
-      // Sanity check - ensure current tier end time is in the future, and index is valid
-      assert(cur_tier.tier_ends_at > now && cur_tier.index < sale_stat.num_tiers);
-
-      // Sanity check - then set 'valid_state' flag to true, so that spend amount and tokens purchased can be calculated
-      assert(spend_info.valid_state == false);
-      spend_info.valid_state = true;
-    }
+    getPurchaseAmount(cur_tier, spend_info, sale_stat.num_tiers, exec_id);
     // 'valid state' flag must be true, and tokens purchased must be 0 -
     assert(spend_info.valid_state == true && spend_info.tokens_purchased == 0);
 
-    /// Get amount of wei able to be spent from wei_sent, sale_rate, and tier tokens remaining
+    /// Get amount of wei able to be spent, given the number of tokens remaining -
 
     // If amount to buy is over the amount of tokens remaining:
-    if (wei_sent * sale_stat.sale_rate > cur_tier.tokens_remaining) {
-      spend_info.spend_amount =
-        (cur_tier.tokens_remaining - (cur_tier.tokens_remaining % sale_stat.sale_rate)) / sale_stat.sale_rate;
+    if (wei_sent / cur_tier.purchase_price > cur_tier.tokens_remaining) {
+      spend_info.spend_amount = cur_tier.purchase_price * cur_tier.tokens_remaining;
 
       // No tokens are able to be purchased
       if (spend_info.spend_amount == 0)
         triggerException(ERR_TIER_SOLD_OUT);
     } else {
-      spend_info.spend_amount = wei_sent;
+      // Spend amount is the wei sent minus wei sent modulo purchase price
+      spend_info.spend_amount = wei_sent - (wei_sent % cur_tier.purchase_price);
     }
-    // Sanity check -
-    assert(spend_info.spend_amount != 0 && spend_info.spend_amount <= wei_sent);
-    spend_info.tokens_purchased = spend_info.spend_amount * sale_stat.sale_rate;
 
-    /// If current tier is whitelisted, read sender's whitelist status storage location -
-
-    if (cur_tier.tier_is_whitelisted == true) {
-      // Overwrite previous buffer, and create 'read' calldata buffer
-      cdOverwrite(ptr, RD_SING);
-      // Push exec id and sender whitelist status storage location to buffer
+    // If this tier is whitelisted, read sender's minimum contribution amount and spend amount remaining from storage -
+    if (cur_tier.tier_is_whitelisted) {
+      // Create 'readMulti' calldata buffer in memory, overwriting previous buffer
+      cdOverwrite(ptr, RD_MULTI);
+      // Push exec id, data read offset, and read size to buffer
       cdPush(ptr, exec_id);
-      cdPush(ptr, keccak256(keccak256(sender), SALE_WHITELIST));
-      // Read from storage - if returned value is false, sender cannot participate in this tier
-      if (readSingle(ptr) == bytes32(0))
-        triggerException(ERR_INSUFFICIENT_PERMISSIONS);
+      cdPush(ptr, 0x40);
+      cdPush(ptr, bytes32(2));
+      // Push sender whitelist status storage locations to buffer
+      cdPush(ptr, keccak256(keccak256(sender), keccak256(cur_tier.index, SALE_WHITELIST)));
+      cdPush(ptr, bytes32(32 + uint(keccak256(keccak256(sender), keccak256(cur_tier.index, SALE_WHITELIST)))));
+      // Read from storage
+      read_values = readMulti(ptr);
+      // Check minimum contribution amount - if wei sent is less than this amount, throw
+      if (wei_sent < uint(read_values[0]))
+        triggerException(ERR_INSUFFICIENT_FUNDS);
+
+      spend_info.minimum_contribution_amount = uint(read_values[0]);
+      spend_info.spend_amount_remaining = uint(read_values[1]);
+
+      // Ensure spend amount is within range
+      if (spend_info.spend_amount > spend_info.spend_amount_remaining) {
+        // Spend all remaining wei allowed
+        spend_info.spend_amount = spend_info.spend_amount_remaining;
+      }
+
+      spend_info.spend_amount_remaining -= spend_info.spend_amount;
+
     }
+
+    // Sanity check - calculated spent amount must be nonzero and not greater than the amount sent
+    assert(spend_info.spend_amount != 0 && spend_info.spend_amount <= wei_sent);
+    spend_info.tokens_purchased = spend_info.spend_amount / cur_tier.purchase_price;
+
+    // Number of tokens purchased must be above the minimum contribution cap for the sender
+    // If tier is whitelisted, this value was checked in the previous block
+    if (!cur_tier.tier_is_whitelisted)
+      require(spend_info.tokens_purchased >= spend_info.minimum_contribution_amount);
 
     // Overwrite previous read buffer, and create storage return buffer
     stOverwrite(ptr);
@@ -323,6 +323,10 @@ contract TestCrowdsaleBuyTokens {
     require(cur_tier.tokens_remaining >= spend_info.tokens_purchased);
     stPush(ptr, CURRENT_TIER_TOKENS_REMAINING);
     stPush(ptr, bytes32(cur_tier.tokens_remaining - spend_info.tokens_purchased));
+    // Safely add to the crowdsale's total tokens sold
+    require(sale_stat.tokens_sold + spend_info.tokens_purchased > sale_stat.tokens_sold);
+    stPush(ptr, CROWDSALE_TOKENS_SOLD);
+    stPush(ptr, bytes32(sale_stat.tokens_sold + spend_info.tokens_purchased));
     // Safely add tokens purchased to total token supply
     require(spend_info.token_total_supply + spend_info.tokens_purchased > spend_info.token_total_supply);
     stPush(ptr, TOKEN_TOTAL_SUPPLY);
@@ -331,11 +335,23 @@ contract TestCrowdsaleBuyTokens {
     require(sale_stat.wei_raised + spend_info.spend_amount > sale_stat.wei_raised);
     stPush(ptr, WEI_RAISED);
     stPush(ptr, bytes32(sale_stat.wei_raised + spend_info.spend_amount));
+    // If sender had not previously contributed, push new unique contributor count and sender contribution record to buffer
+    if (sale_stat.sender_has_contributed == false) {
+      stPush(ptr, CROWDSALE_UNIQUE_CONTRIBUTORS);
+      stPush(ptr, bytes32(sale_stat.num_contributors + 1));
+      stPush(ptr, keccak256(keccak256(sender), CROWDSALE_UNIQUE_CONTRIBUTORS));
+      stPush(ptr, bytes32(1));
+    }
+    // If this tier was whitelisted, update sender's whitelist spend caps
+    if (cur_tier.tier_is_whitelisted) {
+      stPush(ptr, bytes32(32 + uint(keccak256(keccak256(sender), keccak256(cur_tier.index, SALE_WHITELIST)))));
+      stPush(ptr, bytes32(spend_info.spend_amount_remaining));
+    }
     // If cur_tier.updated_tier is true, there is a new current crowdsale tier - push information to buffer
     if (cur_tier.updated_tier == true) {
       // Push new current tier index
       stPush(ptr, CROWDSALE_CURRENT_TIER);
-      stPush(ptr, bytes32(cur_tier.index));
+      stPush(ptr, bytes32(cur_tier.index + 1));
       // Push updated current tier end time
       stPush(ptr, CURRENT_TIER_ENDS_AT);
       stPush(ptr, bytes32(cur_tier.tier_ends_at));
@@ -343,6 +359,85 @@ contract TestCrowdsaleBuyTokens {
 
     // Get bytes32[] representation of storage buffer
     store_data = getBuffer(ptr);
+  }
+
+  // Checks that the sender is whitelisted for the given tier, and that they are still able to purchase tokens
+  function isWhitelisted(uint _tier_index, address _sender, bytes32 _exec_id) internal view returns (uint wei_remaining, uint minimum_contribution) {
+    // Create 'readMulti' calldata buffer in memory
+    uint ptr = cdBuff(RD_MULTI);
+    // Push exec id, data read offset, and read size to buffer
+    cdPush(ptr, _exec_id);
+    cdPush(ptr, 0x40);
+    cdPush(ptr, bytes32(2));
+    // Push sender wei remaining and minimum contribution storage locations to buffer
+    cdPush(ptr, keccak256(keccak256(_sender), keccak256(_tier_index, SALE_WHITELIST)));
+    cdPush(ptr, bytes32(32 + uint(keccak256(keccak256(_sender), keccak256(_tier_index, SALE_WHITELIST)))));
+    // Read from storage, and return
+    uint[] memory read_values = readMultiUint(ptr);
+    wei_remaining = read_values[0];
+    minimum_contribution = read_values[1];
+  }
+
+  /*
+  Gets the amount of tokens able to be purchased and the amount of wei able to be spent - then updates the passed-in structs
+
+  Assessing two scenarios:
+  1. Current tier is the final tier:
+    A. time_remaining == 0                    => Throw - crowdsale has ended
+    B. tokens_remaining == 0                  => Throw - crowdsale is sold out
+    C. tokens_remaining != 0                  => Valid - execute purchase
+  2. Current tier is not the final tier:
+    A. time_remaining == 0                    => Update - get actual current tier info and update
+    B. time_remaining != 0:
+      a. tokens_remaining == 0                => Throw - tier is sold out
+      b. tokens_remaining != 0                => Valid - execute purchase
+  */
+  function getPurchaseAmount(CrowdsaleTier memory _cur_tier, SpendInfo memory _spend_info, uint _num_tiers, bytes32 _exec_id) internal view {
+    // Current tier is the final tier -
+    if (_cur_tier.index == _num_tiers - 1) {
+      // If no time remains in the current tier, the crowdsale has ended -
+      if (_cur_tier.time_remaining == 0)
+        triggerException(ERR_INSUFFICIENT_PERMISSIONS);
+
+      // If no tokens are available for purchase, the crowdsale has sold out -
+      if (_cur_tier.tokens_remaining == 0)
+        triggerException(ERR_SALE_SOLD_OUT);
+
+    } else {
+      // Current tier is not the final tier in the crowdsale:
+
+      // If current tier time remaining is 0, read from storage and find the actual current tier, then update the information in cur_tier
+      if (_cur_tier.time_remaining == 0)
+        getCurrentTier(_cur_tier, _num_tiers, _exec_id);
+
+      // If no tokens are available for sale, this tier is sold out
+      if (_cur_tier.tokens_remaining == 0)
+        triggerException(ERR_TIER_SOLD_OUT);
+
+      // Sanity check - ensure current tier end time is in the future, and index is valid
+      assert(_cur_tier.tier_ends_at > now && _cur_tier.index < _num_tiers);
+    }
+
+    // Sanity check - then set 'valid_state' flag to true, so that spend amount and tokens purchased can be calculated
+    assert(_spend_info.valid_state == false);
+    _spend_info.valid_state = true;
+  }
+
+  // Returns the index of the current crowdsale tier
+  function getCurrentTierIndex(bytes32 _exec_id) internal view returns (uint index) {
+    // Create 'read' calldata buffer in memory
+    uint ptr = cdBuff(RD_SING);
+    // Push exec id and current tier index location to buffer
+    cdPush(ptr, _exec_id);
+    cdPush(ptr, CROWDSALE_CURRENT_TIER);
+    // Read from storage and return
+    index = uint(readSingle(ptr));
+    // Indices are off by one in storage - if zero was returned, index is invalid
+    if (index == 0)
+      triggerException(bytes32("InvalidIndex"));
+
+    // Get true index and return
+    index--;
   }
 
   /*
@@ -355,36 +450,37 @@ contract TestCrowdsaleBuyTokens {
     // While the updated end time of each tier is still prior to the current time,
     // and while the updated tier's index is within a valid range -
     uint[] memory read_values;
-    while (cur_tier.tier_ends_at < now && cur_tier.index < _num_tiers) {
+    while (cur_tier.tier_ends_at < now && ++cur_tier.index < _num_tiers) {
       // Read next tier info from storage -
       uint ptr = cdBuff(RD_MULTI);
       // Push exec id, data read offset, and read size to calldata buffer
       cdPush(ptr, _exec_id);
       cdPush(ptr, 0x40);
-      cdPush(ptr, bytes32(3));
-      // Push tier duration storage location to buffer
-      cdPush(ptr, bytes32(96 + (160 * cur_tier.index) + uint(CROWDSALE_TIERS)));
+      cdPush(ptr, bytes32(4));
       // Push tier token sell cap storage location to buffer
-      cdPush(ptr, bytes32(64 + (160 * cur_tier.index) + uint(CROWDSALE_TIERS)));
+      cdPush(ptr, bytes32(64 + (192 * cur_tier.index) + uint(CROWDSALE_TIERS)));
+      // Push tier token price storage location to buffer
+      cdPush(ptr, bytes32(96 + (192 * cur_tier.index) + uint(CROWDSALE_TIERS)));
+      // Push tier duration storage location to buffer
+      cdPush(ptr, bytes32(128 + (192 * cur_tier.index) + uint(CROWDSALE_TIERS)));
       // Push tier 'is-whitelisted' status storage location to buffer
-      cdPush(ptr, bytes32(160 + (160 * cur_tier.index) + uint(CROWDSALE_TIERS)));
+      cdPush(ptr, bytes32(192 + (192 * cur_tier.index) + uint(CROWDSALE_TIERS)));
       // Read from storage, and store return to buffer
       read_values = readMultiUint(ptr);
       // Add returned duration to previous tier end time
-      require(cur_tier.tier_ends_at + read_values[0] > cur_tier.tier_ends_at);
-      cur_tier.tier_ends_at += read_values[0];
-      // Increment tier index
-      cur_tier.index++;
+      require(cur_tier.tier_ends_at + read_values[2] > cur_tier.tier_ends_at);
+      cur_tier.tier_ends_at += read_values[2];
     }
     // If the updated current tier's index is not in the valid range, or the end time is still in the past, throw
     if (cur_tier.tier_ends_at < now || cur_tier.index >= _num_tiers)
       triggerException(ERR_INSUFFICIENT_PERMISSIONS);
 
     // Otherwise - update the CrowdsaleTier struct to reflect the actual current tier of the crowdsale
-    assert(read_values[1] != 0);
-    cur_tier.tokens_remaining = read_values[1];
+    assert(read_values[0] != 0);
+    cur_tier.tokens_remaining = read_values[0];
     cur_tier.time_remaining = cur_tier.tier_ends_at - now;
-    cur_tier.tier_is_whitelisted = (read_values[2] == 0 ? false : true);
+    cur_tier.purchase_price = read_values[1];
+    cur_tier.tier_is_whitelisted = (read_values[3] == 0 ? false : true);
     cur_tier.updated_tier = true;
   }
 

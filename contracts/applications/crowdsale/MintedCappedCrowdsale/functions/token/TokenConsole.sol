@@ -202,13 +202,13 @@ library TokenConsole {
         // Increment length
         read_values[2] = bytes32(uint(read_values[2]) + 1);
         // Ensure reserved destination amount does not exceed 20
-        require(read_values[2] <= 20);
+        require(uint(read_values[2]) <= 20);
         // Get storage position (end of TOKEN_RESERVED_DESTINATIONS list), and push to buffer
         stPush(ptr, bytes32(32 * uint(read_values[2]) + uint(TOKEN_RESERVED_DESTINATIONS)));
         stPush(ptr, bytes32(to_add));
         // Store reservation information in struct at TOKEN_RESERVED_ADDR_INFO
         stPush(ptr, keccak256(keccak256(to_add), TOKEN_RESERVED_ADDR_INFO));
-        stPush(ptr, bytes32(uint(read_values[2])));
+        stPush(ptr, read_values[2]);
       }
 
       // Push reservation information to storage request buffer
@@ -221,7 +221,7 @@ library TokenConsole {
     }
     // Finally, push new array length to storage buffer
     stPush(ptr, TOKEN_RESERVED_DESTINATIONS);
-    stPush(ptr, bytes32(uint(read_values[2])));
+    stPush(ptr, read_values[2]);
 
     // Get bytes32[] representation of storage buffer
     store_data = getBuffer(ptr);
