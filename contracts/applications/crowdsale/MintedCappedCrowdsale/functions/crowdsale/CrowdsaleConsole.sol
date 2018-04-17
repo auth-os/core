@@ -191,15 +191,25 @@ library CrowdsaleConsole {
     bytes32 exec_id;
     (exec_id, sender, ) = parse(_context);
 
-    // Create 'read' calldata buffer in memory
+    // Create 'readMulti' calldata buffer in memory
     uint ptr = cdBuff(RD_SING);
-    // Push exec id to buffer
+    // Push exec id, data read offset, and read size to buffer
     cdPush(ptr, exec_id);
+    cdPush(ptr, 0x40);
+    cdPush(ptr, bytes32(2));
     // Push admin address storage location to buffer
     cdPush(ptr, ADMIN);
-    // Read from storage - if returned value is not equal to the sender, sender is not the crowdsale admin
-    if (readSingle(ptr) != bytes32(sender))
+    // Push tier whitelist array length storage location to buffer
+    cdPush(ptr, keccak256(_tier_index, SALE_WHITELIST));
+    // Read from storage
+    bytes32[] memory read_values = readMulti(ptr);
+
+    // If the first returned value is not equal to the sender's address, sender is not the crowdsale admin
+    if (read_values[0] != bytes32(sender))
       triggerException(ERR_INSUFFICIENT_PERMISSIONS);
+
+    // Get tier whitelist length
+    uint tier_whitelist_length = uint(read_values[1]);
 
     /// Sender is crowdsale admin - create storage return request and append whitelist updates
     stOverwrite(ptr);
@@ -214,7 +224,17 @@ library CrowdsaleConsole {
       stPush(ptr, bytes32(_minimum_contribution[i]));
       stPush(ptr, bytes32(32 + uint(whitelist_status_loc)));
       stPush(ptr, bytes32(_max_spend_amt[i]));
+      // Push whitelisted address to end of tier whitelist array, unless the values being pushed are zero
+      if (_minimum_contribution[i] != 0 && _max_spend_amt[i] != 0) {
+        stPush(ptr, bytes32(32 + (32 * tier_whitelist_length) + uint(keccak256(_tier_index, SALE_WHITELIST))));
+        stPush(ptr, bytes32(_to_update[i]));
+        // Increment tier whitelist
+        tier_whitelist_length++;
+      }
     }
+    // Store new tier whitelist length
+    stPush(ptr, keccak256(_tier_index, SALE_WHITELIST));
+    stPush(ptr, bytes32(tier_whitelist_length));
     // Get bytes32[] storage request array from buffer
     store_data = getBuffer(ptr);
   }

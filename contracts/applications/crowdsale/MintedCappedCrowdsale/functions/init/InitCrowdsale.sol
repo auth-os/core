@@ -560,6 +560,36 @@ library InitCrowdsale {
     max_spend_remaining = read_values[1];
   }
 
+  /*
+  Returns the list of whitelisted buyers for a given tier
+
+  @param _storage: The address where application storage is located
+  @param _exec_id: The application execution id under which storage for this instance is located
+  @param _tier_index: The index of the tier about which the whitelist information will be pulled
+  */
+  function getTierWhitelist(address _storage, bytes32 _exec_id, uint _tier_index) public view returns (uint num_whitelisted, address[] whitelist) {
+    // Create 'read' calldata buffer in memory
+    uint ptr = cdBuff(RD_SING);
+    // Push exec id and tier whitelist storage location to calldata buffer
+    cdPush(ptr, _exec_id);
+    cdPush(ptr, keccak256(_tier_index, SALE_WHITELIST));
+    // Read from storage and get returned tier whitelist length
+    num_whitelisted = uint(readSingleFrom(ptr, _storage));
+
+    // Overwrite previous buffer and loop through the whitelist number to get each whitelisted address
+    cdOverwrite(ptr, RD_MULTI);
+    // Push exec id, data read offset, and read size to buffer
+    cdPush(ptr, _exec_id);
+    cdPush(ptr, 0x40);
+    cdPush(ptr, bytes32(num_whitelisted));
+    // Loop through the number of whitelisted addresses, and push each to the calldata buffer to be read from storage
+    for (uint i = 0; i < num_whitelisted; i++)
+      cdPush(ptr, bytes32(32 + (32 * i) + uint(keccak256(_tier_index, SALE_WHITELIST))));
+
+    // Read from storage and return
+    whitelist = readMultiAddressFrom(ptr, _storage);
+  }
+
   /// TOKEN GETTERS ///
 
   /*
