@@ -355,6 +355,10 @@ contract TestCrowdsaleBuyTokens {
     }
     // If this tier was whitelisted, update sender's whitelist spend caps
     if (cur_tier.tier_is_whitelisted) {
+      // Set sender's new minimum contribution amount to 0
+      stPush(ptr, bytes32(keccak256(keccak256(sender), keccak256(cur_tier.index, SALE_WHITELIST))));
+      stPush(ptr, bytes32(0));
+      // Set sender's new spend amount remaining
       stPush(ptr, bytes32(32 + uint(keccak256(keccak256(sender), keccak256(cur_tier.index, SALE_WHITELIST)))));
       stPush(ptr, bytes32(spend_info.spend_amount_remaining));
     }
