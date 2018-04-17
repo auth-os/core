@@ -19,6 +19,9 @@ contract ScriptExec {
   // Framework bootstrap method - application init and implementation data is pulled from a single provider by default
   bytes32 public default_provider;
 
+  // If the exec admin wants to suggest a new script exec contract to migrate to, this address is set to the new address
+  address public new_script_exec;
+
   /// FUNCTION SELECTORS ///
 
   // Function selector for registry 'getAppInitInfo' - returns information necessary to initialization
@@ -34,6 +37,10 @@ contract ScriptExec {
   bytes4 public constant GET_ALLOWED = bytes4(keccak256("getExecAllowed(bytes32)"));
 
   /// EVENTS ///
+
+  // UPGRADING //
+
+  event ApplicationMigration(address indexed storage_addr, bytes32 indexed exec_id, address new_exec_addr, address original_deployer);
 
   // EXCEPTION HANDLING //
 
@@ -268,7 +275,27 @@ contract ScriptExec {
     }
   }
 
+  /// INSTANCE DEPLOYER ///
+
+  // Allows the deployer of an application instance to migrate to a new script exec contract, if the exec admin has provided one to migrate to
+  function migrateApplication(bytes32 _exec_id) public {
+    // Ensure sender is the app deployer
+    require(deployed_apps[default_storage][_exec_id].deployer == msg.sender);
+
+    // Call abstract storage and migrate the exec id
+    bytes4 change_selector = bytes4(keccak256("changeScriptExec(bytes32,address)"));
+    require(default_storage.call(change_selector, _exec_id, new_script_exec));
+
+    // Emit event
+    emit ApplicationMigration(default_storage, _exec_id, new_script_exec, msg.sender);
+  }
+
   /// ADMIN ///
+
+  // Allows the admin to suggest a new script exec contract, which instance deployers can then migrate to
+  function changeExec(address _new_exec) public onlyAdmin() {
+    new_script_exec = _new_exec;
+  }
 
   // Allows the admin to change the source for application registry
   function changeSource(address _new_storage) public onlyAdmin() {
