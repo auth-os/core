@@ -41,14 +41,14 @@ Several of these contracts have been deployed to Ropsten, to allow for open test
 3. AppConsole: https://ropsten.etherscan.io/address/0x55f5048168f8435e26b3d26a1c19175e1d9bb834#code
 4. VersionConsole: https://ropsten.etherscan.io/address/0x19641c9158a9e0236191f746d562781ba8fa7b7b#code
 5. ImplementationConsole: https://ropsten.etherscan.io/address/0x166dc2880f0b156bd2545fe02917f230a8713f09#code
-6. InitCrowdsale: https://ropsten.etherscan.io/address/0xd3c40eeb264649aa2798c559c2681cb11f38777b#code
-7. CrowdsaleConsole: https://ropsten.etherscan.io/address/0x25b7126c74c3caba66917a189ab82e8e8fbc072e#code
-8. TokenConsole: https://ropsten.etherscan.io/address/0x2f71464563da0ea3053535ca27f7552cb1b0c762#code
-9. CrowdsaleBuyTokens: https://ropsten.etherscan.io/address/0x6bd3ddada9063d847598f7d2882453e731c70453#code
-10. TokenTransfer: https://ropsten.etherscan.io/address/0xd315de481535b1966f290da96d5ff076ee935f32#code
-11. TokenTransferFrom: https://ropsten.etherscan.io/address/0xd335251e6a0a36d8b7b48d9bb6313a5d3987376e#code
-12. TokenApprove: https://ropsten.etherscan.io/address/0x864c0174c4e9de24d40bd291eb23eb229927892e#code
-13. ScriptExec: https://ropsten.etherscan.io/address/0xdd897341b45fb92eac6b2b3c7faa4d55e29bb72c#code
+6. InitCrowdsale: https://ropsten.etherscan.io/address/0x81e14e24c8148979507daee78f8558079e2f8c59#code
+7. CrowdsaleConsole: https://ropsten.etherscan.io/address/0xe24c915d52ddc021ee7dc6401cd9a4e38a2cf27d#code
+8. TokenConsole: https://ropsten.etherscan.io/address/0xcc0427b210564b2b099d2a70c7c6d07b1f03fef3#code
+9. CrowdsaleBuyTokens: https://ropsten.etherscan.io/address/0x24901914fac3acf7d3d9ed6ed8687d3ad8527700#code
+10. TokenTransfer: https://ropsten.etherscan.io/address/0x81b4bfe7c54bf2504d86563aeb0332a686bb8ee2#code
+11. TokenTransferFrom: https://ropsten.etherscan.io/address/0x8800728cc4b7dad58983af0c6fec2aa1441d63e5#code
+12. TokenApprove: https://ropsten.etherscan.io/address/0xe0af2a2670da0242c6c7914cc36b8cf4ad75742f#code
+13. ScriptExec: https://ropsten.etherscan.io/address/0x7fc8ce5865bf0cac653e315f03beeef77d536075#code
 
 The 'default' variables in ScriptExec.sol can be examined for information on the registry's execution id, as well as the storage address of the registry. 
 
