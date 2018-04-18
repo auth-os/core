@@ -462,10 +462,11 @@ library InitCrowdsale {
     // Push exec id, data read offset, and read size to buffer
     cdPush(ptr, _exec_id);
     cdPush(ptr, 0x40);
-    cdPush(ptr, bytes32(2));
-    // Push crowdsale tier list length and token decimals storage locations to buffer
+    cdPush(ptr, bytes32(3));
+    // Push crowdsale tier list length, token decimals, and token name storage locations to buffer
     cdPush(ptr, CROWDSALE_TIERS);
     cdPush(ptr, TOKEN_DECIMALS);
+    cdPush(ptr, TOKEN_NAME);
     // Read from storage
     uint[] memory read_values = readMultiUintFrom(ptr, _storage);
 
@@ -473,6 +474,10 @@ library InitCrowdsale {
     uint num_tiers = read_values[0];
     // Get number of token decimals
     uint num_decimals = read_values[1];
+
+    // If the token has not been set, return
+    if (read_values[2] == 0)
+      return (0, 0);
 
     // Overwrite previous buffer - push exec id, data read offset, and read size to buffer
     cdOverwrite(ptr, RD_MULTI);

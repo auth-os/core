@@ -235,8 +235,7 @@ library CrowdsaleBuyTokens {
       sale_stat.team_wallet != address(0)        // Team wallet address should be nonzero
       && cur_tier.purchase_price > 0             // Purchase price should be nonzero
       && sale_stat.num_tiers != 0                // Number of tiers should be nonzero
-      && sale_stat.token_decimals > 0            // Token decimals must be in a valid range
-      && sale_stat.token_decimals <= 18          //
+      && sale_stat.token_decimals <= 18          // Token decimals must be 18 or lower
       && cur_tier.index < sale_stat.num_tiers    // Valid current tier index
     );
 

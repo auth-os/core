@@ -125,7 +125,6 @@ library CrowdsaleConsole {
     if (
       _name == bytes32(0)
       || _symbol == bytes32(0)
-      || _decimals == 0
       || _decimals > 18
     ) triggerException(ERR_IMPROPER_INITIALIZATION);
 
