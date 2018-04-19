@@ -180,14 +180,12 @@ library TokenConsole {
     // First 3 indices in read_values are admin address, crowdsale init status, and crowdsale reserved destinations list length - begin
     // reading destinations address indices from read_values[3]
 
-    // Sanity check - read_values length should be 3 more than _destinations length -
-    assert(read_values.length == _destinations.length + 3);
     for (i = 3; i < read_values.length; i++) {
       // If value is 0, address has not already been added to the crowdsale destinations list in storage
       address to_add = _destinations[i - 3];
       if (read_values[i] == bytes32(0)) {
         // Now, check the passed-in _destinations list to see if this address is listed multiple times in the input, as we only want to store information on unique addresses
-        for (uint j = i + 1; j < _destinations.length; j--) {
+        for (uint j = _destinations.length - 1; j > i - 3; j--) {
           // address is not unique locally - found the same address in _destinations
           if (_destinations[j] == to_add) {
             to_add = address(0);
@@ -202,7 +200,7 @@ library TokenConsole {
         // Increment length
         read_values[2] = bytes32(uint(read_values[2]) + 1);
         // Ensure reserved destination amount does not exceed 20
-        require(uint(read_values[2]) <= 20);
+        require(uint(read_values[2]) < 20);
         // Get storage position (end of TOKEN_RESERVED_DESTINATIONS list), and push to buffer
         stPush(ptr, bytes32(32 * uint(read_values[2]) + uint(TOKEN_RESERVED_DESTINATIONS)));
         stPush(ptr, bytes32(to_add));
@@ -440,11 +438,10 @@ library TokenConsole {
       uint to_add = read_reserved_info[(i * 4) + 2];
       // Two points of precision are added to ensure at least a percent out of 100
       uint precision = 2 + read_reserved_info[(i * 4) + 3];
-      // Get percent divisor, and check for overflow
-      assert(10 ** precision > precision);
+      // Get percent divisor
       precision = 10 ** precision;
 
-      // Get number of tokens to add frmo total_sold and precent reserved
+      // Get number of tokens to add from total_sold and precent reserved
       to_add = total_sold * to_add / precision;
 
       // Add number of tokens reserved, and check for overflow
@@ -581,11 +578,10 @@ library TokenConsole {
       uint to_add = read_reserved_info[(i * 4) + 2];
       // Two points of precision are added to ensure at least a percent out of 100
       uint precision = 2 + read_reserved_info[(i * 4) + 3];
-      // Get percent divisor, and check for overflow
-      assert(10 ** precision > precision);
+      // Get percent divisor
       precision = 10 ** precision;
 
-      // Get number of tokens to add frmo total_sold and precent reserved
+      // Get number of tokens to add from total_sold and precent reserved
       to_add = total_sold * to_add / precision;
 
       // Add number of tokens reserved, and check for overflow

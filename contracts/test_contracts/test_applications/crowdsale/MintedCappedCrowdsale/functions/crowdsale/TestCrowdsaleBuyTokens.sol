@@ -9,9 +9,19 @@ contract TestCrowdsaleBuyTokens {
   // Keeps track of the last storage return
   bytes32[] public last_storage_event;
 
+  // Keeps track of the last errors logged by the contract
+  bytes32[] public error_logs;
+
   // Constructor - set storage address
   function TestCrowdsaleBuyTokens(address _storage) public {
     app_storage = _storage;
+  }
+
+  // Clears last storage event and error logs
+  modifier clearLogs() {
+    delete last_storage_event;
+    delete error_logs;
+    _;
   }
 
   // Change storage address
@@ -20,8 +30,12 @@ contract TestCrowdsaleBuyTokens {
   }
 
   // Get the last chunk of data stored with getBuffer
-  function getLastStorage() public view returns (bytes32[] stored) {
-    return last_storage_event;
+  function getLastStorage() public view returns (uint length, bytes32[] stored) {
+    return (last_storage_event.length, last_storage_event);
+  }
+
+  function getLastErrorLogs() public view returns (uint length, bytes32[] logs) {
+    return (error_logs.length, error_logs);
   }
 
   /// CROWDSALE STORAGE ///
@@ -112,6 +126,11 @@ contract TestCrowdsaleBuyTokens {
   bytes32 public constant ERR_SALE_SOLD_OUT = bytes32("CrowdsaleSoldOut"); // Crowdsale has no more tokens up for purchase
   bytes32 public constant ERR_TIER_SOLD_OUT = bytes32("TierSoldOut"); // Current tier has no more tokens up for purchase
 
+  /// EVENTS - TEST CONTRACT ///
+
+  // Test contract - returns a message and data to help narrow down a reverted call
+  event FailedAssertion(string message, bytes32 data_1, bytes32 data_2);
+
   struct CrowdsaleTier {
     uint index;
     uint tokens_remaining;
@@ -152,7 +171,7 @@ contract TestCrowdsaleBuyTokens {
     3. Wei amount sent with transaction to storage
   @return store_data: A formatted storage request - first 64 bytes designate a forwarding address (and amount) for any wei sent
   */
-  function buy(bytes _context) public returns (bytes32[] store_data) {
+  function buy(bytes _context) public clearLogs() returns (bytes32[] store_data) {
     // Ensure valid input
     if (_context.length != 96)
       triggerException(ERR_UNKNOWN_CONTEXT);
@@ -213,6 +232,11 @@ contract TestCrowdsaleBuyTokens {
 
     // Read from storage, and return data to buffer
     bytes32[] memory read_values = readMulti(ptr);
+    // Ensure correct return length
+    if (read_values.length != 17) {
+      emit FailedAssertion("Array bounds check - 0", bytes32(read_values.length), bytes32(0));
+      return store_data;
+    }
 
     // Get CrowdsaleInfo struct from returned crowdsale information
     CrowdsaleInfo memory sale_stat = CrowdsaleInfo({
@@ -253,24 +277,29 @@ contract TestCrowdsaleBuyTokens {
     ) triggerException(ERR_INSUFFICIENT_PERMISSIONS);
 
     // Sanity checks -
-    assert(
+    if (!(
       sale_stat.team_wallet != address(0)        // Team wallet address should be nonzero
       && cur_tier.purchase_price > 0             // Purchase price should be nonzero
       && sale_stat.num_tiers != 0                // Number of tiers should be nonzero
-      && sale_stat.token_decimals > 0            // Token decimals must be in a valid range
-      && sale_stat.token_decimals <= 18          //
+      && sale_stat.token_decimals <= 18          // Token decimals must be in a valid range
       && cur_tier.index < sale_stat.num_tiers    // Valid current tier index
-    );
+    )) {
+      emit FailedAssertion("Invalid crowdsale setup", bytes32(0), bytes32(0));
+      return store_data;
+    }
 
     /// Get amount of wei able to be spent and tokens able to be purchased -
 
     getPurchaseAmount(cur_tier, spend_info, sale_stat.num_tiers, exec_id);
     // 'valid state' flag must be true, and tokens purchased must be 0 -
-    assert(spend_info.valid_state == true && spend_info.tokens_purchased == 0);
+    if (!(spend_info.valid_state == true && spend_info.tokens_purchased == 0)) {
+      emit FailedAssertion("getPurchaseAmount failure", bytes32(spend_info.tokens_purchased), bytes32(0));
+      return store_data;
+    }
 
     /// Get amount of wei able to be spent, given the number of tokens remaining -
 
-    // If amount to buy is over the amount of tokens remaining:
+    // If the amount that can be bought is over the amount of tokens remaining:
     if ((wei_sent * 10 ** sale_stat.token_decimals) / cur_tier.purchase_price > cur_tier.tokens_remaining) {
       spend_info.spend_amount = (cur_tier.purchase_price * cur_tier.tokens_remaining) / (10 ** sale_stat.token_decimals);
 
@@ -278,8 +307,8 @@ contract TestCrowdsaleBuyTokens {
       if (spend_info.spend_amount == 0)
         triggerException(ERR_TIER_SOLD_OUT);
     } else {
-      // Spend amount is the wei sent minus wei sent modulo purchase price
-      spend_info.spend_amount = wei_sent - (wei_sent % cur_tier.purchase_price);
+      // All of the wei sent can be used to purchase -
+      spend_info.spend_amount = wei_sent - ((wei_sent * 10 ** sale_stat.token_decimals) % cur_tier.purchase_price);
     }
 
     // If this tier is whitelisted, read sender's minimum contribution amount and spend amount remaining from storage -
@@ -291,12 +320,17 @@ contract TestCrowdsaleBuyTokens {
       cdPush(ptr, 0x40);
       cdPush(ptr, bytes32(2));
       // Push sender whitelist status storage locations to buffer
-      cdPush(ptr, keccak256(keccak256(sender), keccak256(cur_tier.index, SALE_WHITELIST)));
-      cdPush(ptr, bytes32(32 + uint(keccak256(keccak256(sender), keccak256(cur_tier.index, SALE_WHITELIST)))));
+      cdPush(ptr, keccak256(keccak256(sender), keccak256(cur_tier.index, SALE_WHITELIST))); // Minimum token purchase amount
+      cdPush(ptr, bytes32(32 + uint(keccak256(keccak256(sender), keccak256(cur_tier.index, SALE_WHITELIST))))); // Maximum wei spend amount
       // Read from storage
       read_values = readMulti(ptr);
-      // Check minimum contribution amount - if wei sent is less than this amount, throw
-      if (wei_sent < uint(read_values[0]))
+      // Ensure correct return length
+      if (read_values.length != 2) {
+        emit FailedAssertion("Array bounds check - 1", bytes32(read_values.length), bytes32(0));
+        return store_data;
+      }
+      // Check minimum purchase size - if wei sent is lower, throw exception
+      if (wei_sent < (uint(read_values[0]) * cur_tier.purchase_price) / 10 ** sale_stat.token_decimals)
         triggerException(ERR_INSUFFICIENT_FUNDS);
 
       spend_info.minimum_contribution_amount = uint(read_values[0]);
@@ -307,19 +341,25 @@ contract TestCrowdsaleBuyTokens {
         // Spend all remaining wei allowed
         spend_info.spend_amount =
             spend_info.spend_amount_remaining -
-            (spend_info.spend_amount_remaining % cur_tier.purchase_price);
+            (spend_info.spend_amount_remaining * 10 ** sale_stat.token_decimals) % cur_tier.purchase_price;
       }
 
       spend_info.spend_amount_remaining -= spend_info.spend_amount;
     }
 
     // Sanity check - calculated spent amount must be nonzero and not greater than the amount sent
-    assert(spend_info.spend_amount != 0 && spend_info.spend_amount <= wei_sent);
+    if (!(spend_info.spend_amount != 0 && spend_info.spend_amount <= wei_sent)) {
+      emit FailedAssertion("Invalid spend amount", bytes32(spend_info.spend_amount), bytes32(wei_sent));
+      return store_data;
+    }
     spend_info.tokens_purchased = (spend_info.spend_amount * 10 ** sale_stat.token_decimals) / cur_tier.purchase_price;
 
     // Number of tokens purchased must be above the minimum contribution cap for the sender
     // If the tier is whitelisted, spend_info.minimum_contribution_amount was set to the whitelist-specific minimum cap. Otherwise, defaults to global min cap
-    require(spend_info.tokens_purchased >= spend_info.minimum_contribution_amount);
+    if (!(spend_info.tokens_purchased >= spend_info.minimum_contribution_amount)) {
+      emit FailedAssertion("Minimum contribution not reached", bytes32(spend_info.tokens_purchased), bytes32(spend_info.minimum_contribution_amount));
+      return store_data;
+    }
 
     // Overwrite previous read buffer, and create storage return buffer
     stOverwrite(ptr);
@@ -327,23 +367,38 @@ contract TestCrowdsaleBuyTokens {
     stPush(ptr, bytes32(sale_stat.team_wallet));
     stPush(ptr, bytes32(spend_info.spend_amount));
     // Safely add to sender's token balance, and push their new balance and balance storage location
-    require(spend_info.tokens_purchased + spend_info.sender_token_balance > spend_info.sender_token_balance);
+    if (!(spend_info.tokens_purchased + spend_info.sender_token_balance > spend_info.sender_token_balance)) {
+      emit FailedAssertion("Purchaser balance overflow", bytes32(spend_info.tokens_purchased), bytes32(spend_info.sender_token_balance));
+      return store_data;
+    }
     stPush(ptr, keccak256(keccak256(sender), TOKEN_BALANCES));
     stPush(ptr, bytes32(spend_info.tokens_purchased + spend_info.sender_token_balance));
     // Safely subtract purchased token amount from tier tokens remaining
-    require(cur_tier.tokens_remaining >= spend_info.tokens_purchased);
+    if (!(cur_tier.tokens_remaining >= spend_info.tokens_purchased)) {
+      emit FailedAssertion("Tier tokens remaining underflow", bytes32(cur_tier.tokens_remaining), bytes32(spend_info.tokens_purchased));
+      return store_data;
+    }
     stPush(ptr, CURRENT_TIER_TOKENS_REMAINING);
     stPush(ptr, bytes32(cur_tier.tokens_remaining - spend_info.tokens_purchased));
     // Safely add to the crowdsale's total tokens sold
-    require(sale_stat.tokens_sold + spend_info.tokens_purchased > sale_stat.tokens_sold);
+    if (!(sale_stat.tokens_sold + spend_info.tokens_purchased > sale_stat.tokens_sold)) {
+      emit FailedAssertion("Tokens sold overflow", bytes32(sale_stat.tokens_sold), bytes32(spend_info.tokens_purchased));
+      return store_data;
+    }
     stPush(ptr, CROWDSALE_TOKENS_SOLD);
     stPush(ptr, bytes32(sale_stat.tokens_sold + spend_info.tokens_purchased));
     // Safely add tokens purchased to total token supply
-    require(spend_info.token_total_supply + spend_info.tokens_purchased > spend_info.token_total_supply);
+    if (!(spend_info.token_total_supply + spend_info.tokens_purchased > spend_info.token_total_supply)) {
+      emit FailedAssertion("Token total supply overflow", bytes32(spend_info.token_total_supply), bytes32(spend_info.tokens_purchased));
+      return store_data;
+    }
     stPush(ptr, TOKEN_TOTAL_SUPPLY);
     stPush(ptr, bytes32(spend_info.token_total_supply + spend_info.tokens_purchased));
     // Safely add to amount of wei raised, total
-    require(sale_stat.wei_raised + spend_info.spend_amount > sale_stat.wei_raised);
+    if (!(sale_stat.wei_raised + spend_info.spend_amount > sale_stat.wei_raised)) {
+      emit FailedAssertion("Wei raised overflow", bytes32(spend_info.spend_amount), bytes32(sale_stat.wei_raised));
+      return store_data;
+    }
     stPush(ptr, WEI_RAISED);
     stPush(ptr, bytes32(sale_stat.wei_raised + spend_info.spend_amount));
     // If sender had not previously contributed, push new unique contributor count and sender contribution record to buffer
@@ -376,23 +431,6 @@ contract TestCrowdsaleBuyTokens {
     store_data = getBuffer(ptr);
   }
 
-  // Checks that the sender is whitelisted for the given tier, and that they are still able to purchase tokens
-  function isWhitelisted(uint _tier_index, address _sender, bytes32 _exec_id) internal view returns (uint wei_remaining, uint minimum_contribution) {
-    // Create 'readMulti' calldata buffer in memory
-    uint ptr = cdBuff(RD_MULTI);
-    // Push exec id, data read offset, and read size to buffer
-    cdPush(ptr, _exec_id);
-    cdPush(ptr, 0x40);
-    cdPush(ptr, bytes32(2));
-    // Push sender wei remaining and minimum contribution storage locations to buffer
-    cdPush(ptr, keccak256(keccak256(_sender), keccak256(_tier_index, SALE_WHITELIST)));
-    cdPush(ptr, bytes32(32 + uint(keccak256(keccak256(_sender), keccak256(_tier_index, SALE_WHITELIST)))));
-    // Read from storage, and return
-    uint[] memory read_values = readMultiUint(ptr);
-    wei_remaining = read_values[0];
-    minimum_contribution = read_values[1];
-  }
-
   /*
   Gets the amount of tokens able to be purchased and the amount of wei able to be spent - then updates the passed-in structs
 
@@ -407,7 +445,7 @@ contract TestCrowdsaleBuyTokens {
       a. tokens_remaining == 0                => Throw - tier is sold out
       b. tokens_remaining != 0                => Valid - execute purchase
   */
-  function getPurchaseAmount(CrowdsaleTier memory _cur_tier, SpendInfo memory _spend_info, uint _num_tiers, bytes32 _exec_id) internal view {
+  function getPurchaseAmount(CrowdsaleTier memory _cur_tier, SpendInfo memory _spend_info, uint _num_tiers, bytes32 _exec_id) internal {
     // Current tier is the final tier -
     if (_cur_tier.index == _num_tiers - 1) {
       // If no time remains in the current tier, the crowdsale has ended -
@@ -430,16 +468,19 @@ contract TestCrowdsaleBuyTokens {
         triggerException(ERR_TIER_SOLD_OUT);
 
       // Sanity check - ensure current tier end time is in the future, and index is valid
-      assert(_cur_tier.tier_ends_at > now && _cur_tier.index < _num_tiers);
+      if (!(_cur_tier.tier_ends_at > now && _cur_tier.index < _num_tiers))
+        emit FailedAssertion("getCurrentTier failure", bytes32(_cur_tier.tier_ends_at), bytes32(_cur_tier.index));
     }
 
     // Sanity check - then set 'valid_state' flag to true, so that spend amount and tokens purchased can be calculated
-    assert(_spend_info.valid_state == false);
+    if (!(_spend_info.valid_state == false))
+      emit FailedAssertion("Invalid spend_info state", bytes32(0), bytes32(0));
+
     _spend_info.valid_state = true;
   }
 
   // Returns the index of the current crowdsale tier
-  function getCurrentTierIndex(bytes32 _exec_id) internal view returns (uint index) {
+  function getCurrentTierIndex(bytes32 _exec_id) internal returns (uint index) {
     // Create 'read' calldata buffer in memory
     uint ptr = cdBuff(RD_SING);
     // Push exec id and current tier index location to buffer
@@ -461,7 +502,7 @@ contract TestCrowdsaleBuyTokens {
   @param cur_tier: A struct with relevant information on the current crowdsale tier.
                     This is updated by reference when the actual current tier is found
   */
-  function getCurrentTier(CrowdsaleTier memory cur_tier, uint _num_tiers, bytes32 _exec_id) internal view {
+  function getCurrentTier(CrowdsaleTier memory cur_tier, uint _num_tiers, bytes32 _exec_id) internal {
     // While the updated end time of each tier is still prior to the current time,
     // and while the updated tier's index is within a valid range -
     uint[] memory read_values;
@@ -482,8 +523,12 @@ contract TestCrowdsaleBuyTokens {
       cdPush(ptr, bytes32(192 + (192 * cur_tier.index) + uint(CROWDSALE_TIERS)));
       // Read from storage, and store return to buffer
       read_values = readMultiUint(ptr);
+      // Ensure correct return length
+      if (read_values.length != 4)
+        emit FailedAssertion("Array bounds check - getCurrentTier", bytes32(read_values.length), bytes32(0));
       // Add returned duration to previous tier end time
-      require(cur_tier.tier_ends_at + read_values[2] > cur_tier.tier_ends_at);
+      if (!(cur_tier.tier_ends_at + read_values[2] > cur_tier.tier_ends_at))
+        emit FailedAssertion("Tier end time overflow", bytes32(cur_tier.tier_ends_at), bytes32(read_values[2]));
       cur_tier.tier_ends_at += read_values[2];
     }
     // If the updated current tier's index is not in the valid range, or the end time is still in the past, throw
@@ -491,7 +536,8 @@ contract TestCrowdsaleBuyTokens {
       triggerException(ERR_INSUFFICIENT_PERMISSIONS);
 
     // Otherwise - update the CrowdsaleTier struct to reflect the actual current tier of the crowdsale
-    assert(read_values[0] != 0);
+    if (read_values[0] == 0)
+      emit FailedAssertion("Tier tokens remaining error", bytes32(cur_tier.index), bytes32(read_values[0]));
     cur_tier.tokens_remaining = read_values[0];
     cur_tier.time_remaining = cur_tier.tier_ends_at - now;
     cur_tier.purchase_price = read_values[1];
@@ -610,7 +656,7 @@ contract TestCrowdsaleBuyTokens {
   @param _ptr: A pointer to the location in memory where the calldata for the call is stored
   @return read_values: The values read from storage
   */
-  function readMulti(uint _ptr) internal view returns (bytes32[] read_values) {
+  function readMulti(uint _ptr) internal returns (bytes32[] read_values) {
     bool success;
     address _storage = app_storage;
     assembly {
@@ -640,7 +686,7 @@ contract TestCrowdsaleBuyTokens {
   @param _ptr: A pointer to the location in memory where the calldata for the call is stored
   @return read_values: The values read from storage
   */
-  function readMultiUint(uint _ptr) internal view returns (uint[] read_values) {
+  function readMultiUint(uint _ptr) internal returns (uint[] read_values) {
     bool success;
     address _storage = app_storage;
     assembly {
@@ -670,7 +716,7 @@ contract TestCrowdsaleBuyTokens {
   @param _ptr: A pointer to the location in memory where the calldata for the call is stored
   @return read_value: The value read from storage
   */
-  function readSingle(uint _ptr) internal view returns (bytes32 read_value) {
+  function readSingle(uint _ptr) internal returns (bytes32 read_value) {
     bool success;
     address _storage = app_storage;
     assembly {
@@ -686,19 +732,16 @@ contract TestCrowdsaleBuyTokens {
   }
 
   /*
-  Reverts state changes, but passes message back to caller
+  Test contracts - pushes the message to error_logs state variable
 
-  @param _message: The message to return to the caller
+  @param _message: The message to log
   */
-  function triggerException(bytes32 _message) internal pure {
-    assembly {
-      mstore(0, _message)
-      revert(0, 0x20)
-    }
+  function triggerException(bytes32 _message) internal {
+    error_logs.push(_message);
   }
 
   // Parses context array and returns execution id, sender address, and sent wei amount
-  function parse(bytes _context) internal pure returns (bytes32 exec_id, address from, uint wei_sent) {
+  function parse(bytes _context) internal returns (bytes32 exec_id, address from, uint wei_sent) {
     assembly {
       exec_id := mload(add(0x20, _context))
       from := mload(add(0x40, _context))

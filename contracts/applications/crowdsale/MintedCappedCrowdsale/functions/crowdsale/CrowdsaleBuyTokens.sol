@@ -191,6 +191,8 @@ library CrowdsaleBuyTokens {
 
     // Read from storage, and return data to buffer
     bytes32[] memory read_values = readMulti(ptr);
+    // Ensure correct return length
+    assert(read_values.length == 17);
 
     // Get CrowdsaleInfo struct from returned crowdsale information
     CrowdsaleInfo memory sale_stat = CrowdsaleInfo({
@@ -247,7 +249,7 @@ library CrowdsaleBuyTokens {
 
     /// Get amount of wei able to be spent, given the number of tokens remaining -
 
-    // If amount to buy is over the amount of tokens remaining:
+    // If the amount that can be bought is over the amount of tokens remaining:
     if ((wei_sent * 10 ** sale_stat.token_decimals) / cur_tier.purchase_price > cur_tier.tokens_remaining) {
       spend_info.spend_amount = (cur_tier.purchase_price * cur_tier.tokens_remaining) / (10 ** sale_stat.token_decimals);
 
@@ -255,8 +257,8 @@ library CrowdsaleBuyTokens {
       if (spend_info.spend_amount == 0)
         triggerException(ERR_TIER_SOLD_OUT);
     } else {
-      // Spend amount is the wei sent minus wei sent modulo purchase price
-      spend_info.spend_amount = wei_sent - (wei_sent % cur_tier.purchase_price);
+      // All of the wei sent can be used to purchase -
+      spend_info.spend_amount = wei_sent - ((wei_sent * 10 ** sale_stat.token_decimals) % cur_tier.purchase_price);
     }
 
     // If this tier is whitelisted, read sender's minimum contribution amount and spend amount remaining from storage -
@@ -268,12 +270,14 @@ library CrowdsaleBuyTokens {
       cdPush(ptr, 0x40);
       cdPush(ptr, bytes32(2));
       // Push sender whitelist status storage locations to buffer
-      cdPush(ptr, keccak256(keccak256(sender), keccak256(cur_tier.index, SALE_WHITELIST)));
-      cdPush(ptr, bytes32(32 + uint(keccak256(keccak256(sender), keccak256(cur_tier.index, SALE_WHITELIST)))));
+      cdPush(ptr, keccak256(keccak256(sender), keccak256(cur_tier.index, SALE_WHITELIST))); // Minimum token purchase amount
+      cdPush(ptr, bytes32(32 + uint(keccak256(keccak256(sender), keccak256(cur_tier.index, SALE_WHITELIST))))); // Maximum wei spend amount
       // Read from storage
       read_values = readMulti(ptr);
-      // Check minimum contribution amount - if wei sent is less than this amount, throw
-      if (wei_sent < uint(read_values[0]))
+      // Ensure correct return length
+      assert(read_values.length == 2);
+      // Check minimum purchase size - if wei sent is lower, throw exception
+      if (wei_sent < (uint(read_values[0]) * cur_tier.purchase_price) / 10 ** sale_stat.token_decimals)
         triggerException(ERR_INSUFFICIENT_FUNDS);
 
       spend_info.minimum_contribution_amount = uint(read_values[0]);
@@ -284,7 +288,7 @@ library CrowdsaleBuyTokens {
         // Spend all remaining wei allowed
         spend_info.spend_amount =
             spend_info.spend_amount_remaining -
-            (spend_info.spend_amount_remaining % cur_tier.purchase_price);
+            (spend_info.spend_amount_remaining * 10 ** sale_stat.token_decimals) % cur_tier.purchase_price;
       }
 
       spend_info.spend_amount_remaining -= spend_info.spend_amount;
@@ -351,23 +355,6 @@ library CrowdsaleBuyTokens {
 
     // Get bytes32[] representation of storage buffer
     store_data = getBuffer(ptr);
-  }
-
-  // Checks that the sender is whitelisted for the given tier, and that they are still able to purchase tokens
-  function isWhitelisted(uint _tier_index, address _sender, bytes32 _exec_id) internal view returns (uint wei_remaining, uint minimum_contribution) {
-    // Create 'readMulti' calldata buffer in memory
-    uint ptr = cdBuff(RD_MULTI);
-    // Push exec id, data read offset, and read size to buffer
-    cdPush(ptr, _exec_id);
-    cdPush(ptr, 0x40);
-    cdPush(ptr, bytes32(2));
-    // Push sender wei remaining and minimum contribution storage locations to buffer
-    cdPush(ptr, keccak256(keccak256(_sender), keccak256(_tier_index, SALE_WHITELIST)));
-    cdPush(ptr, bytes32(32 + uint(keccak256(keccak256(_sender), keccak256(_tier_index, SALE_WHITELIST)))));
-    // Read from storage, and return
-    uint[] memory read_values = readMultiUint(ptr);
-    wei_remaining = read_values[0];
-    minimum_contribution = read_values[1];
   }
 
   /*
@@ -459,6 +446,8 @@ library CrowdsaleBuyTokens {
       cdPush(ptr, bytes32(192 + (192 * cur_tier.index) + uint(CROWDSALE_TIERS)));
       // Read from storage, and store return to buffer
       read_values = readMultiUint(ptr);
+      // Ensure correct return length
+      assert(read_values.length == 4);
       // Add returned duration to previous tier end time
       require(cur_tier.tier_ends_at + read_values[2] > cur_tier.tier_ends_at);
       cur_tier.tier_ends_at += read_values[2];

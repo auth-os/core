@@ -9,9 +9,19 @@ contract TestTokenTransferFrom {
   // Keeps track of the last storage return
   bytes32[] public last_storage_event;
 
+  // Keeps track of the last errors logged by the contract
+  bytes32[] public error_logs;
+
   // Constructor - set storage address
   function TestTokenTransferFrom(address _storage) public {
     app_storage = _storage;
+  }
+
+  // Clears last storage event and error logs
+  modifier clearLogs() {
+    delete last_storage_event;
+    delete error_logs;
+    _;
   }
 
   // Change storage address
@@ -20,8 +30,12 @@ contract TestTokenTransferFrom {
   }
 
   // Get the last chunk of data stored with getBuffer
-  function getLastStorage() public view returns (bytes32[] stored) {
-    return last_storage_event;
+  function getLastStorage() public view returns (uint length, bytes32[] stored) {
+    return (last_storage_event.length, last_storage_event);
+  }
+
+  function getLastErrorLogs() public view returns (uint length, bytes32[] logs) {
+    return (error_logs.length, error_logs);
   }
 
   /// TOKEN STORAGE ///
@@ -51,6 +65,11 @@ contract TestTokenTransferFrom {
   bytes32 public constant ERR_INSUFFICIENT_PERMISSIONS = bytes32("InsufficientPermissions"); // Action not allowed
   bytes32 public constant ERR_READ_FAILED = bytes32("StorageReadFailed"); // Read from storage address failed
 
+  /// EVENTS - TEST CONTRACT ///
+
+  // Test contract - returns a message and data to help narrow down a reverted call
+  event FailedAssertion(string message, bytes32 data_1, bytes32 data_2);
+
   /*
   Transfers tokens from an owner's balance to a recipient, provided the sender has suffcient allowance
 
@@ -63,10 +82,13 @@ contract TestTokenTransferFrom {
     3. Wei amount sent with transaction to storage
   @return store_data: A formatted storage request - first 64 bytes designate a forwarding address (and amount) for any wei sent
   */
-  function transferFrom(address _from, address _to, uint _amt, bytes _context) public
+  function transferFrom(address _from, address _to, uint _amt, bytes _context) public clearLogs()
   returns (bytes32[] store_data) {
     // Ensure valid inputs
-    require(_to != address(0) && _amt != 0 && _from != address(0));
+    if (!(_to != address(0) && _amt != 0 && _from != address(0))) {
+      emit FailedAssertion("Invalid input", bytes32(_to), bytes32(_from));
+      return store_data;
+    }
     if (_context.length != 96)
       triggerException(ERR_UNKNOWN_CONTEXT);
 
@@ -91,7 +113,10 @@ contract TestTokenTransferFrom {
     // Read from storage
     bytes32[] memory read_values = readMulti(ptr);
     // Ensure length of returned data is correct
-    assert(read_values.length == 5);
+    if (read_values.length != 5) {
+      emit FailedAssertion("Array bounds check - transferFrom", bytes32(read_values.length), bytes32(0));
+      return store_data;
+    }
 
     // If the token is not unlocked, and the token owner is not a transfer agent, throw exception
     if (read_values[3] == bytes32(0) && read_values[4] == bytes32(0))
@@ -104,7 +129,10 @@ contract TestTokenTransferFrom {
 
     // Ensure owner has sufficient balance to send, and recipient balance does not overflow
     // Additionally, ensure sender has sufficient allowance
-    require(owner_bal >= _amt && recipient_bal + _amt > recipient_bal && sender_allowance >= _amt);
+    if (!(owner_bal >= _amt && recipient_bal + _amt > recipient_bal && sender_allowance >= _amt)) {
+      emit FailedAssertion("Balance/allowance over/underflow", bytes32(owner_bal), bytes32(recipient_bal));
+      return store_data;
+    }
 
     // Get updated balances -
     owner_bal -= _amt;
@@ -227,7 +255,7 @@ contract TestTokenTransferFrom {
   @param _ptr: A pointer to the location in memory where the calldata for the call is stored
   @return read_values: The values read from storage
   */
-  function readMulti(uint _ptr) internal view returns (bytes32[] read_values) {
+  function readMulti(uint _ptr) internal returns (bytes32[] read_values) {
     bool success;
     address _storage = app_storage;
     assembly {
@@ -251,19 +279,16 @@ contract TestTokenTransferFrom {
   }
 
   /*
-  Reverts state changes, but passes message back to caller
+  Test contracts - pushes the message to error_logs state variable
 
-  @param _message: The message to return to the caller
+  @param _message: The message to log
   */
-  function triggerException(bytes32 _message) internal pure {
-    assembly {
-      mstore(0, _message)
-      revert(0, 0x20)
-    }
+  function triggerException(bytes32 _message) internal {
+    error_logs.push(_message);
   }
 
   // Parses context array and returns execution id, sender address, and sent wei amount
-  function parse(bytes _context) internal pure returns (bytes32 exec_id, address from, uint wei_sent) {
+  function parse(bytes _context) internal returns (bytes32 exec_id, address from, uint wei_sent) {
     assembly {
       exec_id := mload(add(0x20, _context))
       from := mload(add(0x40, _context))

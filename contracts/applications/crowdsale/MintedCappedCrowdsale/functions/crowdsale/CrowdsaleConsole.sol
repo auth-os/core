@@ -99,6 +99,8 @@ library CrowdsaleConsole {
     cdPush(ptr, CROWDSALE_IS_INIT);
     // Read from storage, and store return to buffer
     bytes32[] memory read_values = readMulti(ptr);
+    // Ensure correct return length
+    assert(read_values.length == 2);
 
     // Check that the sender is the admin address and that the crowdsale is not yet initialized
     if (read_values[0] != bytes32(sender) || read_values[1] != bytes32(0))
@@ -209,6 +211,8 @@ library CrowdsaleConsole {
     cdPush(ptr, keccak256(_tier_index, SALE_WHITELIST));
     // Read from storage
     bytes32[] memory read_values = readMulti(ptr);
+    // Ensure correct return length
+    assert(read_values.length == 2);
 
     // If the first returned value is not equal to the sender's address, sender is not the crowdsale admin
     if (read_values[0] != bytes32(sender))
@@ -299,6 +303,8 @@ library CrowdsaleConsole {
     cdPush(ptr, ADMIN);
     // Read from storage, and return data to buffer
     bytes32[] memory read_values = readMulti(ptr);
+    // Ensure correct return length
+    assert(read_values.length == 4);
 
     // Get current number of tiers and total duration
     TiersHelper memory tiers = TiersHelper({
@@ -410,6 +416,8 @@ library CrowdsaleConsole {
     cdPush(ptr, bytes32(160 + (192 * _tier_index) + uint(CROWDSALE_TIERS))); // Storage location of tier-to-update's modifiability status (whether the tier's duration can be updated)
     // Read from storage, and store return to buffer
     bytes32[] memory read_values = readMulti(ptr);
+    // Ensure correct return length
+    assert(read_values.length == 9);
 
     // Get TierUpdate struct from returned data
     TierUpdate memory tier_update = TierUpdate({
@@ -538,6 +546,9 @@ library CrowdsaleConsole {
 
     // Read from storage and check that the token name is nonzero and the start time has not passed yet
     bytes32[] memory read_values = readMulti(ptr);
+    // Ensure correct return length
+    assert(read_values.length == 2);
+
     if (
       read_values[0] < bytes32(now)
       || read_values[1] == bytes32(0)
@@ -586,6 +597,9 @@ library CrowdsaleConsole {
     cdPush(ptr, CROWDSALE_IS_FINALIZED);
     // Read from storage, and store returned data in buffer
     bytes32[] memory read_values = readMulti(ptr);
+    // Ensure correct return length
+    assert(read_values.length == 3);
+
     // Check that the sender is the admin address, and that the crowdsale is initialized, but not finalized
     if (
       read_values[0] != bytes32(sender)

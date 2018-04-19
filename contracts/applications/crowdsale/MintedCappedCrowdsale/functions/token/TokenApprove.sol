@@ -32,7 +32,7 @@ library TokenApprove {
   function approve(address _spender, uint _amt, bytes _context) public pure
   returns (bytes32[] store_data) {
     // Ensure valid inputs
-    require(_spender != address(0) && _amt != 0);
+    require(_spender != address(0));
     if (_context.length != 96)
       triggerException(ERR_UNKNOWN_CONTEXT);
 
@@ -84,10 +84,10 @@ library TokenApprove {
     cdPush(ptr, keccak256(keccak256(_spender), keccak256(keccak256(sender), TOKEN_ALLOWANCES)));
 
     // Read spender allowance from storage
-    uint spender_bal = uint(readSingle(ptr));
+    uint spender_allowance = uint(readSingle(ptr));
     // Safely increase the spender's balance -
-    require(spender_bal + _amt > spender_bal);
-    spender_bal += _amt;
+    require(spender_allowance + _amt > spender_allowance);
+    spender_allowance += _amt;
 
     // Overwrite previous buffer, and create storage return buffer
     stOverwrite(ptr);
@@ -96,7 +96,7 @@ library TokenApprove {
     stPush(ptr, 0);
     // Place spender allowance location and updated allowance in buffer
     stPush(ptr, keccak256(keccak256(_spender), keccak256(keccak256(sender), TOKEN_ALLOWANCES)));
-    stPush(ptr, bytes32(spender_bal));
+    stPush(ptr, bytes32(spender_allowance));
 
     // Get bytes32[] representation of storage buffer
     store_data = getBuffer(ptr);
@@ -131,9 +131,9 @@ library TokenApprove {
     cdPush(ptr, keccak256(keccak256(_spender), keccak256(keccak256(sender), TOKEN_ALLOWANCES)));
 
     // Read spender allowance from storage
-    uint spender_bal = uint(readSingle(ptr));
+    uint spender_allowance = uint(readSingle(ptr));
     // Safely decrease the spender's balance -
-    spender_bal = (_amt > spender_bal ? 0 : spender_bal - _amt);
+    spender_allowance = (_amt > spender_allowance ? 0 : spender_allowance - _amt);
 
     // Overwrite previous buffer, and create storage return buffer
     stOverwrite(ptr);
@@ -142,7 +142,7 @@ library TokenApprove {
     stPush(ptr, 0);
     // Place spender allowance location and updated allowance in buffer
     stPush(ptr, keccak256(keccak256(_spender), keccak256(keccak256(sender), TOKEN_ALLOWANCES)));
-    stPush(ptr, bytes32(spender_bal));
+    stPush(ptr, bytes32(spender_allowance));
 
     // Get bytes32[] representation of storage buffer
     store_data = getBuffer(ptr);
@@ -250,34 +250,6 @@ library TokenApprove {
         mstore(0x40, add(add(0x2c, _ptr), len)) // Ensure free memory pointer points to the beginning of a memory slot
       }
     }
-  }
-
-  /*
-  Executes a 'readMulti' function call, given a pointer to a calldata buffer
-
-  @param _ptr: A pointer to the location in memory where the calldata for the call is stored
-  @return read_values: The values read from storage
-  */
-  function readMulti(uint _ptr) internal view returns (bytes32[] read_values) {
-    bool success;
-    assembly {
-      // Minimum length for 'readMulti' - 1 location is 0x84
-      if lt(mload(_ptr), 0x84) { revert (0, 0) }
-      // Read from storage
-      success := staticcall(gas, caller, add(0x20, _ptr), mload(_ptr), 0, 0)
-      // If call succeed, get return information
-      if gt(success, 0) {
-        // Ensure data will not be copied beyond the pointer
-        if gt(sub(returndatasize, 0x20), mload(_ptr)) { revert (0, 0) }
-        // Copy returned data to pointer, overwriting it in the process
-        // Copies returndatasize, but ignores the initial read offset so that the bytes32[] returned in the read is sitting directly at the pointer
-        returndatacopy(_ptr, 0x20, sub(returndatasize, 0x20))
-        // Set return bytes32[] to pointer, which should now have the stored length of the returned array
-        read_values := _ptr
-      }
-    }
-    if (!success)
-      triggerException(ERR_READ_FAILED);
   }
 
   /*

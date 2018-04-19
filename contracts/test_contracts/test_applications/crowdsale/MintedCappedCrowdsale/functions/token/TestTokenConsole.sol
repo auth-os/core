@@ -9,9 +9,19 @@ contract TestTokenConsole {
   // Keeps track of the last storage return
   bytes32[] public last_storage_event;
 
+  // Keeps track of the last errors logged by the contract
+  bytes32[] public error_logs;
+
   // Constructor - set storage address
   function TestTokenConsole(address _storage) public {
     app_storage = _storage;
+  }
+
+  // Clears last storage event and error logs
+  modifier clearLogs() {
+    delete last_storage_event;
+    delete error_logs;
+    _;
   }
 
   // Change storage address
@@ -20,10 +30,13 @@ contract TestTokenConsole {
   }
 
   // Get the last chunk of data stored with getBuffer
-  function getLastStorage() public view returns (bytes32[] stored) {
-    return last_storage_event;
+  function getLastStorage() public view returns (uint length, bytes32[] stored) {
+    return (last_storage_event.length, last_storage_event);
   }
 
+  function getLastErrorLogs() public view returns (uint length, bytes32[] logs) {
+    return (error_logs.length, error_logs);
+  }
   /// CROWDSALE STORAGE ///
 
   // Storage location of crowdsale admin address
@@ -81,6 +94,11 @@ contract TestTokenConsole {
   bytes32 public constant ERR_INSUFFICIENT_PERMISSIONS = bytes32("InsufficientPermissions"); // Action not allowed
   bytes32 public constant ERR_READ_FAILED = bytes32("StorageReadFailed"); // Read from storage address failed
 
+  /// EVENTS - TEST CONTRACT ///
+
+  // Test contract - returns a message and data to help narrow down a reverted call
+  event FailedAssertion(string message, bytes32 data_1, bytes32 data_2);
+
   /*
   Allows the admin to set an address's transfer agent status - transfer agents can transfer tokens prior to the end of the crowdsale
 
@@ -92,9 +110,12 @@ contract TestTokenConsole {
     3. Wei amount sent with transaction to storage
   @return store_data: A formatted storage request - first 64 bytes designate a forwarding address (and amount) for any wei sent
   */
-  function setTransferAgentStatus(address _agent, bool _is_transfer_agent, bytes _context) public returns (bytes32[] store_data) {
+  function setTransferAgentStatus(address _agent, bool _is_transfer_agent, bytes _context) public clearLogs() returns (bytes32[] store_data) {
     // Ensure valid input
-    require(_agent != address(0));
+    if (_agent == address(0)) {
+      emit FailedAssertion("Invalid input", bytes32(_agent), bytes32(0));
+      return store_data;
+    }
     if (_context.length != 96)
       triggerException(ERR_UNKNOWN_CONTEXT);
 
@@ -142,15 +163,18 @@ contract TestTokenConsole {
     3. Wei amount sent with transaction to storage
   @return store_data: A formatted storage request - first 64 bytes designate a forwarding address (and amount) for any wei sents
   */
-  function updateMultipleReservedTokens(address[] _destinations, uint[] _num_tokens, uint[] _num_percents, uint[] _percent_decimals, bytes _context) public
+  function updateMultipleReservedTokens(address[] _destinations, uint[] _num_tokens, uint[] _num_percents, uint[] _percent_decimals, bytes _context) public clearLogs()
   returns (bytes32[] store_data) {
     // Ensure valid input
-    require(
+    if (!(
       _destinations.length == _num_tokens.length
       && _num_tokens.length == _num_percents.length
       && _num_percents.length == _percent_decimals.length
       && _destinations.length > 0
-    );
+    )) {
+      emit FailedAssertion("Mismatched parameter lengths", bytes32(_destinations.length), bytes32(_num_tokens.length));
+      return store_data;
+    }
     if (_context.length != 96)
       triggerException(ERR_UNKNOWN_CONTEXT);
 
@@ -175,14 +199,20 @@ contract TestTokenConsole {
     // Loop over destinations, calculate their reserved token data storage location, and add to buffer
     for (uint i = 0; i < _destinations.length ; i++) {
       // Ensure no invalid submitted addresses
-      require(_destinations[i] != address(0));
+      if (_destinations[i] == address(0)) {
+        emit FailedAssertion("Invalid input destination", bytes32(_destinations[i]), bytes32(0));
+        return store_data;
+      }
       // Destination list index for all addresses is the first slot in the reserved address struct - no need to add an offset
       cdPush(ptr, keccak256(keccak256(_destinations[i]), TOKEN_RESERVED_ADDR_INFO));
     }
     // Read from storage, and store returned values in buffer
     bytes32[] memory read_values = readMulti(ptr);
     // Ensure correct read length -
-    assert(read_values.length == 3 + _destinations.length);
+    if (read_values.length != 3 + _destinations.length) {
+      emit FailedAssertion("Array bounds check - updateMultipleReservedTokens", bytes32(read_values.length), bytes32(0));
+      return store_data;
+    }
 
     // Ensure sender is admin address, and crowdsale has not been initialized
     if (read_values[0] != bytes32(sender) || read_values[1] != bytes32(0))
@@ -202,14 +232,12 @@ contract TestTokenConsole {
     // First 3 indices in read_values are admin address, crowdsale init status, and crowdsale reserved destinations list length - begin
     // reading destinations address indices from read_values[3]
 
-    // Sanity check - read_values length should be 3 more than _destinations length -
-    assert(read_values.length == _destinations.length + 3);
     for (i = 3; i < read_values.length; i++) {
       // If value is 0, address has not already been added to the crowdsale destinations list in storage
       address to_add = _destinations[i - 3];
       if (read_values[i] == bytes32(0)) {
         // Now, check the passed-in _destinations list to see if this address is listed multiple times in the input, as we only want to store information on unique addresses
-        for (uint j = i + 1; j < _destinations.length; j--) {
+        for (uint j = _destinations.length - 1; j > i - 3; j--) {
           // address is not unique locally - found the same address in _destinations
           if (_destinations[j] == to_add) {
             to_add = address(0);
@@ -224,7 +252,10 @@ contract TestTokenConsole {
         // Increment length
         read_values[2] = bytes32(uint(read_values[2]) + 1);
         // Ensure reserved destination amount does not exceed 20
-        require(uint(read_values[2]) <= 20);
+        if (!(uint(read_values[2]) < 20)) {
+          emit FailedAssertion("Number of unique reserved destinations exceeds limit", bytes32(read_values[2]), bytes32(to_add));
+          return store_data;
+        }
         // Get storage position (end of TOKEN_RESERVED_DESTINATIONS list), and push to buffer
         stPush(ptr, bytes32(32 * uint(read_values[2]) + uint(TOKEN_RESERVED_DESTINATIONS)));
         stPush(ptr, bytes32(to_add));
@@ -259,9 +290,12 @@ contract TestTokenConsole {
     3. Wei amount sent with transaction to storage
   @return store_data: A formatted storage request - first 64 bytes designate a forwarding address (and amount) for any wei sents
   */
-  function removeReservedTokens(address _destination, bytes _context) public returns (bytes32[] store_data) {
+  function removeReservedTokens(address _destination, bytes _context) public clearLogs() returns (bytes32[] store_data) {
     // Ensure valid input
-    require(_destination != address(0));
+    if (_destination == address(0)) {
+      emit FailedAssertion("Invalid input", bytes32(_destination), bytes32(0));
+      return store_data;
+    }
     if (_context.length != 96)
       triggerException(ERR_UNKNOWN_CONTEXT);
 
@@ -284,7 +318,10 @@ contract TestTokenConsole {
     // Read from storage, and store returned values in buffer
     bytes32[] memory read_values = readMulti(ptr);
     // Ensure the length is 4
-    assert(read_values.length == 4);
+    if (read_values.length != 4) {
+      emit FailedAssertion("Array bounds check - removeReservedTokens", bytes32(read_values.length), bytes32(0));
+      return store_data;
+    }
 
     // Ensure sender is admin address, and crowdsale has not been initialized
     if (read_values[0] != bytes32(sender) || read_values[1] != bytes32(0))
@@ -295,7 +332,10 @@ contract TestTokenConsole {
     // Get index of passed-in destination. If zero, sender is not in reserved list - revert
     uint to_remove = uint(read_values[3]);
     // Ensure that to_remove is less than or equal to reservation list length (stored indices are offset by 1)
-    assert(to_remove <= reservation_len && to_remove != 0);
+    if (!(to_remove <= reservation_len && to_remove != 0)) {
+      emit FailedAssertion("Invalid removal index", bytes32(to_remove), bytes32(reservation_len));
+      return store_data;
+    }
 
     // If to_remove is the final index in the list, decrement the length and remove their reserved token information struct
     if (to_remove == reservation_len) {
@@ -353,9 +393,12 @@ contract TestTokenConsole {
     3. Wei amount sent with transaction to storage
   @return store_data: A formatted storage request - first 64 bytes designate a forwarding address (and amount) for any wei sents
   */
-  function distributeReservedTokens(uint _amt, bytes _context) public returns (bytes32[] store_data) {
+  function distributeReservedTokens(uint _amt, bytes _context) public clearLogs() returns (bytes32[] store_data) {
     // Ensure valid input
-    require(_amt > 0);
+    if (!(_amt > 0)) {
+      emit FailedAssertion("Invalid Input", bytes32(_amt), bytes32(0));
+      return store_data;
+    }
     if (_context.length != 96)
       triggerException(ERR_UNKNOWN_CONTEXT);
 
@@ -378,7 +421,10 @@ contract TestTokenConsole {
     // Read from storage, and store returned values in buffer
     bytes32[] memory initial_read_values = readMulti(ptr);
     // Ensure the length is 4
-    assert(initial_read_values.length == 4);
+    if (initial_read_values.length != 4) {
+      emit FailedAssertion("Array bounds check - distributeReservedTokens 0", bytes32(initial_read_values.length), bytes32(0));
+      return store_data;
+    }
 
     // If the crowdsale is not finalized, revert
     if (initial_read_values[0] == bytes32(0))
@@ -407,7 +453,10 @@ contract TestTokenConsole {
     // Read from storage, and store returned values in buffer
     initial_read_values = readMulti(ptr);
     // Ensure valid return length -
-    assert(initial_read_values.length == _amt);
+    if (initial_read_values.length != _amt) {
+      emit FailedAssertion("Array bounds check - distributeReservedTokens 1", bytes32(initial_read_values.length), bytes32(_amt));
+      return store_data;
+    }
 
     // Finally - for each returned address, we want to read the reservation information for that address as well as that address's current token balance -
 
@@ -446,7 +495,10 @@ contract TestTokenConsole {
     // Read from storage, and store return in buffer
     uint[] memory read_reserved_info = readMultiUint(ptr);
     // Ensure valid return length -
-    assert(read_reserved_info.length == 4 * _amt);
+    if (read_reserved_info.length != 4 * _amt) {
+      emit FailedAssertion("Array bounds check - distributeReservedTokens 2", bytes32(read_reserved_info.length), bytes32(4 * _amt));
+      return store_data;
+    }
 
     // Create storage buffer in free memory, to set up return value
     ptr = stBuff();
@@ -462,23 +514,31 @@ contract TestTokenConsole {
       uint to_add = read_reserved_info[(i * 4) + 2];
       // Two points of precision are added to ensure at least a percent out of 100
       uint precision = 2 + read_reserved_info[(i * 4) + 3];
-      // Get percent divisor, and check for overflow
-      assert(10 ** precision > precision);
+      // Get percent divisor
       precision = 10 ** precision;
 
-      // Get number of tokens to add frmo total_sold and precent reserved
+      // Get number of tokens to add from total_sold and precent reserved
       to_add = total_sold * to_add / precision;
 
       // Add number of tokens reserved, and check for overflow
       // Additionally, check that the added amount does not overflow total supply
-      require(to_add + read_reserved_info[(i * 4) + 1] >= to_add);
+      if (!(to_add + read_reserved_info[(i * 4) + 1] >= to_add)) {
+        emit FailedAssertion("Added token overflow", bytes32(to_add), bytes32(read_reserved_info[(i * 4) + 1]));
+        return store_data;
+      }
       to_add += read_reserved_info[(i * 4) + 1];
-      require(total_supply + to_add >= total_supply);
+      if (!(total_supply + to_add >= total_supply)) {
+        emit FailedAssertion("Token total supply overflow", bytes32(to_add), bytes32(total_supply));
+        return store_data;
+      }
       // Increment total supply
       total_supply += to_add;
 
       // Add destination's current token balance to to_add, and check for overflow
-      require(to_add + read_reserved_info[i * 4] >= read_reserved_info[i * 4]);
+      if (!(to_add + read_reserved_info[i * 4] >= read_reserved_info[i * 4])) {
+        emit FailedAssertion("Reserved destination balance overflow", bytes32(to_add), bytes32(read_reserved_info[i * 4]));
+        return store_data;
+      }
       to_add += read_reserved_info[i * 4];
       // Add new balance and balance location to storage buffer
       stPush(ptr, keccak256(keccak256(address(initial_read_values[i])), TOKEN_BALANCES));
@@ -500,7 +560,7 @@ contract TestTokenConsole {
     3. Wei amount sent with transaction to storage
   @return store_data: A formatted storage request - first 64 bytes designate a forwarding address (and amount) for any wei sents
   */
-  function distributeAndUnlockTokens(bytes _context) public returns (bytes32[] store_data) {
+  function distributeAndUnlockTokens(bytes _context) public clearLogs() returns (bytes32[] store_data) {
     // Ensure valid input
     if (_context.length != 96)
       triggerException(ERR_UNKNOWN_CONTEXT);
@@ -524,7 +584,10 @@ contract TestTokenConsole {
     // Read from storage, and store returned values in buffer
     bytes32[] memory initial_read_values = readMulti(ptr);
     // Ensure the length is 4
-    assert(initial_read_values.length == 4);
+    if (initial_read_values.length != 4) {
+      emit FailedAssertion("Array bounds check - distributeAndUnlockTokens 0", bytes32(initial_read_values.length), bytes32(0));
+      return store_data;
+    }
 
     // If the crowdsale is not finalized, revert
     if (initial_read_values[0] == bytes32(0))
@@ -548,7 +611,10 @@ contract TestTokenConsole {
     // Read from storage, and store returned values in buffer
     initial_read_values = readMulti(ptr);
     // Ensure valid return length -
-    assert(initial_read_values.length == num_destinations);
+    if (initial_read_values.length != num_destinations) {
+      emit FailedAssertion("Array bounds check - distributeAndUnlockTokens 1", bytes32(initial_read_values.length), bytes32(num_destinations));
+      return store_data;
+    }
 
     // Finally - for each returned address, we want to read the reservation information for that address as well as that address's current token balance -
 
@@ -587,7 +653,10 @@ contract TestTokenConsole {
     // Read from storage, and store return in buffer
     uint[] memory read_reserved_info = readMultiUint(ptr);
     // Ensure valid return length -
-    assert(read_reserved_info.length == 4 * num_destinations);
+    if (read_reserved_info.length != 4 * num_destinations) {
+      emit FailedAssertion("Array bounds check - distributeAndUnlockTokens 2", bytes32(read_reserved_info.length), bytes32(4 * num_destinations));
+      return store_data;
+    }
 
     // Create storage buffer in free memory, to set up return value
     ptr = stBuff();
@@ -603,23 +672,31 @@ contract TestTokenConsole {
       uint to_add = read_reserved_info[(i * 4) + 2];
       // Two points of precision are added to ensure at least a percent out of 100
       uint precision = 2 + read_reserved_info[(i * 4) + 3];
-      // Get percent divisor, and check for overflow
-      assert(10 ** precision > precision);
+      // Get percent divisor
       precision = 10 ** precision;
 
-      // Get number of tokens to add frmo total_sold and precent reserved
+      // Get number of tokens to add from total_sold and precent reserved
       to_add = total_sold * to_add / precision;
 
       // Add number of tokens reserved, and check for overflow
       // Additionally, check that the added amount does not overflow total supply
-      require(to_add + read_reserved_info[(i * 4) + 1] >= to_add);
+      if (!(to_add + read_reserved_info[(i * 4) + 1] >= to_add)) {
+        emit FailedAssertion("Added token overflow", bytes32(to_add), bytes32(read_reserved_info[(i * 4) + 1]));
+        return store_data;
+      }
       to_add += read_reserved_info[(i * 4) + 1];
-      require(total_supply + to_add >= total_supply);
+      if (!(total_supply + to_add >= total_supply)) {
+        emit FailedAssertion("Token total supply overflow", bytes32(to_add), bytes32(total_supply));
+        return store_data;
+      }
       // Increment total supply
       total_supply += to_add;
 
       // Add destination's current token balance to to_add, and check for overflow
-      require(to_add + read_reserved_info[i * 4] >= read_reserved_info[i * 4]);
+      if (!(to_add + read_reserved_info[i * 4] >= read_reserved_info[i * 4])) {
+        emit FailedAssertion("Reserved destination balance overflow", bytes32(to_add), bytes32(read_reserved_info[i * 4]));
+        return store_data;
+      }
       to_add += read_reserved_info[i * 4];
       // Add new balance and balance location to storage buffer
       stPush(ptr, keccak256(keccak256(address(initial_read_values[i])), TOKEN_BALANCES));
@@ -762,7 +839,7 @@ contract TestTokenConsole {
   @param _ptr: A pointer to the location in memory where the calldata for the call is stored
   @return read_values: The values read from storage
   */
-  function readMulti(uint _ptr) internal view returns (bytes32[] read_values) {
+  function readMulti(uint _ptr) internal returns (bytes32[] read_values) {
     bool success;
     address _storage = app_storage;
     assembly {
@@ -791,7 +868,7 @@ contract TestTokenConsole {
   @param _ptr: A pointer to the location in memory where the calldata for the call is stored
   @return read_values: The values read from storage
   */
-  function readMultiUint(uint _ptr) internal view returns (uint[] read_values) {
+  function readMultiUint(uint _ptr) internal returns (uint[] read_values) {
     bool success;
     address _storage = app_storage;
     assembly {
@@ -821,7 +898,7 @@ contract TestTokenConsole {
   @param _ptr: A pointer to the location in memory where the calldata for the call is stored
   @return read_value: The value read from storage
   */
-  function readSingle(uint _ptr) internal view returns (bytes32 read_value) {
+  function readSingle(uint _ptr) internal returns (bytes32 read_value) {
     bool success;
     address _storage = app_storage;
     assembly {
@@ -837,19 +914,16 @@ contract TestTokenConsole {
   }
 
   /*
-  Reverts state changes, but passes message back to caller
+  Test contracts - pushes the message to error_logs state variable
 
-  @param _message: The message to return to the caller
+  @param _message: The message to log
   */
-  function triggerException(bytes32 _message) internal pure {
-    assembly {
-      mstore(0, _message)
-      revert(0, 0x20)
-    }
+  function triggerException(bytes32 _message) internal {
+    error_logs.push(_message);
   }
 
   // Parses context array and returns execution id, sender address, and sent wei amount
-  function parse(bytes _context) internal pure returns (bytes32 exec_id, address from, uint wei_sent) {
+  function parse(bytes _context) internal returns (bytes32 exec_id, address from, uint wei_sent) {
     assembly {
       exec_id := mload(add(0x20, _context))
       from := mload(add(0x40, _context))

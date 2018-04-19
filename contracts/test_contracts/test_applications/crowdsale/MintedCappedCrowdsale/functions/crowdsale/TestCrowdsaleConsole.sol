@@ -9,9 +9,19 @@ contract TestCrowdsaleConsole {
   // Keeps track of the last storage return
   bytes32[] public last_storage_event;
 
+  // Keeps track of the last errors logged by the contract
+  bytes32[] public error_logs;
+
   // Constructor - set storage address
   function TestCrowdsaleConsole(address _storage) public {
     app_storage = _storage;
+  }
+
+  // Clears last storage event and error logs
+  modifier clearLogs() {
+    delete last_storage_event;
+    delete error_logs;
+    _;
   }
 
   // Change storage address
@@ -20,8 +30,12 @@ contract TestCrowdsaleConsole {
   }
 
   // Get the last chunk of data stored with getBuffer
-  function getLastStorage() public view returns (bytes32[] stored) {
-    return last_storage_event;
+  function getLastStorage() public view returns (uint length, bytes32[] stored) {
+    return (last_storage_event.length, last_storage_event);
+  }
+
+  function getLastErrorLogs() public view returns (uint length, bytes32[] logs) {
+    return (error_logs.length, error_logs);
   }
 
   /// CROWDSALE STORAGE ///
@@ -100,6 +114,11 @@ contract TestCrowdsaleConsole {
   bytes32 public constant ERR_INSUFFICIENT_PERMISSIONS = bytes32("InsufficientPermissions"); // Action not allowed
   bytes32 public constant ERR_READ_FAILED = bytes32("StorageReadFailed"); // Read from storage address failed
 
+  /// EVENTS - TEST CONTRACT ///
+
+  // Test contract - returns a message and data to help narrow down a reverted call
+  event FailedAssertion(string message, bytes32 data_1, bytes32 data_2);
+
   // Modifier - will only allow access to a crowdsale's admin address
   // Additionally, crowdasle must not be initialized
   modifier onlyAdminAndNotInit(bytes _context) {
@@ -121,6 +140,9 @@ contract TestCrowdsaleConsole {
     cdPush(ptr, CROWDSALE_IS_INIT);
     // Read from storage, and store return to buffer
     bytes32[] memory read_values = readMulti(ptr);
+    // Ensure correct return length
+    if (read_values.length != 2)
+      emit FailedAssertion("Array bounds check - onlyAdminAndNotInit", bytes32(read_values.length), bytes32(0));
 
     // Check that the sender is the admin address and that the crowdsale is not yet initialized
     if (read_values[0] != bytes32(sender) || read_values[1] != bytes32(0))
@@ -141,13 +163,12 @@ contract TestCrowdsaleConsole {
     3. Wei amount sent with transaction to storage
   @return store_data: A formatted storage request - first 64 bytes designate a forwarding address (and amount) for any wei sent
   */
-  function initCrowdsaleToken(bytes32 _name, bytes32 _symbol, uint _decimals, bytes _context) public onlyAdminAndNotInit(_context)
+  function initCrowdsaleToken(bytes32 _name, bytes32 _symbol, uint _decimals, bytes _context) public onlyAdminAndNotInit(_context) clearLogs()
   returns (bytes32[] store_data) {
     // Ensure valid input
     if (
       _name == bytes32(0)
       || _symbol == bytes32(0)
-      || _decimals == 0
       || _decimals > 18
     ) triggerException(ERR_IMPROPER_INITIALIZATION);
 
@@ -179,7 +200,7 @@ contract TestCrowdsaleConsole {
     3. Wei amount sent with transaction to storage
   @return store_data: A formatted storage request - first 64 bytes designate a forwarding address (and amount) for any wei sent
   */
-  function updateGlobalMinContribution(uint _new_min_contribution, bytes _context) public onlyAdminAndNotInit(_context)
+  function updateGlobalMinContribution(uint _new_min_contribution, bytes _context) public onlyAdminAndNotInit(_context) clearLogs()
   returns (bytes32[] store_data) {
     // Create memory buffer for return data
     uint ptr = stBuff();
@@ -208,10 +229,16 @@ contract TestCrowdsaleConsole {
     3. Wei amount sent with transaction to storage
   @return store_data: A formatted storage request - first 64 bytes designate a forwarding address (and amount) for any wei sent
   */
-  function whitelistMultiForTier(uint _tier_index, address[] _to_update, uint[] _minimum_contribution, uint[] _max_spend_amt, bytes _context) public
+  function whitelistMultiForTier(uint _tier_index, address[] _to_update, uint[] _minimum_contribution, uint[] _max_spend_amt, bytes _context) public clearLogs()
   returns (bytes32[] store_data) {
     // Ensure valid input
-    require(_to_update.length == _minimum_contribution.length && _to_update.length == _max_spend_amt.length);
+    if (!(
+      _to_update.length == _minimum_contribution.length
+      && _to_update.length == _max_spend_amt.length
+    )) {
+      emit FailedAssertion("Mismatched parameter lengths", bytes32(_to_update.length), bytes32(_minimum_contribution.length));
+      return store_data;
+    }
     if (_context.length != 96)
       triggerException(ERR_UNKNOWN_CONTEXT);
 
@@ -232,6 +259,11 @@ contract TestCrowdsaleConsole {
     cdPush(ptr, keccak256(_tier_index, SALE_WHITELIST));
     // Read from storage
     bytes32[] memory read_values = readMulti(ptr);
+    // Ensure correct return length
+    if (read_values.length != 2) {
+      emit FailedAssertion("Array bounds check - whitelistMultiForTier", bytes32(read_values.length), bytes32(0));
+      return store_data;
+    }
 
     // If the first returned value is not equal to the sender's address, sender is not the crowdsale admin
     if (read_values[0] != bytes32(sender))
@@ -290,16 +322,26 @@ contract TestCrowdsaleConsole {
     3. Wei amount sent with transaction to storage
   @return store_data: A formatted storage request - first 64 bytes designate a forwarding address (and amount) for any wei sent
   */
-  function createCrowdsaleTiers(bytes32[] _tier_names, uint[] _tier_durations, uint[] _tier_prices, uint[] _tier_caps, bool[] _tier_is_modifiable, bool[] _tier_is_whitelisted, bytes _context) public
-  returns (bytes32[] store_data) {
+  function createCrowdsaleTiers(
+    bytes32[] _tier_names,
+    uint[] _tier_durations,
+    uint[] _tier_prices,
+    uint[] _tier_caps,
+    bool[] _tier_is_modifiable,
+    bool[] _tier_is_whitelisted,
+    bytes _context
+  ) public clearLogs() returns (bytes32[] store_data) {
     // Ensure valid input
-    require(
+    if (!(
       _tier_names.length == _tier_durations.length
       && _tier_names.length == _tier_prices.length
       && _tier_names.length == _tier_caps.length
       && _tier_names.length == _tier_is_modifiable.length
       && _tier_is_modifiable.length == _tier_is_whitelisted.length
-    );
+    )) {
+      emit FailedAssertion("Mismatched parameter lengths", bytes32(_tier_names.length), bytes32(_tier_durations.length));
+      return store_data;
+    }
     if (_context.length != 96)
       triggerException(ERR_UNKNOWN_CONTEXT);
 
@@ -322,6 +364,11 @@ contract TestCrowdsaleConsole {
     cdPush(ptr, ADMIN);
     // Read from storage, and return data to buffer
     bytes32[] memory read_values = readMulti(ptr);
+    // Ensure correct return length
+    if (read_values.length != 4) {
+      emit FailedAssertion("Array bounds check - createCrowdsaleTiers", bytes32(read_values.length), bytes32(0));
+      return store_data;
+    }
 
     // Get current number of tiers and total duration
     TiersHelper memory tiers = TiersHelper({
@@ -350,11 +397,14 @@ contract TestCrowdsaleConsole {
     // Loop over each new tier, and add to storage buffer. Keep track of the added duration
     for (uint i = 0; i < _tier_names.length; i++) {
       // Ensure valid input -
-      require(
+      if (!(
         _tier_caps[i] > 0
         && tiers.total_duration + _tier_durations[i] > tiers.total_duration
         && _tier_prices[i] > 0
-      );
+      )) {
+        emit FailedAssertion("Invalid function parameters", bytes32(_tier_caps[i]), bytes32(tiers.total_duration));
+        return store_data;
+      }
 
       // Increment total duration of the crowdsale
       tiers.total_duration += _tier_durations[i];
@@ -400,9 +450,12 @@ contract TestCrowdsaleConsole {
     3. Wei amount sent with transaction to storage
   @return store_data: A formatted storage request - first 64 bytes designate a forwarding address (and amount) for any wei sent
   */
-  function updateTierDuration(uint _tier_index, uint _new_duration, bytes _context) public returns (bytes32[] store_data) {
+  function updateTierDuration(uint _tier_index, uint _new_duration, bytes _context) public clearLogs() returns (bytes32[] store_data) {
     // Ensure valid input
-    require(_new_duration > 0);
+    if (!(_new_duration > 0)) {
+      emit FailedAssertion("Invalid duration", bytes32(_new_duration), bytes32(0));
+      return store_data;
+    }
     if (_context.length != 96)
       triggerException(ERR_UNKNOWN_CONTEXT);
 
@@ -433,6 +486,11 @@ contract TestCrowdsaleConsole {
     cdPush(ptr, bytes32(160 + (192 * _tier_index) + uint(CROWDSALE_TIERS))); // Storage location of tier-to-update's modifiability status (whether the tier's duration can be updated)
     // Read from storage, and store return to buffer
     bytes32[] memory read_values = readMulti(ptr);
+    // Ensure correct return length
+    if (read_values.length != 9) {
+      emit FailedAssertion("Array bounds check - updateTierDuration 0", bytes32(read_values.length), bytes32(0));
+      return store_data;
+    }
 
     // Get TierUpdate struct from returned data
     TierUpdate memory tier_update = TierUpdate({
@@ -443,9 +501,15 @@ contract TestCrowdsaleConsole {
     });
 
     // Ensure an update is being performed
-    require(tier_update.prev_duration != _new_duration);
+    if (tier_update.prev_duration == _new_duration) {
+      emit FailedAssertion("Duration unchanged", bytes32(tier_update.prev_duration), bytes32(_new_duration));
+      return store_data;
+    }
     // Total crowdsale duration should always be minimum the previous duration for the tier to update
-    assert(tier_update.total_duration >= tier_update.prev_duration);
+    if (!(tier_update.total_duration >= tier_update.prev_duration)) {
+      emit FailedAssertion("Invalid total duration", bytes32(tier_update.total_duration), bytes32(tier_update.prev_duration));
+      return store_data;
+    }
 
     // Check returned values for valid crowdsale and tier status -
     if (
@@ -489,7 +553,11 @@ contract TestCrowdsaleConsole {
 
       // Read from storage, and store return to buffer
       uint[] memory read_durations = readMultiUint(ptr);
-      assert(read_durations.length == _tier_index - uint(read_values[5])); // Ensure valid returned array size
+      // Ensure valid returned array size
+      if (read_durations.length != _tier_index - uint(read_values[5])) {
+        emit FailedAssertion("Array bounds check - updateTierDuration 1", bytes32(read_durations.length), bytes32(_tier_index - uint(read_values[5])));
+        return store_data;
+      }
 
       // Loop through returned durations, and add each to 'cur tier end time'
       for (i = 0; i < read_durations.length; i++)
@@ -543,7 +611,7 @@ contract TestCrowdsaleConsole {
     3. Wei amount sent with transaction to storage
   @return store_data: A formatted storage request - first 64 bytes designate a forwarding address (and amount) for any wei sent
   */
-  function initializeCrowdsale(bytes _context) public onlyAdminAndNotInit(_context)
+  function initializeCrowdsale(bytes _context) public onlyAdminAndNotInit(_context) clearLogs()
   returns (bytes32[] store_data) {
     // Get execuion id from _context
     bytes32 exec_id;
@@ -561,6 +629,12 @@ contract TestCrowdsaleConsole {
 
     // Read from storage and check that the token name is nonzero and the start time has not passed yet
     bytes32[] memory read_values = readMulti(ptr);
+    // Ensure correct return length
+    if (read_values.length != 2)  {
+      emit FailedAssertion("Array bounds check - initializeCrowdsale", bytes32(read_values.length), bytes32(0));
+      return store_data;
+    }
+
     if (
       read_values[0] < bytes32(now)
       || read_values[1] == bytes32(0)
@@ -587,7 +661,7 @@ contract TestCrowdsaleConsole {
     3. Wei amount sent with transaction to storage
   @return store_data: A formatted storage request - first 64 bytes designate a forwarding address (and amount) for any wei sent
   */
-  function finalizeCrowdsale(bytes _context) public returns (bytes32[] store_data) {
+  function finalizeCrowdsale(bytes _context) public clearLogs() returns (bytes32[] store_data) {
     // Ensure valid input
     if (_context.length != 96)
       triggerException(ERR_UNKNOWN_CONTEXT);
@@ -609,6 +683,12 @@ contract TestCrowdsaleConsole {
     cdPush(ptr, CROWDSALE_IS_FINALIZED);
     // Read from storage, and store returned data in buffer
     bytes32[] memory read_values = readMulti(ptr);
+    // Ensure correct return length
+    if (read_values.length != 3) {
+      emit FailedAssertion("Array bounds check - finalizeCrowdsale", bytes32(read_values.length), bytes32(0));
+      return store_data;
+    }
+
     // Check that the sender is the admin address, and that the crowdsale is initialized, but not finalized
     if (
       read_values[0] != bytes32(sender)
@@ -741,7 +821,7 @@ contract TestCrowdsaleConsole {
   @param _ptr: A pointer to the location in memory where the calldata for the call is stored
   @return read_values: The values read from storage
   */
-  function readMulti(uint _ptr) internal view returns (bytes32[] read_values) {
+  function readMulti(uint _ptr) internal returns (bytes32[] read_values) {
     bool success;
     address _storage = app_storage;
     assembly {
@@ -771,7 +851,7 @@ contract TestCrowdsaleConsole {
   @param _ptr: A pointer to the location in memory where the calldata for the call is stored
   @return read_values: The values read from storage
   */
-  function readMultiUint(uint _ptr) internal view returns (uint[] read_values) {
+  function readMultiUint(uint _ptr) internal returns (uint[] read_values) {
     bool success;
     address _storage = app_storage;
     assembly {
@@ -801,7 +881,7 @@ contract TestCrowdsaleConsole {
   @param _ptr: A pointer to the location in memory where the calldata for the call is stored
   @return read_value: The value read from storage
   */
-  function readSingle(uint _ptr) internal view returns (bytes32 read_value) {
+  function readSingle(uint _ptr) internal returns (bytes32 read_value) {
     bool success;
     address _storage = app_storage;
     assembly {
@@ -817,19 +897,16 @@ contract TestCrowdsaleConsole {
   }
 
   /*
-  Reverts state changes, but passes message back to caller
+  Test contracts - pushes the message to error_logs state variable
 
-  @param _message: The message to return to the caller
+  @param _message: The message to log
   */
-  function triggerException(bytes32 _message) internal pure {
-    assembly {
-      mstore(0, _message)
-      revert(0, 0x20)
-    }
+  function triggerException(bytes32 _message) internal {
+    error_logs.push(_message);
   }
 
   // Parses context array and returns execution id, sender address, and sent wei amount
-  function parse(bytes _context) internal pure returns (bytes32 exec_id, address from, uint wei_sent) {
+  function parse(bytes _context) internal returns (bytes32 exec_id, address from, uint wei_sent) {
     assembly {
       exec_id := mload(add(0x20, _context))
       from := mload(add(0x40, _context))

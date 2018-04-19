@@ -9,9 +9,19 @@ contract TestInitCrowdsale {
   // Keeps track of the last storage return
   bytes32[] public last_storage_event;
 
+  // Keeps track of the last errors logged by the contract
+  bytes32[] public error_logs;
+
   // Constructor - set storage address
   function TestInitCrowdsale(address _storage) public {
     app_storage = _storage;
+  }
+
+  // Clears last storage event and error logs
+  modifier clearLogs() {
+    delete last_storage_event;
+    delete error_logs;
+    _;
   }
 
   // Change storage address
@@ -20,8 +30,12 @@ contract TestInitCrowdsale {
   }
 
   // Get the last chunk of data stored with getBuffer
-  function getLastStorage() public view returns (bytes32[] stored) {
-    return last_storage_event;
+  function getLastStorage() public view returns (uint length, bytes32[] stored) {
+    return (last_storage_event.length, last_storage_event);
+  }
+
+  function getLastErrorLogs() public view returns (uint length, bytes32[] logs) {
+    return (error_logs.length, error_logs);
   }
 
   /// CROWDSALE STORAGE ///
@@ -139,6 +153,11 @@ contract TestInitCrowdsale {
   bytes32 public constant ERR_IMPROPER_INITIALIZATION = bytes32("ImproperInitialization"); // Initialization variables invalid
   bytes32 public constant ERR_READ_FAILED = bytes32("StorageReadFailed"); // Read from storage address failed
 
+  /// EVENTS - TEST CONTRACT ///
+
+  // Test contract - returns a message and data to help narrow down a reverted call
+  event FailedAssertion(string message, bytes32 data_1, bytes32 data_2);
+
   /*
   Creates a crowdsale with initial conditions. The admin should now initialize the crowdsale's token, as well
   as any additional tiers of the crowdsale that will exist, followed by finalizing the initialization of the crowdsale.
@@ -164,7 +183,7 @@ contract TestInitCrowdsale {
     bool _initial_tier_is_whitelisted,
     bool _initial_tier_duration_is_modifiable,
     address _admin
-  ) public returns (bytes32[] store_data) {
+  ) public clearLogs() returns (bytes32[] store_data) {
     // Ensure valid input
     if (
       _team_wallet == address(0)
@@ -233,7 +252,7 @@ contract TestInitCrowdsale {
   @param _exec_id: The execution id to pull the admin address from
   @return admin: The address of the admin of the crowdsale
   */
-  function getAdmin(address _storage, bytes32 _exec_id) public view returns (address admin) {
+  function getAdmin(address _storage, bytes32 _exec_id) public clearLogs() returns (address admin) {
     // Create 'read' calldata buffer in memory
     uint ptr = cdBuff(RD_SING);
     // Push exec id and admin address storage location to buffer
@@ -257,7 +276,7 @@ contract TestInitCrowdsale {
   @return is_initialized: Whether or not the crowdsale has been completely initialized by the admin
   @return is_finalized: Whether or not the crowdsale has been completely finalized by the admin
   */
-  function getCrowdsaleInfo(address _storage, bytes32 _exec_id) public view
+  function getCrowdsaleInfo(address _storage, bytes32 _exec_id) public clearLogs()
   returns (uint wei_raised, address team_wallet, uint minimum_contribution, bool is_initialized, bool is_finalized) {
     // Create 'readMulti' calldata buffer in memory
     uint ptr = cdBuff(RD_MULTI);
@@ -274,6 +293,11 @@ contract TestInitCrowdsale {
     cdPush(ptr, CROWDSALE_IS_FINALIZED);
     // Read from storage, and store return in buffer
     bytes32[] memory read_values = readMultiFrom(ptr, _storage);
+    // Ensure correct return length
+    if (read_values.length != 5) {
+      emit FailedAssertion("Array bounds check - getCrowdsaleInfo", bytes32(read_values.length), bytes32(0));
+      return (0, address(0), 0, false, false);
+    }
 
     // Get returned data -
     wei_raised = uint(read_values[0]);
@@ -291,7 +315,7 @@ contract TestInitCrowdsale {
   @return is_crowdsale_full: Whether or not the total number of tokens to sell in the crowdsale has been reached
   @return max_sellable: The total number of tokens that can be sold in the crowdsale
   */
-  function isCrowdsaleFull(address _storage, bytes32 _exec_id) public view returns (bool is_crowdsale_full, uint max_sellable) {
+  function isCrowdsaleFull(address _storage, bytes32 _exec_id) public clearLogs() returns (bool is_crowdsale_full, uint max_sellable) {
     // Create 'readMulti' calldata buffer in memory
     uint ptr = cdBuff(RD_MULTI);
     // Push exec id, data read offset, and read size to buffer
@@ -303,6 +327,11 @@ contract TestInitCrowdsale {
     cdPush(ptr, CROWDSALE_TOKENS_SOLD);
     // Read from storage
     uint[] memory read_values = readMultiUintFrom(ptr, _storage);
+    // Ensure correct return length
+    if (read_values.length != 2) {
+      emit FailedAssertion("Array bounds check - isCrowdsaleFull 0", bytes32(read_values.length), bytes32(0));
+      return (false, 0);
+    }
 
     // Get number of tiers and tokens sold
     uint num_tiers = read_values[0];
@@ -320,6 +349,11 @@ contract TestInitCrowdsale {
 
     // Read from storage
     read_values = readMultiUintFrom(ptr, _storage);
+    // Ensure correct return length
+    if (read_values.length != num_tiers) {
+      emit FailedAssertion("Array bounds check - isCrowdsaleFull 0", bytes32(read_values.length), bytes32(0));
+      return (false, 0);
+    }
 
     // Loop through returned values, and get the sum of all tier token sell caps
     for (i = 0; i < read_values.length; i++)
@@ -336,7 +370,7 @@ contract TestInitCrowdsale {
   @param _exec_id: The application execution id under which storage for this instance is located
   @return num_unique: The number of unique contributors in a crowdsale so far
   */
-  function getCrowdsaleUniqueBuyers(address _storage, bytes32 _exec_id) public view returns (uint num_unique) {
+  function getCrowdsaleUniqueBuyers(address _storage, bytes32 _exec_id) public clearLogs() returns (uint num_unique) {
     // Create 'read' calldata buffer in memory
     uint ptr = cdBuff(RD_SING);
     // Push exec id and unique contributor storage location to buffer
@@ -354,7 +388,7 @@ contract TestInitCrowdsale {
   @return start_time: The start time of the first tier of a crowdsale
   @return end_time: The time at which the crowdsale ends
   */
-  function getCrowdsaleStartAndEndTimes(address _storage, bytes32 _exec_id) public view returns (uint start_time, uint end_time) {
+  function getCrowdsaleStartAndEndTimes(address _storage, bytes32 _exec_id) public clearLogs() returns (uint start_time, uint end_time) {
     // Create 'readMulti' calldata buffer in memory
     uint ptr = cdBuff(RD_MULTI);
     // Push exec id, data read offset, read size, start time, and total duration locations to buffer
@@ -365,6 +399,12 @@ contract TestInitCrowdsale {
     cdPush(ptr, CROWDSALE_TOTAL_DURATION);
     // Read from storage
     uint[] memory read_values = readMultiUintFrom(ptr, _storage);
+    // Ensure correct return length
+    if (read_values.length != 2) {
+      emit FailedAssertion("Array bounds check - getCrowdsaleStartAndEndTimes", bytes32(read_values.length), bytes32(0));
+      return (0, 0);
+    }
+
     // Get return values
     start_time = read_values[0];
     end_time = start_time + read_values[1];
@@ -383,7 +423,7 @@ contract TestInitCrowdsale {
   @return duration_is_modifiable: Whether the crowdsale admin can update the duration of this tier before it starts
   @return whitelist_enabled: Whether an address must be whitelisted to participate in this tier
   */
-  function getCurrentTierInfo(address _storage, bytes32 _exec_id) public view
+  function getCurrentTierInfo(address _storage, bytes32 _exec_id) public clearLogs()
   returns (bytes32 tier_name, uint tier_index, uint tier_ends_at, uint tier_tokens_remaining, uint tier_price, bool duration_is_modifiable, bool whitelist_enabled) {
     // Create 'readMulti' calldata buffer in memory
     uint ptr = cdBuff(RD_MULTI);
@@ -397,6 +437,11 @@ contract TestInitCrowdsale {
     cdPush(ptr, CURRENT_TIER_TOKENS_REMAINING);
     // Read from storage and store return in buffer
     uint[] memory read_values = readMultiUintFrom(ptr, _storage);
+    // Ensure correct return length
+    if (read_values.length != 3) {
+      emit FailedAssertion("Array bounds check - getCurrentTierInfo 0", bytes32(read_values.length), bytes32(0));
+      return (bytes32(0), 0, 0, 0, 0, false, false);
+    }
 
     // If the returned index was 0, current tier does not exist: return now
     if (read_values[1] == 0)
@@ -422,6 +467,12 @@ contract TestInitCrowdsale {
     cdPush(ptr, bytes32(160 + name_storage_offset)); // Tier whitelist status
     // Read from storage and get return values
     read_values = readMultiUintFrom(ptr, _storage);
+    // Ensure correct return length
+    if (read_values.length != 4) {
+      emit FailedAssertion("Array bounds check - getCurrentTierInfo 1", bytes32(read_values.length), bytes32(0));
+      return (bytes32(0), 0, 0, 0, 0, false, false);
+    }
+
     tier_name = bytes32(read_values[0]);
     tier_price = read_values[1];
     duration_is_modifiable = (read_values[2] == 0 ? false : true);
@@ -441,7 +492,7 @@ contract TestInitCrowdsale {
   @return duration_is_modifiable: Whether the crowdsale admin can change the duration of this tier prior to its start time
   @return whitelist_enabled: Whether an address must be whitelisted to participate in this tier
   */
-  function getCrowdsaleTier(address _storage, bytes32 _exec_id, uint _index) public view
+  function getCrowdsaleTier(address _storage, bytes32 _exec_id, uint _index) public clearLogs()
   returns (bytes32 tier_name, uint tier_sell_cap, uint tier_price, uint tier_duration, bool duration_is_modifiable, bool whitelist_enabled) {
     // Create 'readMulti' calldata buffer in memory
     uint ptr = cdBuff(RD_MULTI);
@@ -460,6 +511,11 @@ contract TestInitCrowdsale {
     cdPush(ptr, bytes32(160 + tier_info_location)); // Whitelist enabled status
     // Read from storage and store return in buffer
     bytes32[] memory read_values = readMultiFrom(ptr, _storage);
+    // Ensure correct return length
+    if (read_values.length != 6) {
+      emit FailedAssertion("Array bounds check - getCrowdsaleTier", bytes32(read_values.length), bytes32(0));
+      return (bytes32(0), 0, 0, 0, false, false);
+    }
 
     // Get returned values -
     tier_name = read_values[0];
@@ -478,7 +534,7 @@ contract TestInitCrowdsale {
   @return wei_raise_cap: The maximum amount of wei to raise
   @return total_sell_cap: The maximum amount of tokens to sell
   */
-  function getCrowdsaleMaxRaise(address _storage, bytes32 _exec_id) public view returns (uint wei_raise_cap, uint total_sell_cap) {
+  function getCrowdsaleMaxRaise(address _storage, bytes32 _exec_id) public clearLogs() returns (uint wei_raise_cap, uint total_sell_cap) {
     // Create 'readMulti' calldata buffer in memory
     uint ptr = cdBuff(RD_MULTI);
     // Push exec id, data read offset, and read size to buffer
@@ -490,6 +546,11 @@ contract TestInitCrowdsale {
     cdPush(ptr, TOKEN_DECIMALS);
     // Read from storage
     uint[] memory read_values = readMultiUintFrom(ptr, _storage);
+    // Ensure correct return length
+    if (read_values.length != 3) {
+      emit FailedAssertion("Array bounds check - getCrowdsaleMaxRaise 0", bytes32(read_values.length), bytes32(0));
+      return (0, 0);
+    }
 
     // Get number of crowdsale tiers
     uint num_tiers = read_values[0];
@@ -509,6 +570,12 @@ contract TestInitCrowdsale {
 
     // Read from storage
     read_values = readMultiUintFrom(ptr, _storage);
+    // Ensure correct return length
+    if (read_values.length != 2 * num_tiers) {
+      emit FailedAssertion("Array bounds check - getCrowdsaleMaxRaise 1", bytes32(read_values.length), bytes32(0));
+      return (0, 0);
+    }
+
     // Loop through and get wei raise cap and token sell cap
     for (i = 0; i < read_values.length; i+=2) {
       total_sell_cap += read_values[i];
@@ -524,7 +591,7 @@ contract TestInitCrowdsale {
   @param _exec_id: The execution id of the application
   @return crowdsale_tiers: A list of each tier of the crowdsale
   */
-  function getCrowdsaleTierList(address _storage, bytes32 _exec_id) public view returns (bytes32[] memory crowdsale_tiers) {
+  function getCrowdsaleTierList(address _storage, bytes32 _exec_id) public clearLogs() returns (bytes32[] memory crowdsale_tiers) {
     // Create 'read' calldata buffer in memory
     uint ptr = cdBuff(RD_SING);
     // Push exec id and crowdsale tier list length location to buffer
@@ -545,6 +612,11 @@ contract TestInitCrowdsale {
 
     // Read from storage and return
     crowdsale_tiers = readMultiFrom(ptr, _storage);
+    // Ensure correct return length
+    if (crowdsale_tiers.length != list_length) {
+      emit FailedAssertion("Array bounds check - getCrowdsaleTierList", bytes32(crowdsale_tiers.length), bytes32(0));
+      return crowdsale_tiers;
+    }
   }
 
   /*
@@ -556,7 +628,7 @@ contract TestInitCrowdsale {
   @return tier_start: The time when the given tier starts
   @return tier_end: The time at which the given tier ends
   */
-  function getTierStartAndEndDates(address _storage, bytes32 _exec_id, uint _index) public view returns (uint tier_start, uint tier_end) {
+  function getTierStartAndEndDates(address _storage, bytes32 _exec_id, uint _index) public clearLogs() returns (uint tier_start, uint tier_end) {
     // Create 'readMulti' calldata buffer in memory
     uint ptr = cdBuff(RD_MULTI);
     // Push exec id, data read offset, and read size to calldata buffer
@@ -575,6 +647,11 @@ contract TestInitCrowdsale {
     }
     // Read from storage and store return in buffer
     uint[] memory read_values = readMultiUintFrom(ptr, _storage);
+    // Ensure correct return length
+    if (read_values.length != 3 + _index) {
+      emit FailedAssertion("Array bounds check - getTierStartAndEndDates", bytes32(read_values.length), bytes32(0));
+      return (0, 0);
+    }
 
     // Check that the passed-in index is within the range of the tier list
     if (read_values[0] <= _index)
@@ -596,7 +673,7 @@ contract TestInitCrowdsale {
   @param _exec_id: The application execution id under which storage for this instance is located
   @return tokens_sold: The number of tokens sold this crowdsale so far
   */
-  function getTokensSold(address _storage, bytes32 _exec_id) public view
+  function getTokensSold(address _storage, bytes32 _exec_id) public clearLogs()
   returns (uint tokens_sold) {
     // Create 'read' calldata buffer in memory
     uint ptr = cdBuff(RD_SING);
@@ -618,7 +695,7 @@ contract TestInitCrowdsale {
   @return minimum_contribution: The minimum ammount of wei this address must sent with each purchase
   @return max_spend_remaining: The maximum amount of wei able to be spent
   */
-  function getWhitelistStatus(address _storage, bytes32 _exec_id, uint _tier_index, address _buyer) public view
+  function getWhitelistStatus(address _storage, bytes32 _exec_id, uint _tier_index, address _buyer) public clearLogs()
   returns (uint minimum_contribution, uint max_spend_remaining) {
     // Create 'readMulti' calldata buffer in memory
     uint ptr = cdBuff(RD_MULTI);
@@ -635,6 +712,12 @@ contract TestInitCrowdsale {
 
     // Read from storage and return
     uint[] memory read_values = readMultiUintFrom(ptr, _storage);
+    // Ensure correct return length
+    if (read_values.length != 2) {
+      emit FailedAssertion("Array bounds check - getWhitelistStatus", bytes32(read_values.length), bytes32(0));
+      return (0, 0);
+    }
+
     minimum_contribution = read_values[0];
     max_spend_remaining = read_values[1];
   }
@@ -645,8 +728,10 @@ contract TestInitCrowdsale {
   @param _storage: The address where application storage is located
   @param _exec_id: The application execution id under which storage for this instance is located
   @param _tier_index: The index of the tier about which the whitelist information will be pulled
+  @return num_whitelisted: The length of the tier's whitelist array
+  @return whitelist: The tier's whitelisted addresses
   */
-  function getTierWhitelist(address _storage, bytes32 _exec_id, uint _tier_index) public view returns (uint num_whitelisted, address[] whitelist) {
+  function getTierWhitelist(address _storage, bytes32 _exec_id, uint _tier_index) public clearLogs() returns (uint num_whitelisted, address[] whitelist) {
     // Create 'read' calldata buffer in memory
     uint ptr = cdBuff(RD_SING);
     // Push exec id and tier whitelist storage location to calldata buffer
@@ -667,6 +752,11 @@ contract TestInitCrowdsale {
 
     // Read from storage and return
     whitelist = readMultiAddressFrom(ptr, _storage);
+    // Ensure correct return length
+    if (whitelist.length != num_whitelisted) {
+      emit FailedAssertion("Array bounds check - getTierWhitelist", bytes32(whitelist.length), bytes32(num_whitelisted));
+      return (0, whitelist);
+    }
   }
 
   /// TOKEN GETTERS ///
@@ -679,7 +769,7 @@ contract TestInitCrowdsale {
   @param _owner: The address to look up the balance of
   @return owner_balance: The token balance of the owner
   */
-  function balanceOf(address _storage, bytes32 _exec_id, address _owner) public view
+  function balanceOf(address _storage, bytes32 _exec_id, address _owner) public clearLogs()
   returns (uint owner_balance) {
     // Create 'read' calldata buffer in memory
     uint ptr = cdBuff(RD_SING);
@@ -699,7 +789,7 @@ contract TestInitCrowdsale {
   @param _spender: The address allowed tokens by the owner
   @return allowed: The amount of tokens that can be transferred from the owner to a location of the spender's choosing
   */
-  function allowance(address _storage, bytes32 _exec_id, address _owner, address _spender) public view
+  function allowance(address _storage, bytes32 _exec_id, address _owner, address _spender) public clearLogs()
   returns (uint allowed) {
     // Create 'read' calldata buffer in memory
     uint ptr = cdBuff(RD_SING);
@@ -717,7 +807,7 @@ contract TestInitCrowdsale {
   @param _exec_id: The application execution id under which storage for this instance is located
   @return token_decimals: The number of decimals associated with token balances
   */
-  function decimals(address _storage, bytes32 _exec_id) public view
+  function decimals(address _storage, bytes32 _exec_id) public clearLogs()
   returns (uint token_decimals) {
     // Create 'read' calldata buffer in memory
     uint ptr = cdBuff(RD_SING);
@@ -735,7 +825,7 @@ contract TestInitCrowdsale {
   @param _exec_id: The application execution id under which storage for this instance is located
   @return total_supply: The total token supply
   */
-  function totalSupply(address _storage, bytes32 _exec_id) public view
+  function totalSupply(address _storage, bytes32 _exec_id) public clearLogs()
   returns (uint total_supply) {
     // Create 'read' calldata buffer in memory
     uint ptr = cdBuff(RD_SING);
@@ -753,7 +843,7 @@ contract TestInitCrowdsale {
   @param _exec_id: The application execution id under which storage for this instance is located
   @return token_name: The name of the token
   */
-  function name(address _storage, bytes32 _exec_id) public view returns (bytes32 token_name) {
+  function name(address _storage, bytes32 _exec_id) public clearLogs() returns (bytes32 token_name) {
     // Create 'read' calldata buffer in memory
     uint ptr = cdBuff(RD_SING);
     // Push exec id and token name storage location to buffer
@@ -770,7 +860,7 @@ contract TestInitCrowdsale {
   @param _exec_id: The application execution id under which storage for this instance is located
   @return token_symbol: The token's ticker symbol
   */
-  function symbol(address _storage, bytes32 _exec_id) public view returns (bytes32 token_symbol) {
+  function symbol(address _storage, bytes32 _exec_id) public clearLogs() returns (bytes32 token_symbol) {
     // Create 'read' calldata buffer in memory
     uint ptr = cdBuff(RD_SING);
     // Push exec id and token symbol storage location to buffer
@@ -790,7 +880,7 @@ contract TestInitCrowdsale {
   @return token_decimals: The display decimals for the token
   @return total_supply: The total supply of the token
   */
-  function getTokenInfo(address _storage, bytes32 _exec_id) public view
+  function getTokenInfo(address _storage, bytes32 _exec_id) public clearLogs()
   returns (bytes32 token_name, bytes32 token_symbol, uint token_decimals, uint total_supply) {
     // Create 'readMulti' calldata buffer in memory
     uint ptr = cdBuff(RD_MULTI);
@@ -806,6 +896,12 @@ contract TestInitCrowdsale {
 
     // Read from storage
     bytes32[] memory read_values = readMultiFrom(ptr, _storage);
+    // Ensure correct return length
+    if (read_values.length != 4) {
+      emit FailedAssertion("Array bounds check - getTokenInfo", bytes32(read_values.length), bytes32(0));
+      return (bytes32(0), bytes32(0), 0, 0);
+    }
+
     // Get return values -
     token_name = read_values[0];
     token_symbol = read_values[1];
@@ -821,7 +917,7 @@ contract TestInitCrowdsale {
   @param _agent: The address about which to look up information
   @return is_transfer_agent: Whether the passed-in address is a transfer agent
   */
-  function getTransferAgentStatus(address _storage, bytes32 _exec_id, address _agent) public view
+  function getTransferAgentStatus(address _storage, bytes32 _exec_id, address _agent) public clearLogs()
   returns (bool is_transfer_agent) {
     // Create 'read' calldata buffer in memory
     uint ptr = cdBuff(RD_SING);
@@ -837,9 +933,10 @@ contract TestInitCrowdsale {
 
   @param _storage: The address where application storage is located
   @param _exec_id: The application execution id under storage for this app instance is located
+  @return num_destinations: The length of the crowdsale's reserved token destination array
   @return reserved_destinations: A list of the addresses which have reserved tokens or percents
   */
-  function getReservedTokenDestinationList(address _storage, bytes32 _exec_id) public view
+  function getReservedTokenDestinationList(address _storage, bytes32 _exec_id) public clearLogs()
   returns (uint num_destinations, address[] reserved_destinations) {
     // Create 'read' calldata buffer in memory
     uint ptr = cdBuff(RD_SING);
@@ -848,6 +945,10 @@ contract TestInitCrowdsale {
     cdPush(ptr, TOKEN_RESERVED_DESTINATIONS);
     // Read reserved destination list length from storage
     num_destinations = uint(readSingleFrom(ptr, _storage));
+
+    // If num_destinations is 0, return now
+    if (num_destinations == 0)
+      return (0, reserved_destinations);
 
     /// Loop through each list in storage, and get each address -
 
@@ -863,6 +964,11 @@ contract TestInitCrowdsale {
 
     // Read from storage, and return data to buffer
     reserved_destinations = readMultiAddressFrom(ptr, _storage);
+    // Ensure correct return length
+    if (reserved_destinations.length != num_destinations) {
+      emit FailedAssertion("Array bounds check - getReservedTokenDestinationList", bytes32(reserved_destinations.length), bytes32(0));
+      return (0, reserved_destinations);
+    }
   }
 
   /*
@@ -876,7 +982,7 @@ contract TestInitCrowdsale {
   @return num_percent: The percent of tokens sold during the crowdsale reserved for this address
   @return percent_decimals: The number of decimals in the above percent reserved - used to calculate with precision
   */
-  function getReservedDestinationInfo(address _storage, bytes32 _exec_id, address _destination) public view
+  function getReservedDestinationInfo(address _storage, bytes32 _exec_id, address _destination) public clearLogs()
   returns (uint destination_list_index, uint num_tokens, uint num_percent, uint percent_decimals) {
     // Create 'readMulti' calldata buffer in memory
     uint ptr = cdBuff(RD_MULTI);
@@ -893,6 +999,12 @@ contract TestInitCrowdsale {
 
     // Read from storage, and return data to buffer
     bytes32[] memory read_values = readMultiFrom(ptr, _storage);
+    // Ensure correct return length
+    if (read_values.length != 4) {
+      emit FailedAssertion("Array bounds check - getReservedDestinationInfo", bytes32(read_values.length), bytes32(0));
+      return (0, 0, 0, 0);
+    }
+
     // Get returned values -
     destination_list_index = uint(read_values[0]);
     // If the returned list index for the destination is 0, destination is not in list
@@ -1019,7 +1131,7 @@ contract TestInitCrowdsale {
   @param _storage: The storage address from which to read
   @return read_values: The values read from storage
   */
-  function readMultiFrom(uint _ptr, address _storage) internal view returns (bytes32[] read_values) {
+  function readMultiFrom(uint _ptr, address _storage) internal returns (bytes32[] read_values) {
     bool success;
     assembly {
       // Minimum length for 'readMulti' - 1 location is 0x84
@@ -1048,7 +1160,7 @@ contract TestInitCrowdsale {
   @param _storage: The storage address from which to read
   @return read_value: The value read from storage
   */
-  function readSingleFrom(uint _ptr, address _storage) internal view returns (bytes32 read_value) {
+  function readSingleFrom(uint _ptr, address _storage) internal returns (bytes32 read_value) {
     bool success;
     assembly {
       // Length for 'read' buffer must be 0x44
@@ -1069,7 +1181,7 @@ contract TestInitCrowdsale {
   @param _storage: The address to read from
   @return read_values: The values read from storage
   */
-  function readMultiAddressFrom(uint _ptr, address _storage) internal view returns (address[] read_values) {
+  function readMultiAddressFrom(uint _ptr, address _storage) internal returns (address[] read_values) {
     bool success;
     assembly {
       // Minimum length for 'readMulti' - 1 location is 0x84
@@ -1098,7 +1210,7 @@ contract TestInitCrowdsale {
   @param _storage: The address to read from
   @return read_values: The values read from storage
   */
-  function readMultiUintFrom(uint _ptr, address _storage) internal view returns (uint[] read_values) {
+  function readMultiUintFrom(uint _ptr, address _storage) internal returns (uint[] read_values) {
     bool success;
     assembly {
       // Minimum length for 'readMulti' - 1 location is 0x84
@@ -1121,14 +1233,11 @@ contract TestInitCrowdsale {
   }
 
   /*
-  Reverts state changes, but passes message back to caller
+  Test contracts - pushes the message to error_logs state variable
 
-  @param _message: The message to return to the caller
+  @param _message: The message to log
   */
-  function triggerException(bytes32 _message) internal pure {
-    assembly {
-      mstore(0, _message)
-      revert(0, 0x20)
-    }
+  function triggerException(bytes32 _message) internal {
+    error_logs.push(_message);
   }
 }

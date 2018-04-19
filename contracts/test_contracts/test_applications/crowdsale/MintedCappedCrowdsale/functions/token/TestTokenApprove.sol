@@ -9,9 +9,19 @@ contract TestTokenApprove {
   // Keeps track of the last storage return
   bytes32[] public last_storage_event;
 
+  // Keeps track of the last errors logged by the contract
+  bytes32[] public error_logs;
+
   // Constructor - set storage address
   function TestTokenApprove(address _storage) public {
     app_storage = _storage;
+  }
+
+  // Clears last storage event and error logs
+  modifier clearLogs() {
+    delete last_storage_event;
+    delete error_logs;
+    _;
   }
 
   // Change storage address
@@ -20,8 +30,12 @@ contract TestTokenApprove {
   }
 
   // Get the last chunk of data stored with getBuffer
-  function getLastStorage() public view returns (bytes32[] stored) {
-    return last_storage_event;
+  function getLastStorage() public view returns (uint length, bytes32[] stored) {
+    return (last_storage_event.length, last_storage_event);
+  }
+
+  function getLastErrorLogs() public view returns (uint length, bytes32[] logs) {
+    return (error_logs.length, error_logs);
   }
 
   /// TOKEN STORAGE ///
@@ -40,6 +54,11 @@ contract TestTokenApprove {
   bytes32 public constant ERR_UNKNOWN_CONTEXT = bytes32("UnknownContext"); // Malformed '_context' array
   bytes32 public constant ERR_READ_FAILED = bytes32("StorageReadFailed"); // Read from storage address failed
 
+  /// EVENTS - TEST CONTRACT ///
+
+  // Test contract - returns a message and data to help narrow down a reverted call
+  event FailedAssertion(string message, bytes32 data_1, bytes32 data_2);
+
   /*
   Approves another address to spend tokens on the sender's behalf
 
@@ -51,10 +70,13 @@ contract TestTokenApprove {
     3. Wei amount sent with transaction to storage
   @return store_data: A formatted storage request - first 64 bytes designate a forwarding address (and amount) for any wei sent
   */
-  function approve(address _spender, uint _amt, bytes _context) public
+  function approve(address _spender, uint _amt, bytes _context) public clearLogs()
   returns (bytes32[] store_data) {
     // Ensure valid inputs
-    require(_spender != address(0) && _amt != 0);
+    if (_spender == address(0)) {
+      emit FailedAssertion("Invalid input", bytes32(_spender), bytes32(_amt));
+      return store_data;
+    }
     if (_context.length != 96)
       triggerException(ERR_UNKNOWN_CONTEXT);
 
@@ -88,9 +110,12 @@ contract TestTokenApprove {
     3. Wei amount sent with transaction to storage
   @return store_data: A formatted storage request - first 64 bytes designate a forwarding address (and amount) for any wei sent
   */
-  function increaseApproval(address _spender, uint _amt, bytes _context) public returns (bytes32[] store_data) {
+  function increaseApproval(address _spender, uint _amt, bytes _context) public clearLogs() returns (bytes32[] store_data) {
     // Ensure valid inputs
-    require(_spender != address(0) && _amt != 0);
+    if (!(_spender != address(0) && _amt != 0)) {
+      emit FailedAssertion("Invalid input", bytes32(_spender), bytes32(_amt));
+      return store_data;
+    }
     if (_context.length != 96)
       triggerException(ERR_UNKNOWN_CONTEXT);
 
@@ -106,10 +131,13 @@ contract TestTokenApprove {
     cdPush(ptr, keccak256(keccak256(_spender), keccak256(keccak256(sender), TOKEN_ALLOWANCES)));
 
     // Read spender allowance from storage
-    uint spender_bal = uint(readSingle(ptr));
+    uint spender_allowance = uint(readSingle(ptr));
     // Safely increase the spender's balance -
-    require(spender_bal + _amt > spender_bal);
-    spender_bal += _amt;
+    if (!(spender_allowance + _amt > spender_allowance)) {
+      emit FailedAssertion("Spender allowance overflow", bytes32(spender_allowance), bytes32(_amt));
+      return store_data;
+    }
+    spender_allowance += _amt;
 
     // Overwrite previous buffer, and create storage return buffer
     stOverwrite(ptr);
@@ -118,7 +146,7 @@ contract TestTokenApprove {
     stPush(ptr, 0);
     // Place spender allowance location and updated allowance in buffer
     stPush(ptr, keccak256(keccak256(_spender), keccak256(keccak256(sender), TOKEN_ALLOWANCES)));
-    stPush(ptr, bytes32(spender_bal));
+    stPush(ptr, bytes32(spender_allowance));
 
     // Get bytes32[] representation of storage buffer
     store_data = getBuffer(ptr);
@@ -135,9 +163,12 @@ contract TestTokenApprove {
     3. Wei amount sent with transaction to storage
   @return store_data: A formatted storage request - first 64 bytes designate a forwarding address (and amount) for any wei sent
   */
-  function decreaseApproval(address _spender, uint _amt, bytes _context) public returns (bytes32[] store_data) {
+  function decreaseApproval(address _spender, uint _amt, bytes _context) public clearLogs() returns (bytes32[] store_data) {
     // Ensure valid inputs
-    require(_spender != address(0) && _amt != 0);
+    if (!(_spender != address(0) && _amt != 0)) {
+      emit FailedAssertion("Invalid input", bytes32(_spender), bytes32(_amt));
+      return store_data;
+    }
     if (_context.length != 96)
       triggerException(ERR_UNKNOWN_CONTEXT);
 
@@ -153,9 +184,9 @@ contract TestTokenApprove {
     cdPush(ptr, keccak256(keccak256(_spender), keccak256(keccak256(sender), TOKEN_ALLOWANCES)));
 
     // Read spender allowance from storage
-    uint spender_bal = uint(readSingle(ptr));
+    uint spender_allowance = uint(readSingle(ptr));
     // Safely decrease the spender's balance -
-    spender_bal = (_amt > spender_bal ? 0 : spender_bal - _amt);
+    spender_allowance = (_amt > spender_allowance ? 0 : spender_allowance - _amt);
 
     // Overwrite previous buffer, and create storage return buffer
     stOverwrite(ptr);
@@ -164,7 +195,7 @@ contract TestTokenApprove {
     stPush(ptr, 0);
     // Place spender allowance location and updated allowance in buffer
     stPush(ptr, keccak256(keccak256(_spender), keccak256(keccak256(sender), TOKEN_ALLOWANCES)));
-    stPush(ptr, bytes32(spender_bal));
+    stPush(ptr, bytes32(spender_allowance));
 
     // Get bytes32[] representation of storage buffer
     store_data = getBuffer(ptr);
@@ -276,43 +307,13 @@ contract TestTokenApprove {
   }
 
   /*
-  Executes a 'readMulti' function call, given a pointer to a calldata buffer
-  Test version reads from app storage address
-
-  @param _ptr: A pointer to the location in memory where the calldata for the call is stored
-  @return read_values: The values read from storage
-  */
-  function readMulti(uint _ptr) internal view returns (bytes32[] read_values) {
-    bool success;
-    address _storage = app_storage;
-    assembly {
-      // Minimum length for 'readMulti' - 1 location is 0x84
-      if lt(mload(_ptr), 0x84) { revert (0, 0) }
-      // Read from storage
-      success := staticcall(gas, _storage, add(0x20, _ptr), mload(_ptr), 0, 0)
-      // If call succeed, get return information
-      if gt(success, 0) {
-        // Ensure data will not be copied beyond the pointer
-        if gt(sub(returndatasize, 0x20), mload(_ptr)) { revert (0, 0) }
-        // Copy returned data to pointer, overwriting it in the process
-        // Copies returndatasize, but ignores the initial read offset so that the bytes32[] returned in the read is sitting directly at the pointer
-        returndatacopy(_ptr, 0x20, sub(returndatasize, 0x20))
-        // Set return bytes32[] to pointer, which should now have the stored length of the returned array
-        read_values := _ptr
-      }
-    }
-    if (!success)
-      triggerException(ERR_READ_FAILED);
-  }
-
-  /*
   Executes a 'read' function call, given a pointer to a calldata buffer
   Test version reads from app storage address
 
   @param _ptr: A pointer to the location in memory where the calldata for the call is stored
   @return read_value: The value read from storage
   */
-  function readSingle(uint _ptr) internal view returns (bytes32 read_value) {
+  function readSingle(uint _ptr) internal returns (bytes32 read_value) {
     bool success;
     address _storage = app_storage;
     assembly {
@@ -328,19 +329,16 @@ contract TestTokenApprove {
   }
 
   /*
-  Reverts state changes, but passes message back to caller
+  Test contracts - pushes the message to error_logs state variable
 
-  @param _message: The message to return to the caller
+  @param _message: The message to log
   */
-  function triggerException(bytes32 _message) internal pure {
-    assembly {
-      mstore(0, _message)
-      revert(0, 0x20)
-    }
+  function triggerException(bytes32 _message) internal {
+    error_logs.push(_message);
   }
 
   // Parses context array and returns execution id, sender address, and sent wei amount
-  function parse(bytes _context) internal pure returns (bytes32 exec_id, address from, uint wei_sent) {
+  function parse(bytes _context) internal returns (bytes32 exec_id, address from, uint wei_sent) {
     assembly {
       exec_id := mload(add(0x20, _context))
       from := mload(add(0x40, _context))

@@ -252,6 +252,8 @@ library InitCrowdsale {
     cdPush(ptr, CROWDSALE_IS_FINALIZED);
     // Read from storage, and store return in buffer
     bytes32[] memory read_values = readMultiFrom(ptr, _storage);
+    // Ensure correct return length
+    assert(read_values.length == 5);
 
     // Get returned data -
     wei_raised = uint(read_values[0]);
@@ -281,6 +283,8 @@ library InitCrowdsale {
     cdPush(ptr, CROWDSALE_TOKENS_SOLD);
     // Read from storage
     uint[] memory read_values = readMultiUintFrom(ptr, _storage);
+    // Ensure correct return length
+    assert(read_values.length == 2);
 
     // Get number of tiers and tokens sold
     uint num_tiers = read_values[0];
@@ -298,6 +302,8 @@ library InitCrowdsale {
 
     // Read from storage
     read_values = readMultiUintFrom(ptr, _storage);
+    // Ensure correct return length
+    assert(read_values.length == num_tiers);
 
     // Loop through returned values, and get the sum of all tier token sell caps
     for (i = 0; i < read_values.length; i++)
@@ -343,6 +349,9 @@ library InitCrowdsale {
     cdPush(ptr, CROWDSALE_TOTAL_DURATION);
     // Read from storage
     uint[] memory read_values = readMultiUintFrom(ptr, _storage);
+    // Ensure correct return length
+    assert(read_values.length == 2);
+
     // Get return values
     start_time = read_values[0];
     end_time = start_time + read_values[1];
@@ -375,6 +384,8 @@ library InitCrowdsale {
     cdPush(ptr, CURRENT_TIER_TOKENS_REMAINING);
     // Read from storage and store return in buffer
     uint[] memory read_values = readMultiUintFrom(ptr, _storage);
+    // Ensure correct return length
+    assert(read_values.length == 3);
 
     // If the returned index was 0, current tier does not exist: return now
     if (read_values[1] == 0)
@@ -400,6 +411,9 @@ library InitCrowdsale {
     cdPush(ptr, bytes32(160 + name_storage_offset)); // Tier whitelist status
     // Read from storage and get return values
     read_values = readMultiUintFrom(ptr, _storage);
+    // Ensure correct return length
+    assert(read_values.length == 4);
+
     tier_name = bytes32(read_values[0]);
     tier_price = read_values[1];
     duration_is_modifiable = (read_values[2] == 0 ? false : true);
@@ -438,6 +452,8 @@ library InitCrowdsale {
     cdPush(ptr, bytes32(160 + tier_info_location)); // Whitelist enabled status
     // Read from storage and store return in buffer
     bytes32[] memory read_values = readMultiFrom(ptr, _storage);
+    // Ensure correct return length
+    assert(read_values.length == 6);
 
     // Get returned values -
     tier_name = read_values[0];
@@ -469,6 +485,8 @@ library InitCrowdsale {
     cdPush(ptr, TOKEN_NAME);
     // Read from storage
     uint[] memory read_values = readMultiUintFrom(ptr, _storage);
+    // Ensure correct return length
+    assert(read_values.length == 3);
 
     // Get number of crowdsale tiers
     uint num_tiers = read_values[0];
@@ -492,6 +510,9 @@ library InitCrowdsale {
 
     // Read from storage
     read_values = readMultiUintFrom(ptr, _storage);
+    // Ensure correct return length
+    assert(read_values.length == 2 * num_tiers);
+
     // Loop through and get wei raise cap and token sell cap
     for (i = 0; i < read_values.length; i+=2) {
       total_sell_cap += read_values[i];
@@ -528,6 +549,8 @@ library InitCrowdsale {
 
     // Read from storage and return
     crowdsale_tiers = readMultiFrom(ptr, _storage);
+    // Ensure correct return length
+    assert(crowdsale_tiers.length == list_length);
   }
 
   /*
@@ -558,6 +581,8 @@ library InitCrowdsale {
     }
     // Read from storage and store return in buffer
     uint[] memory read_values = readMultiUintFrom(ptr, _storage);
+    // Ensure correct return length
+    assert(read_values.length == 3 + _index);
 
     // Check that the passed-in index is within the range of the tier list
     if (read_values[0] <= _index)
@@ -618,6 +643,9 @@ library InitCrowdsale {
 
     // Read from storage and return
     uint[] memory read_values = readMultiUintFrom(ptr, _storage);
+    // Ensure correct return length
+    assert(read_values.length == 2);
+
     minimum_contribution = read_values[0];
     max_spend_remaining = read_values[1];
   }
@@ -628,6 +656,8 @@ library InitCrowdsale {
   @param _storage: The address where application storage is located
   @param _exec_id: The application execution id under which storage for this instance is located
   @param _tier_index: The index of the tier about which the whitelist information will be pulled
+  @return num_whitelisted: The length of the tier's whitelist array
+  @return whitelist: The tier's whitelisted addresses
   */
   function getTierWhitelist(address _storage, bytes32 _exec_id, uint _tier_index) public view returns (uint num_whitelisted, address[] whitelist) {
     // Create 'read' calldata buffer in memory
@@ -650,6 +680,8 @@ library InitCrowdsale {
 
     // Read from storage and return
     whitelist = readMultiAddressFrom(ptr, _storage);
+    // Ensure correct return length
+    assert(whitelist.length == num_whitelisted);
   }
 
   /// TOKEN GETTERS ///
@@ -789,6 +821,9 @@ library InitCrowdsale {
 
     // Read from storage
     bytes32[] memory read_values = readMultiFrom(ptr, _storage);
+    // Ensure correct return length
+    assert(read_values.length == 4);
+
     // Get return values -
     token_name = read_values[0];
     token_symbol = read_values[1];
@@ -820,6 +855,7 @@ library InitCrowdsale {
 
   @param _storage: The address where application storage is located
   @param _exec_id: The application execution id under storage for this app instance is located
+  @return num_destinations: The length of the crowdsale's reserved token destination array
   @return reserved_destinations: A list of the addresses which have reserved tokens or percents
   */
   function getReservedTokenDestinationList(address _storage, bytes32 _exec_id) public view
@@ -831,6 +867,10 @@ library InitCrowdsale {
     cdPush(ptr, TOKEN_RESERVED_DESTINATIONS);
     // Read reserved destination list length from storage
     num_destinations = uint(readSingleFrom(ptr, _storage));
+
+    // If num_destinations is 0, return now
+    if (num_destinations == 0)
+      return (0, reserved_destinations);
 
     /// Loop through each list in storage, and get each address -
 
@@ -846,6 +886,8 @@ library InitCrowdsale {
 
     // Read from storage, and return data to buffer
     reserved_destinations = readMultiAddressFrom(ptr, _storage);
+    // Ensure correct return length
+    assert(reserved_destinations.length == num_destinations);
   }
 
   /*
@@ -876,6 +918,9 @@ library InitCrowdsale {
 
     // Read from storage, and return data to buffer
     bytes32[] memory read_values = readMultiFrom(ptr, _storage);
+    // Ensure correct return length
+    assert(read_values.length == 4);
+
     // Get returned values -
     destination_list_index = uint(read_values[0]);
     // If the returned list index for the destination is 0, destination is not in list
