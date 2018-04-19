@@ -41,13 +41,13 @@ Several of these contracts have been deployed to Ropsten, to allow for open test
 3. AppConsole: https://ropsten.etherscan.io/address/0x55f5048168f8435e26b3d26a1c19175e1d9bb834#code
 4. VersionConsole: https://ropsten.etherscan.io/address/0x19641c9158a9e0236191f746d562781ba8fa7b7b#code
 5. ImplementationConsole: https://ropsten.etherscan.io/address/0x166dc2880f0b156bd2545fe02917f230a8713f09#code
-6. InitCrowdsale: https://ropsten.etherscan.io/address/0x81e14e24c8148979507daee78f8558079e2f8c59#code
-7. CrowdsaleConsole: https://ropsten.etherscan.io/address/0xe24c915d52ddc021ee7dc6401cd9a4e38a2cf27d#code
-8. TokenConsole: https://ropsten.etherscan.io/address/0xcc0427b210564b2b099d2a70c7c6d07b1f03fef3#code
-9. CrowdsaleBuyTokens: https://ropsten.etherscan.io/address/0x24901914fac3acf7d3d9ed6ed8687d3ad8527700#code
-10. TokenTransfer: https://ropsten.etherscan.io/address/0x81b4bfe7c54bf2504d86563aeb0332a686bb8ee2#code
-11. TokenTransferFrom: https://ropsten.etherscan.io/address/0x8800728cc4b7dad58983af0c6fec2aa1441d63e5#code
-12. TokenApprove: https://ropsten.etherscan.io/address/0xe0af2a2670da0242c6c7914cc36b8cf4ad75742f#code
+6. InitCrowdsale: https://ropsten.etherscan.io/address/0x1696c15c82145ef94ab1cd6c0656363c3a8c2266
+7. CrowdsaleConsole: https://ropsten.etherscan.io/address/0x07ba387770951a55dbbcec66d607bb85a6efb403#code
+8. TokenConsole: https://ropsten.etherscan.io/address/0xfb4e6a190dec8cdddf07374ca9c6e6c1299f59fe#code
+9. CrowdsaleBuyTokens: https://ropsten.etherscan.io/address/0xd7836d6b4d7e0fed270f94f6dd138ebccd9e3252#code
+10. TokenTransfer: https://ropsten.etherscan.io/address/0x4e7e8b06d7f0c98d138255630038685541bc08ea#code
+11. TokenTransferFrom: https://ropsten.etherscan.io/address/0x97e354a43c86f445ab8b76fc7b7c909809f5848e#code
+12. TokenApprove: https://ropsten.etherscan.io/address/0xe22f9e7b41a35326c39583a4a94f9af91558dc50#code
 13. ScriptExec: https://ropsten.etherscan.io/address/0x7fc8ce5865bf0cac653e315f03beeef77d536075#code
 
 The 'default' variables in ScriptExec.sol can be examined for information on the registry's execution id, as well as the storage address of the registry. 
