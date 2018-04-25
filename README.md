@@ -36,19 +36,22 @@ Upon initialization of the application, the application can be used by calling t
 
 Several of these contracts have been deployed to Ropsten, to allow for open testing. Below is a list of the verified contracts being used:
 
+Core:
 1. RegistryStorage: https://ropsten.etherscan.io/address/0x8d1084b586cb4b298bea5550ad020c9de7fc48c5#code
-2. InitRegistry: https://ropsten.etherscan.io/address/0xf177bdb5b7f84f1f3b2c5e43a6a86ef1b799104d
-3. AppConsole: https://ropsten.etherscan.io/address/0x55f5048168f8435e26b3d26a1c19175e1d9bb834#code
-4. VersionConsole: https://ropsten.etherscan.io/address/0x19641c9158a9e0236191f746d562781ba8fa7b7b#code
-5. ImplementationConsole: https://ropsten.etherscan.io/address/0x166dc2880f0b156bd2545fe02917f230a8713f09#code
-6. InitCrowdsale: https://ropsten.etherscan.io/address/0x1696c15c82145ef94ab1cd6c0656363c3a8c2266
-7. CrowdsaleConsole: https://ropsten.etherscan.io/address/0x07ba387770951a55dbbcec66d607bb85a6efb403#code
-8. TokenConsole: https://ropsten.etherscan.io/address/0xfb4e6a190dec8cdddf07374ca9c6e6c1299f59fe#code
-9. CrowdsaleBuyTokens: https://ropsten.etherscan.io/address/0xd7836d6b4d7e0fed270f94f6dd138ebccd9e3252#code
-10. TokenTransfer: https://ropsten.etherscan.io/address/0x4e7e8b06d7f0c98d138255630038685541bc08ea#code
-11. TokenTransferFrom: https://ropsten.etherscan.io/address/0x97e354a43c86f445ab8b76fc7b7c909809f5848e#code
-12. TokenApprove: https://ropsten.etherscan.io/address/0xe22f9e7b41a35326c39583a4a94f9af91558dc50#code
-13. ScriptExec: https://ropsten.etherscan.io/address/0x7fc8ce5865bf0cac653e315f03beeef77d536075#code
+2. ScriptExec: https://ropsten.etherscan.io/address/0x7fc8ce5865bf0cac653e315f03beeef77d536075#code
+3. InitRegistry: https://ropsten.etherscan.io/address/0x6a5d8c9d83cdf7f54a520613f7824009e213e79c#code
+4. AppConsole: https://ropsten.etherscan.io/address/0xa85167ed6ab82dda05225f8044965b12f8d419c8#code
+5. VersionConsole: https://ropsten.etherscan.io/address/0x0b3fd3d9552c981518cd4fe20f72a1619e70d887#code
+6. ImplementationConsole: https://ropsten.etherscan.io/address/0x96dcfdda9e522c7921e4026f6a57fc407b6518ed#code
+
+MintedCappedCrowdsale:
+1. InitCrowdsale: https://ropsten.etherscan.io/address/0xbd9383c930974cca9ab8629e77557ab336ab5dd7#code
+2. CrowdsaleConsole: https://ropsten.etherscan.io/address/0xbe293d2bbcbf3e75a3012f8fdbf5107a229caae1#code
+3. TokenConsole: https://ropsten.etherscan.io/address/0x04c6131102b67dde3d94791b5313dd77aede9606#code
+4. CrowdsaleBuyTokens: https://ropsten.etherscan.io/address/0xa92b3cb3c886014ba0a9f25338653adbfd2350a7#code
+5. TokenTransfer: https://ropsten.etherscan.io/address/0xd45f633c8cd3d1ab83df5027ec951a6cc5836afd#code
+6. TokenTransferFrom: https://ropsten.etherscan.io/address/0x652f3b589ee2dcbe5c3970918106d33fc32da33b#code
+7. TokenApprove: https://ropsten.etherscan.io/address/0xe6dd7740afa6950b725896d1217ff1537c0c2bc5#code
 
 The 'default' variables in ScriptExec.sol can be examined for information on the registry's execution id, as well as the storage address of the registry. 
 
