@@ -1,33 +1,40 @@
-pragma solidity ^0.4.21;
+pragma solidity ^0.4.23;
+
+import "../../../../libraries/ReadFromBuffers.sol";
+import "../../../../libraries/ArrayUtils.sol";
 
 library InitCrowdsale {
+
+  using ReadFromBuffers for uint;
+  using ArrayUtils for bytes32[];
+  using Exceptions for bytes32;
 
   /// CROWDSALE STORAGE ///
 
   // Storage location of crowdsale admin address
-  bytes32 public constant ADMIN = keccak256("admin");
+  bytes32 internal constant ADMIN = keccak256("admin");
 
   // Whether the crowdsale and token are initialized, and the sale is ready to run
-  bytes32 public constant CROWDSALE_IS_INIT = keccak256("crowdsale_is_init");
+  bytes32 internal constant CROWDSALE_IS_INIT = keccak256("crowdsale_is_init");
 
   // Whether or not the crowdsale is post-purchase
-  bytes32 public constant CROWDSALE_IS_FINALIZED = keccak256("crowdsale_is_finalized");
+  bytes32 internal constant CROWDSALE_IS_FINALIZED = keccak256("crowdsale_is_finalized");
 
   // Storage location of the crowdsale's start time
-  bytes32 public constant CROWDSALE_START_TIME = keccak256("crowdsale_start_time");
+  bytes32 internal constant CROWDSALE_START_TIME = keccak256("crowdsale_start_time");
 
   // Storage location of the amount of time the crowdsale will take, accounting for all tiers
-  bytes32 public constant CROWDSALE_TOTAL_DURATION = keccak256("crowdsale_total_duration");
+  bytes32 internal constant CROWDSALE_TOTAL_DURATION = keccak256("crowdsale_total_duration");
 
   // Storage location of the amount of tokens sold in the crowdsale so far. Does not include reserved tokens
-  bytes32 public constant CROWDSALE_TOKENS_SOLD = keccak256("crowdsale_tokens_sold");
+  bytes32 internal constant CROWDSALE_TOKENS_SOLD = keccak256("crowdsale_tokens_sold");
 
   // Storage location of the minimum amount of tokens allowed to be purchased
-  bytes32 public constant CROWDSALE_MINIMUM_CONTRIBUTION = keccak256("crowdsale_min_cap");
+  bytes32 internal constant CROWDSALE_MINIMUM_CONTRIBUTION = keccak256("crowdsale_min_cap");
 
   // Maps addresses to a boolean indicating whether or not this address has contributed
   // At its base location, stores the amount of unique contributors so far in this crowdsale
-  bytes32 public constant CROWDSALE_UNIQUE_CONTRIBUTORS = keccak256("crowdsale_contributors");
+  bytes32 internal constant CROWDSALE_UNIQUE_CONTRIBUTORS = keccak256("crowdsale_contributors");
 
   // Storage location of a list of the tiers the crowdsale will have
   /* Each tier mimics the following struct:
@@ -40,22 +47,22 @@ library InitCrowdsale {
     bool _tier_is_whitelist_enabled     // Whether this tier of the crowdsale requires users to be on a purchase whitelist
   }
   */
-  bytes32 public constant CROWDSALE_TIERS = keccak256("crowdsale_tier_list");
+  bytes32 internal constant CROWDSALE_TIERS = keccak256("crowdsale_tier_list");
 
   // Storage location of the CROWDSALE_TIERS index (-1) of the current tier. If zero, no tier is currently active
-  bytes32 public constant CROWDSALE_CURRENT_TIER = keccak256("crowdsale_current_tier");
+  bytes32 internal constant CROWDSALE_CURRENT_TIER = keccak256("crowdsale_current_tier");
 
   // Storage location of the end time of the current tier. Purchase attempts beyond this time will update the current tier (if another is available)
-  bytes32 public constant CURRENT_TIER_ENDS_AT = keccak256("crowdsale_tier_ends_at");
+  bytes32 internal constant CURRENT_TIER_ENDS_AT = keccak256("crowdsale_tier_ends_at");
 
   // Storage location of the total number of tokens remaining for purchase in the current tier
-  bytes32 public constant CURRENT_TIER_TOKENS_REMAINING = keccak256("crowdsale_tier_tokens_remaining");
+  bytes32 internal constant CURRENT_TIER_TOKENS_REMAINING = keccak256("crowdsale_tier_tokens_remaining");
 
   // Storage location of team funds wallet
-  bytes32 public constant WALLET = keccak256("crowdsale_wallet");
+  bytes32 internal constant WALLET = keccak256("crowdsale_wallet");
 
   // Storage location of amount of wei raised during the crowdsale, total
-  bytes32 public constant WEI_RAISED = keccak256("crowdsale_wei_raised");
+  bytes32 internal constant WEI_RAISED = keccak256("crowdsale_wei_raised");
 
   // Storage seed for crowdsale whitelist mappings - maps each tier's index to a mapping of addresses to whtielist information
   /* Each whitelist entry mimics this struct:
@@ -64,58 +71,53 @@ library InitCrowdsale {
     uint max_contribution;
   }
   */
-  bytes32 public constant SALE_WHITELIST = keccak256("crowdsale_purchase_whitelist");
+  bytes32 internal constant SALE_WHITELIST = keccak256("crowdsale_purchase_whitelist");
 
   /// TOKEN STORAGE ///
 
   // Storage location for token name
-  bytes32 public constant TOKEN_NAME = keccak256("token_name");
+  bytes32 internal constant TOKEN_NAME = keccak256("token_name");
 
   // Storage location for token ticker symbol
-  bytes32 public constant TOKEN_SYMBOL = keccak256("token_symbol");
+  bytes32 internal constant TOKEN_SYMBOL = keccak256("token_symbol");
 
   // Storage location for token decimals
-  bytes32 public constant TOKEN_DECIMALS = keccak256("token_decimals");
+  bytes32 internal constant TOKEN_DECIMALS = keccak256("token_decimals");
 
   // Storage location for token totalSupply
-  bytes32 public constant TOKEN_TOTAL_SUPPLY = keccak256("token_total_supply");
+  bytes32 internal constant TOKEN_TOTAL_SUPPLY = keccak256("token_total_supply");
 
   // Storage seed for user balances mapping
-  bytes32 public constant TOKEN_BALANCES = keccak256("token_balances");
+  bytes32 internal constant TOKEN_BALANCES = keccak256("token_balances");
 
   // Storage seed for user allowances mapping
-  bytes32 public constant TOKEN_ALLOWANCES = keccak256("token_allowances");
+  bytes32 internal constant TOKEN_ALLOWANCES = keccak256("token_allowances");
 
   // Storage seed for token 'transfer agent' status for any address
   // Transfer agents can transfer tokens, even if the crowdsale has not yet been finalized
-  bytes32 public constant TOKEN_TRANSFER_AGENTS = keccak256("token_transfer_agents");
+  bytes32 internal constant TOKEN_TRANSFER_AGENTS = keccak256("token_transfer_agents");
 
   // Whether or not the token is unlocked for transfers
-  bytes32 public constant TOKENS_ARE_UNLOCKED = keccak256("tokens_are_unlocked");
+  bytes32 internal constant TOKENS_ARE_UNLOCKED = keccak256("tokens_are_unlocked");
 
   /// Storage location for an array of addresses with some form of reserved tokens
-  bytes32 public constant TOKEN_RESERVED_DESTINATIONS = keccak256("token_reserved_dest_list");
+  bytes32 internal constant TOKEN_RESERVED_DESTINATIONS = keccak256("token_reserved_dest_list");
 
   // Storage seed for reserved token information for a given address
   // Maps an address for which tokens are reserved to a struct:
   // ReservedInfo { uint destination_list_index; uint num_tokens; uint num_percent; uint percent_decimals; }
   // destination_list_index is the address's index in TOKEN_RESERVED_DESTINATIONS, plus 1. 0 means the address is not in the list
-  bytes32 public constant TOKEN_RESERVED_ADDR_INFO = keccak256("token_reserved_addr_info");
+  bytes32 internal constant TOKEN_RESERVED_ADDR_INFO = keccak256("token_reserved_addr_info");
 
   /// FUNCTION SELECTORS ///
 
   // Function selector for storage "read"
   // read(bytes32 _exec_id, bytes32 _location) view returns (bytes32 data_read);
-  bytes4 public constant RD_SING = bytes4(keccak256("read(bytes32,bytes32)"));
+  bytes4 internal constant RD_SING = bytes4(keccak256("read(bytes32,bytes32)"));
 
   // Function selector for storage 'readMulti'
   // readMulti(bytes32 exec_id, bytes32[] locations)
-  bytes4 public constant RD_MULTI = bytes4(keccak256("readMulti(bytes32,bytes32[])"));
-
-  /// EXCEPTION MESSAGES ///
-
-  bytes32 public constant ERR_IMPROPER_INITIALIZATION = bytes32("ImproperInitialization"); // Initialization variables invalid
-  bytes32 public constant ERR_READ_FAILED = bytes32("StorageReadFailed"); // Read from storage address failed
+  bytes4 internal constant RD_MULTI = bytes4(keccak256("readMulti(bytes32,bytes32[])"));
 
   /*
   Creates a crowdsale with initial conditions. The admin should now initialize the crowdsale's token, as well
@@ -142,7 +144,7 @@ library InitCrowdsale {
     bool _initial_tier_is_whitelisted,
     bool _initial_tier_duration_is_modifiable,
     address _admin
-  ) public view returns (bytes32[] store_data) {
+  ) public view returns (bytes32[] memory store_data) {
     // Ensure valid input
     if (
       _team_wallet == address(0)
@@ -151,57 +153,39 @@ library InitCrowdsale {
       || _start_time + _initial_tier_duration <= _start_time
       || _initial_tier_token_sell_cap == 0
       || _admin == address(0)
-    ) triggerException(ERR_IMPROPER_INITIALIZATION);
+    ) bytes32("ImproperInitialization").trigger();
 
     // Create storage data return buffer in memory
-    uint ptr = stBuff();
-    // Push payment information (init takes no payment)
-    stPush(ptr, 0);
-    stPush(ptr, 0);
+    uint ptr = ReadFromBuffers.stBuff(0, 0);
     // Push admin address, team wallet, crowdsale overall duration, and overall crowdsale start time
-    stPush(ptr, ADMIN);
-    stPush(ptr, bytes32(_admin));
-    stPush(ptr, WALLET);
-    stPush(ptr, bytes32(_team_wallet));
-    stPush(ptr, CROWDSALE_TOTAL_DURATION);
-    stPush(ptr, bytes32(_initial_tier_duration));
-    stPush(ptr, CROWDSALE_START_TIME);
-    stPush(ptr, bytes32(_start_time));
-
+    ptr.stPush(ADMIN, bytes32(_admin));
+    ptr.stPush(WALLET, bytes32(_team_wallet));
+    ptr.stPush(CROWDSALE_TOTAL_DURATION, bytes32(_initial_tier_duration));
+    ptr.stPush(CROWDSALE_START_TIME, bytes32(_start_time));
     // Push initial crowdsale tiers list length (1), and initial tier information to list
-    stPush(ptr, CROWDSALE_TIERS);
-    stPush(ptr, bytes32(1));
+    ptr.stPush(CROWDSALE_TIERS, bytes32(1));
     // Tier name
-    stPush(ptr, bytes32(32 + uint(CROWDSALE_TIERS)));
-    stPush(ptr, _initial_tier_name);
+    ptr.stPush(bytes32(32 + uint(CROWDSALE_TIERS)), _initial_tier_name);
     // Tier token sell cap
-    stPush(ptr, bytes32(64 + uint(CROWDSALE_TIERS)));
-    stPush(ptr, bytes32(_initial_tier_token_sell_cap));
+    ptr.stPush(bytes32(64 + uint(CROWDSALE_TIERS)), bytes32(_initial_tier_token_sell_cap));
     // Tier purchase price
-    stPush(ptr, bytes32(96 + uint(CROWDSALE_TIERS)));
-    stPush(ptr, bytes32(_initial_tier_price));
+    ptr.stPush(bytes32(96 + uint(CROWDSALE_TIERS)), bytes32(_initial_tier_price));
     // Tier active duration
-    stPush(ptr, bytes32(128 + uint(CROWDSALE_TIERS)));
-    stPush(ptr, bytes32(_initial_tier_duration));
+    ptr.stPush(bytes32(128 + uint(CROWDSALE_TIERS)), bytes32(_initial_tier_duration));
     // Whether this tier's duration is modifiable prior to its start time
-    stPush(ptr, bytes32(160 + uint(CROWDSALE_TIERS)));
-    stPush(ptr, bytes32(_initial_tier_duration_is_modifiable ? bytes32(1) : bytes32(0)));
+    ptr.stPush(bytes32(160 + uint(CROWDSALE_TIERS)), _initial_tier_duration_is_modifiable ? bytes32(1) : bytes32(0));
     // Whether this tier requires an address be whitelisted to complete token purchase
-    stPush(ptr, bytes32(192 + uint(CROWDSALE_TIERS)));
-    stPush(ptr, (_initial_tier_is_whitelisted ? bytes32(1) : bytes32(0)));
+    ptr.stPush(bytes32(192 + uint(CROWDSALE_TIERS)), _initial_tier_is_whitelisted ? bytes32(1) : bytes32(0));
 
     // Push current crowdsale tier to buffer (initial tier is '1' - index is 0, but offset by 1 in storage)
-    stPush(ptr, CROWDSALE_CURRENT_TIER);
-    stPush(ptr, bytes32(1));
+    ptr.stPush(CROWDSALE_CURRENT_TIER, bytes32(1));
     // Push end time of initial tier to buffer
-    stPush(ptr, CURRENT_TIER_ENDS_AT);
-    stPush(ptr, bytes32(_initial_tier_duration + _start_time));
+    ptr.stPush(CURRENT_TIER_ENDS_AT, bytes32(_initial_tier_duration + _start_time));
     // Push number of tokens remaining to be sold in the initial tier to the buffer
-    stPush(ptr, CURRENT_TIER_TOKENS_REMAINING);
-    stPush(ptr, bytes32(_initial_tier_token_sell_cap));
+    ptr.stPush(CURRENT_TIER_TOKENS_REMAINING, bytes32(_initial_tier_token_sell_cap));
 
     // Get bytes32[] storage request array from buffer
-    store_data = getBuffer(ptr);
+    store_data = ptr.getBuffer();
   }
 
   /*
@@ -213,13 +197,13 @@ library InitCrowdsale {
   */
   function getAdmin(address _storage, bytes32 _exec_id) public view returns (address admin) {
     // Create 'read' calldata buffer in memory
-    uint ptr = cdBuff(RD_SING);
+    uint ptr = ReadFromBuffers.cdBuff(RD_SING);
     // Push exec id and admin address storage location to buffer
-    cdPush(ptr, _exec_id);
-    cdPush(ptr, ADMIN);
+    ptr.cdPush(_exec_id);
+    ptr.cdPush(ADMIN);
 
     // Read from storage and get return value
-    admin = address(readSingleFrom(ptr, _storage));
+    admin = address(ptr.readSingleFrom(_storage));
   }
 
   /// CROWDSALE GETTERS ///
@@ -238,20 +222,20 @@ library InitCrowdsale {
   function getCrowdsaleInfo(address _storage, bytes32 _exec_id) public view
   returns (uint wei_raised, address team_wallet, uint minimum_contribution, bool is_initialized, bool is_finalized) {
     // Create 'readMulti' calldata buffer in memory
-    uint ptr = cdBuff(RD_MULTI);
+    uint ptr = ReadFromBuffers.cdBuff(RD_MULTI);
     // Push exec id, data read offset, and read size to buffer
-    cdPush(ptr, _exec_id);
-    cdPush(ptr, 0x40);
-    cdPush(ptr, bytes32(5));
+    ptr.cdPush(_exec_id);
+    ptr.cdPush(0x40);
+    ptr.cdPush(bytes32(5));
     // Push wei raised, team wallet, and minimum contribution amount storage locations to calldata buffer
-    cdPush(ptr, WEI_RAISED);
-    cdPush(ptr, WALLET);
-    cdPush(ptr, CROWDSALE_MINIMUM_CONTRIBUTION);
+    ptr.cdPush(WEI_RAISED);
+    ptr.cdPush(WALLET);
+    ptr.cdPush(CROWDSALE_MINIMUM_CONTRIBUTION);
     // Push crowdsale initialization and finalization status storage locations to buffer
-    cdPush(ptr, CROWDSALE_IS_INIT);
-    cdPush(ptr, CROWDSALE_IS_FINALIZED);
+    ptr.cdPush(CROWDSALE_IS_INIT);
+    ptr.cdPush(CROWDSALE_IS_FINALIZED);
     // Read from storage, and store return in buffer
-    bytes32[] memory read_values = readMultiFrom(ptr, _storage);
+    bytes32[] memory read_values = ptr.readMultiFrom(_storage);
     // Ensure correct return length
     assert(read_values.length == 5);
 
@@ -259,8 +243,8 @@ library InitCrowdsale {
     wei_raised = uint(read_values[0]);
     team_wallet = address(read_values[1]);
     minimum_contribution = uint(read_values[2]);
-    is_initialized = (read_values[3] == bytes32(0) ? false : true);
-    is_finalized = (read_values[4] == bytes32(0) ? false : true);
+    is_initialized = (read_values[3] == 0 ? false : true);
+    is_finalized = (read_values[4] == 0 ? false : true);
   }
 
   /*
@@ -273,16 +257,16 @@ library InitCrowdsale {
   */
   function isCrowdsaleFull(address _storage, bytes32 _exec_id) public view returns (bool is_crowdsale_full, uint max_sellable) {
     // Create 'readMulti' calldata buffer in memory
-    uint ptr = cdBuff(RD_MULTI);
+    uint ptr = ReadFromBuffers.cdBuff(RD_MULTI);
     // Push exec id, data read offset, and read size to buffer
-    cdPush(ptr, _exec_id);
-    cdPush(ptr, 0x40);
-    cdPush(ptr, bytes32(2));
+    ptr.cdPush(_exec_id);
+    ptr.cdPush(0x40);
+    ptr.cdPush(bytes32(2));
     // Push crowdsale tier list length and total tokens sold storage locations to buffer
-    cdPush(ptr, CROWDSALE_TIERS);
-    cdPush(ptr, CROWDSALE_TOKENS_SOLD);
+    ptr.cdPush(CROWDSALE_TIERS);
+    ptr.cdPush(CROWDSALE_TOKENS_SOLD);
     // Read from storage
-    uint[] memory read_values = readMultiUintFrom(ptr, _storage);
+    uint[] memory read_values = ptr.readMultiFrom(_storage).toUintArr();
     // Ensure correct return length
     assert(read_values.length == 2);
 
@@ -291,17 +275,17 @@ library InitCrowdsale {
     uint tokens_sold = read_values[1];
 
     // Overwrite previous buffer and create new calldata buffer
-    cdOverwrite(ptr, RD_MULTI);
+    ptr.cdOverwrite(RD_MULTI);
     // Push exec id, read offset, and read size to buffer
-    cdPush(ptr, _exec_id);
-    cdPush(ptr, 0x40);
-    cdPush(ptr, bytes32(num_tiers));
+    ptr.cdPush(_exec_id);
+    ptr.cdPush(0x40);
+    ptr.cdPush(bytes32(num_tiers));
     // Loop through tier cap locations, and add each to the calldata buffer
     for (uint i = 0; i < num_tiers; i++)
-      cdPush(ptr, bytes32(64 + (192 * i) + uint(CROWDSALE_TIERS)));
+      ptr.cdPush(bytes32(64 + (192 * i) + uint(CROWDSALE_TIERS)));
 
     // Read from storage
-    read_values = readMultiUintFrom(ptr, _storage);
+    read_values = ptr.readMultiFrom(_storage).toUintArr();
     // Ensure correct return length
     assert(read_values.length == num_tiers);
 
@@ -322,12 +306,12 @@ library InitCrowdsale {
   */
   function getCrowdsaleUniqueBuyers(address _storage, bytes32 _exec_id) public view returns (uint num_unique) {
     // Create 'read' calldata buffer in memory
-    uint ptr = cdBuff(RD_SING);
+    uint ptr = ReadFromBuffers.cdBuff(RD_SING);
     // Push exec id and unique contributor storage location to buffer
-    cdPush(ptr, _exec_id);
-    cdPush(ptr, CROWDSALE_UNIQUE_CONTRIBUTORS);
+    ptr.cdPush(_exec_id);
+    ptr.cdPush(CROWDSALE_UNIQUE_CONTRIBUTORS);
     // Read from storage and return
-    num_unique = uint(readSingleFrom(ptr, _storage));
+    num_unique = uint(ptr.readSingleFrom(_storage));
   }
 
   /*
@@ -340,15 +324,15 @@ library InitCrowdsale {
   */
   function getCrowdsaleStartAndEndTimes(address _storage, bytes32 _exec_id) public view returns (uint start_time, uint end_time) {
     // Create 'readMulti' calldata buffer in memory
-    uint ptr = cdBuff(RD_MULTI);
+    uint ptr = ReadFromBuffers.cdBuff(RD_MULTI);
     // Push exec id, data read offset, read size, start time, and total duration locations to buffer
-    cdPush(ptr, _exec_id);
-    cdPush(ptr, 0x40);
-    cdPush(ptr, bytes32(2));
-    cdPush(ptr, CROWDSALE_START_TIME);
-    cdPush(ptr, CROWDSALE_TOTAL_DURATION);
+    ptr.cdPush(_exec_id);
+    ptr.cdPush(0x40);
+    ptr.cdPush(bytes32(2));
+    ptr.cdPush(CROWDSALE_START_TIME);
+    ptr.cdPush(CROWDSALE_TOTAL_DURATION);
     // Read from storage
-    uint[] memory read_values = readMultiUintFrom(ptr, _storage);
+    uint[] memory read_values = ptr.readMultiFrom(_storage).toUintArr();
     // Ensure correct return length
     assert(read_values.length == 2);
 
@@ -373,17 +357,17 @@ library InitCrowdsale {
   function getCurrentTierInfo(address _storage, bytes32 _exec_id) public view
   returns (bytes32 tier_name, uint tier_index, uint tier_ends_at, uint tier_tokens_remaining, uint tier_price, bool duration_is_modifiable, bool whitelist_enabled) {
     // Create 'readMulti' calldata buffer in memory
-    uint ptr = cdBuff(RD_MULTI);
+    uint ptr = ReadFromBuffers.cdBuff(RD_MULTI);
     // Push exec id, data read offset, and read size to calldata buffer
-    cdPush(ptr, _exec_id);
-    cdPush(ptr, 0x40);
-    cdPush(ptr, bytes32(3));
+    ptr.cdPush(_exec_id);
+    ptr.cdPush(0x40);
+    ptr.cdPush(bytes32(3));
     // Push current tier expiration time, current tier index, and current tier tokens remaining storage locations to calldata buffer
-    cdPush(ptr, CURRENT_TIER_ENDS_AT);
-    cdPush(ptr, CROWDSALE_CURRENT_TIER);
-    cdPush(ptr, CURRENT_TIER_TOKENS_REMAINING);
+    ptr.cdPush(CURRENT_TIER_ENDS_AT);
+    ptr.cdPush(CROWDSALE_CURRENT_TIER);
+    ptr.cdPush(CURRENT_TIER_TOKENS_REMAINING);
     // Read from storage and store return in buffer
-    uint[] memory read_values = readMultiUintFrom(ptr, _storage);
+    uint[] memory read_values = ptr.readMultiFrom(_storage).toUintArr();
     // Ensure correct return length
     assert(read_values.length == 3);
 
@@ -398,19 +382,19 @@ library InitCrowdsale {
     tier_tokens_remaining = read_values[2];
 
     // Overwrite previous buffer, and create new 'readMulti' calldata buffer
-    cdOverwrite(ptr, RD_MULTI);
+    ptr.cdOverwrite(RD_MULTI);
     // Push exec id, data read offset, and read size to buffer
-    cdPush(ptr, _exec_id);
-    cdPush(ptr, 0x40);
-    cdPush(ptr, bytes32(4));
+    ptr.cdPush(_exec_id);
+    ptr.cdPush(0x40);
+    ptr.cdPush(bytes32(4));
     // Push tier name, tier token price, modifiable status, and tier whitelist status storage locations to buffer
     uint name_storage_offset = 32 + (192 * tier_index) + uint(CROWDSALE_TIERS);
-    cdPush(ptr, bytes32(name_storage_offset)); // Tier name
-    cdPush(ptr, bytes32(64 + name_storage_offset)); // Tier purchase price
-    cdPush(ptr, bytes32(128 + name_storage_offset)); // Tier modifiability status
-    cdPush(ptr, bytes32(160 + name_storage_offset)); // Tier whitelist status
+    ptr.cdPush(bytes32(name_storage_offset)); // Tier name
+    ptr.cdPush(bytes32(64 + name_storage_offset)); // Tier purchase price
+    ptr.cdPush(bytes32(128 + name_storage_offset)); // Tier modifiability status
+    ptr.cdPush(bytes32(160 + name_storage_offset)); // Tier whitelist status
     // Read from storage and get return values
-    read_values = readMultiUintFrom(ptr, _storage);
+    read_values = ptr.readMultiFrom(_storage).toUintArr();
     // Ensure correct return length
     assert(read_values.length == 4);
 
@@ -436,22 +420,22 @@ library InitCrowdsale {
   function getCrowdsaleTier(address _storage, bytes32 _exec_id, uint _index) public view
   returns (bytes32 tier_name, uint tier_sell_cap, uint tier_price, uint tier_duration, bool duration_is_modifiable, bool whitelist_enabled) {
     // Create 'readMulti' calldata buffer in memory
-    uint ptr = cdBuff(RD_MULTI);
+    uint ptr = ReadFromBuffers.cdBuff(RD_MULTI);
     // Push exec id, data read offset, and read size to calldata buffer
-    cdPush(ptr, _exec_id);
-    cdPush(ptr, 0x40);
-    cdPush(ptr, bytes32(6));
+    ptr.cdPush(_exec_id);
+    ptr.cdPush(0x40);
+    ptr.cdPush(bytes32(6));
     // Get tier offset storage location
     uint tier_info_location = 32 + (192 * _index) + uint(CROWDSALE_TIERS);
     // Push tier name, sell cap, duration, and modifiable status storage locations to buffer
-    cdPush(ptr, bytes32(tier_info_location)); // Name
-    cdPush(ptr, bytes32(32 + tier_info_location)); // Token sell cap
-    cdPush(ptr, bytes32(64 + tier_info_location)); // Tier purchase price
-    cdPush(ptr, bytes32(96 + tier_info_location)); // Tier duration
-    cdPush(ptr, bytes32(128 + tier_info_location)); // Modifiability status
-    cdPush(ptr, bytes32(160 + tier_info_location)); // Whitelist enabled status
+    ptr.cdPush(bytes32(tier_info_location)); // Name
+    ptr.cdPush(bytes32(32 + tier_info_location)); // Token sell cap
+    ptr.cdPush(bytes32(64 + tier_info_location)); // Tier purchase price
+    ptr.cdPush(bytes32(96 + tier_info_location)); // Tier duration
+    ptr.cdPush(bytes32(128 + tier_info_location)); // Modifiability status
+    ptr.cdPush(bytes32(160 + tier_info_location)); // Whitelist enabled status
     // Read from storage and store return in buffer
-    bytes32[] memory read_values = readMultiFrom(ptr, _storage);
+    bytes32[] memory read_values = ptr.readMultiFrom(_storage);
     // Ensure correct return length
     assert(read_values.length == 6);
 
@@ -460,8 +444,8 @@ library InitCrowdsale {
     tier_sell_cap = uint(read_values[1]);
     tier_price = uint(read_values[2]);
     tier_duration = uint(read_values[3]);
-    duration_is_modifiable = (read_values[4] == bytes32(0) ? false : true);
-    whitelist_enabled = (read_values[5] == bytes32(0) ? false : true);
+    duration_is_modifiable = (read_values[4] == 0 ? false : true);
+    whitelist_enabled = (read_values[5] == 0 ? false : true);
   }
 
   /*
@@ -474,17 +458,17 @@ library InitCrowdsale {
   */
   function getCrowdsaleMaxRaise(address _storage, bytes32 _exec_id) public view returns (uint wei_raise_cap, uint total_sell_cap) {
     // Create 'readMulti' calldata buffer in memory
-    uint ptr = cdBuff(RD_MULTI);
+    uint ptr = ReadFromBuffers.cdBuff(RD_MULTI);
     // Push exec id, data read offset, and read size to buffer
-    cdPush(ptr, _exec_id);
-    cdPush(ptr, 0x40);
-    cdPush(ptr, bytes32(3));
+    ptr.cdPush(_exec_id);
+    ptr.cdPush(0x40);
+    ptr.cdPush(bytes32(3));
     // Push crowdsale tier list length, token decimals, and token name storage locations to buffer
-    cdPush(ptr, CROWDSALE_TIERS);
-    cdPush(ptr, TOKEN_DECIMALS);
-    cdPush(ptr, TOKEN_NAME);
+    ptr.cdPush(CROWDSALE_TIERS);
+    ptr.cdPush(TOKEN_DECIMALS);
+    ptr.cdPush(TOKEN_NAME);
     // Read from storage
-    uint[] memory read_values = readMultiUintFrom(ptr, _storage);
+    uint[] memory read_values = ptr.readMultiFrom(_storage).toUintArr();
     // Ensure correct return length
     assert(read_values.length == 3);
 
@@ -498,18 +482,18 @@ library InitCrowdsale {
       return (0, 0);
 
     // Overwrite previous buffer - push exec id, data read offset, and read size to buffer
-    cdOverwrite(ptr, RD_MULTI);
-    cdPush(ptr, _exec_id);
-    cdPush(ptr, 0x40);
-    cdPush(ptr, bytes32(2 * num_tiers));
+    ptr.cdOverwrite(RD_MULTI);
+    ptr.cdPush(_exec_id);
+    ptr.cdPush(0x40);
+    ptr.cdPush(bytes32(2 * num_tiers));
     // Loop through tiers and get sell cap and purchase price for each tier
     for (uint i = 0; i < num_tiers; i++) {
-      cdPush(ptr, bytes32(64 + (192 * i) + uint(CROWDSALE_TIERS))); // token sell cap
-      cdPush(ptr, bytes32(96 + (192 * i) + uint(CROWDSALE_TIERS))); // tier purchase price
+      ptr.cdPush(bytes32(64 + (192 * i) + uint(CROWDSALE_TIERS))); // token sell cap
+      ptr.cdPush(bytes32(96 + (192 * i) + uint(CROWDSALE_TIERS))); // tier purchase price
     }
 
     // Read from storage
-    read_values = readMultiUintFrom(ptr, _storage);
+    read_values = ptr.readMultiFrom(_storage).toUintArr();
     // Ensure correct return length
     assert(read_values.length == 2 * num_tiers);
 
@@ -530,25 +514,25 @@ library InitCrowdsale {
   */
   function getCrowdsaleTierList(address _storage, bytes32 _exec_id) public view returns (bytes32[] memory crowdsale_tiers) {
     // Create 'read' calldata buffer in memory
-    uint ptr = cdBuff(RD_SING);
+    uint ptr = ReadFromBuffers.cdBuff(RD_SING);
     // Push exec id and crowdsale tier list length location to buffer
-    cdPush(ptr, _exec_id);
-    cdPush(ptr, CROWDSALE_TIERS);
+    ptr.cdPush(_exec_id);
+    ptr.cdPush(CROWDSALE_TIERS);
     // Read from storage and get list length
-    uint list_length = uint(readSingleFrom(ptr, _storage));
+    uint list_length = uint(ptr.readSingleFrom(_storage));
 
     // Overwrite previous buffer, and create 'readMulti' calldata buffer
-    cdOverwrite(ptr, RD_MULTI);
+    ptr.cdOverwrite(RD_MULTI);
     // Push exec id, data read offset, and read size to buffer
-    cdPush(ptr, _exec_id);
-    cdPush(ptr, 0x40);
-    cdPush(ptr, bytes32(list_length));
+    ptr.cdPush(_exec_id);
+    ptr.cdPush(0x40);
+    ptr.cdPush(bytes32(list_length));
     // Loop over each tier name list location and add to buffer
     for (uint i = 0; i < list_length; i++)
-      cdPush(ptr, bytes32(32 + (192 * i) + uint(CROWDSALE_TIERS)));
+      ptr.cdPush(bytes32(32 + (192 * i) + uint(CROWDSALE_TIERS)));
 
     // Read from storage and return
-    crowdsale_tiers = readMultiFrom(ptr, _storage);
+    crowdsale_tiers = ptr.readMultiFrom(_storage);
     // Ensure correct return length
     assert(crowdsale_tiers.length == list_length);
   }
@@ -564,23 +548,23 @@ library InitCrowdsale {
   */
   function getTierStartAndEndDates(address _storage, bytes32 _exec_id, uint _index) public view returns (uint tier_start, uint tier_end) {
     // Create 'readMulti' calldata buffer in memory
-    uint ptr = cdBuff(RD_MULTI);
+    uint ptr = ReadFromBuffers.cdBuff(RD_MULTI);
     // Push exec id, data read offset, and read size to calldata buffer
-    cdPush(ptr, _exec_id);
-    cdPush(ptr, 0x40);
-    cdPush(ptr, bytes32(3 + _index));
+    ptr.cdPush(_exec_id);
+    ptr.cdPush(0x40);
+    ptr.cdPush(bytes32(3 + _index));
     // Add crowdsale tier list length and crowdsale start time to buffer
-    cdPush(ptr, CROWDSALE_TIERS);
-    cdPush(ptr, CROWDSALE_START_TIME);
+    ptr.cdPush(CROWDSALE_TIERS);
+    ptr.cdPush(CROWDSALE_START_TIME);
     // Get storage read offset for initial tier duration, then loop over each tier until _index and add their duration storage locations to the read buffer
     bytes32 duration_offset = bytes32(128 + uint(CROWDSALE_TIERS));
     for (uint i = 0; i <= _index; i++) {
-      cdPush(ptr, duration_offset);
+      ptr.cdPush(duration_offset);
       // Increment the duration offset to the next index in the array
       duration_offset = bytes32(192 + uint(duration_offset));
     }
     // Read from storage and store return in buffer
-    uint[] memory read_values = readMultiUintFrom(ptr, _storage);
+    uint[] memory read_values = ptr.readMultiFrom(_storage).toUintArr();
     // Ensure correct return length
     assert(read_values.length == 3 + _index);
 
@@ -607,13 +591,13 @@ library InitCrowdsale {
   function getTokensSold(address _storage, bytes32 _exec_id) public view
   returns (uint tokens_sold) {
     // Create 'read' calldata buffer in memory
-    uint ptr = cdBuff(RD_SING);
+    uint ptr = ReadFromBuffers.cdBuff(RD_SING);
     // Push exec id to buffer
-    cdPush(ptr, _exec_id);
+    ptr.cdPush(_exec_id);
     // Push crowdsale total tokens sold location to buffer
-    cdPush(ptr, CROWDSALE_TOKENS_SOLD);
+    ptr.cdPush(CROWDSALE_TOKENS_SOLD);
     // Read from storage and return
-    tokens_sold = uint(readSingleFrom(ptr, _storage));
+    tokens_sold = uint(ptr.readSingleFrom(_storage));
   }
 
   /*
@@ -629,20 +613,20 @@ library InitCrowdsale {
   function getWhitelistStatus(address _storage, bytes32 _exec_id, uint _tier_index, address _buyer) public view
   returns (uint minimum_contribution, uint max_spend_remaining) {
     // Create 'readMulti' calldata buffer in memory
-    uint ptr = cdBuff(RD_MULTI);
+    uint ptr = ReadFromBuffers.cdBuff(RD_MULTI);
     // Push exec id, data read offset, and read size to buffer
-    cdPush(ptr, _exec_id);
-    cdPush(ptr, 0x40);
-    cdPush(ptr, bytes32(2));
+    ptr.cdPush(_exec_id);
+    ptr.cdPush(0x40);
+    ptr.cdPush(bytes32(2));
     // Get buyer whitelist location for the tier -
     bytes32 location = keccak256(keccak256(_buyer), keccak256(_tier_index, SALE_WHITELIST));
     // Push whitelist minimum contribution location to buffer
-    cdPush(ptr, location);
+    ptr.cdPush(location);
     // Push whitlist maximum spend amount remaining location to buffer
-    cdPush(ptr, bytes32(32 + uint(location)));
+    ptr.cdPush(bytes32(32 + uint(location)));
 
     // Read from storage and return
-    uint[] memory read_values = readMultiUintFrom(ptr, _storage);
+    uint[] memory read_values = ptr.readMultiFrom(_storage).toUintArr();
     // Ensure correct return length
     assert(read_values.length == 2);
 
@@ -659,27 +643,27 @@ library InitCrowdsale {
   @return num_whitelisted: The length of the tier's whitelist array
   @return whitelist: The tier's whitelisted addresses
   */
-  function getTierWhitelist(address _storage, bytes32 _exec_id, uint _tier_index) public view returns (uint num_whitelisted, address[] whitelist) {
+  function getTierWhitelist(address _storage, bytes32 _exec_id, uint _tier_index) public view returns (uint num_whitelisted, address[] memory whitelist) {
     // Create 'read' calldata buffer in memory
-    uint ptr = cdBuff(RD_SING);
+    uint ptr = ReadFromBuffers.cdBuff(RD_SING);
     // Push exec id and tier whitelist storage location to calldata buffer
-    cdPush(ptr, _exec_id);
-    cdPush(ptr, keccak256(_tier_index, SALE_WHITELIST));
+    ptr.cdPush(_exec_id);
+    ptr.cdPush(keccak256(_tier_index, SALE_WHITELIST));
     // Read from storage and get returned tier whitelist length
-    num_whitelisted = uint(readSingleFrom(ptr, _storage));
+    num_whitelisted = uint(ptr.readSingleFrom(_storage));
 
     // Overwrite previous buffer and loop through the whitelist number to get each whitelisted address
-    cdOverwrite(ptr, RD_MULTI);
+    ptr.cdOverwrite(RD_MULTI);
     // Push exec id, data read offset, and read size to buffer
-    cdPush(ptr, _exec_id);
-    cdPush(ptr, 0x40);
-    cdPush(ptr, bytes32(num_whitelisted));
+    ptr.cdPush(_exec_id);
+    ptr.cdPush(0x40);
+    ptr.cdPush(bytes32(num_whitelisted));
     // Loop through the number of whitelisted addresses, and push each to the calldata buffer to be read from storage
     for (uint i = 0; i < num_whitelisted; i++)
-      cdPush(ptr, bytes32(32 + (32 * i) + uint(keccak256(_tier_index, SALE_WHITELIST))));
+      ptr.cdPush(bytes32(32 + (32 * i) + uint(keccak256(_tier_index, SALE_WHITELIST))));
 
     // Read from storage and return
-    whitelist = readMultiAddressFrom(ptr, _storage);
+    whitelist = ptr.readMultiFrom(_storage).toAddressArr();
     // Ensure correct return length
     assert(whitelist.length == num_whitelisted);
   }
@@ -697,12 +681,12 @@ library InitCrowdsale {
   function balanceOf(address _storage, bytes32 _exec_id, address _owner) public view
   returns (uint owner_balance) {
     // Create 'read' calldata buffer in memory
-    uint ptr = cdBuff(RD_SING);
+    uint ptr = ReadFromBuffers.cdBuff(RD_SING);
     // Push exec id and owner balance location to buffer
-    cdPush(ptr, _exec_id);
-    cdPush(ptr, keccak256(keccak256(_owner), TOKEN_BALANCES));
+    ptr.cdPush(_exec_id);
+    ptr.cdPush(keccak256(keccak256(_owner), TOKEN_BALANCES));
     // Read from storage
-    owner_balance = uint(readSingleFrom(ptr, _storage));
+    owner_balance = uint(ptr.readSingleFrom(_storage));
   }
 
   /*
@@ -717,12 +701,12 @@ library InitCrowdsale {
   function allowance(address _storage, bytes32 _exec_id, address _owner, address _spender) public view
   returns (uint allowed) {
     // Create 'read' calldata buffer in memory
-    uint ptr = cdBuff(RD_SING);
+    uint ptr = ReadFromBuffers.cdBuff(RD_SING);
     // Push exec id and spender allowance location to buffer
-    cdPush(ptr, _exec_id);
-    cdPush(ptr, keccak256(keccak256(_spender), keccak256(keccak256(_owner), TOKEN_ALLOWANCES)));
+    ptr.cdPush(_exec_id);
+    ptr.cdPush(keccak256(keccak256(_spender), keccak256(keccak256(_owner), TOKEN_ALLOWANCES)));
     // Read from storage
-    allowed = uint(readSingleFrom(ptr, _storage));
+    allowed = uint(ptr.readSingleFrom(_storage));
   }
 
   /*
@@ -735,12 +719,12 @@ library InitCrowdsale {
   function decimals(address _storage, bytes32 _exec_id) public view
   returns (uint token_decimals) {
     // Create 'read' calldata buffer in memory
-    uint ptr = cdBuff(RD_SING);
+    uint ptr = ReadFromBuffers.cdBuff(RD_SING);
     // Push exec id and token decimals storage location to buffer
-    cdPush(ptr, _exec_id);
-    cdPush(ptr, TOKEN_DECIMALS);
+    ptr.cdPush(_exec_id);
+    ptr.cdPush(TOKEN_DECIMALS);
     // Read from storage
-    token_decimals = uint(readSingleFrom(ptr, _storage));
+    token_decimals = uint(ptr.readSingleFrom(_storage));
   }
 
   /*
@@ -753,12 +737,12 @@ library InitCrowdsale {
   function totalSupply(address _storage, bytes32 _exec_id) public view
   returns (uint total_supply) {
     // Create 'read' calldata buffer in memory
-    uint ptr = cdBuff(RD_SING);
+    uint ptr = ReadFromBuffers.cdBuff(RD_SING);
     // Push exec id and token total supply storage location to buffer
-    cdPush(ptr, _exec_id);
-    cdPush(ptr, TOKEN_TOTAL_SUPPLY);
+    ptr.cdPush(_exec_id);
+    ptr.cdPush(TOKEN_TOTAL_SUPPLY);
     // Read from storage
-    total_supply = uint(readSingleFrom(ptr, _storage));
+    total_supply = uint(ptr.readSingleFrom(_storage));
   }
 
   /*
@@ -770,12 +754,12 @@ library InitCrowdsale {
   */
   function name(address _storage, bytes32 _exec_id) public view returns (bytes32 token_name) {
     // Create 'read' calldata buffer in memory
-    uint ptr = cdBuff(RD_SING);
+    uint ptr = ReadFromBuffers.cdBuff(RD_SING);
     // Push exec id and token name storage location to buffer
-    cdPush(ptr, _exec_id);
-    cdPush(ptr, TOKEN_NAME);
+    ptr.cdPush(_exec_id);
+    ptr.cdPush(TOKEN_NAME);
     // Read from storage
-    token_name = readSingleFrom(ptr, _storage);
+    token_name = ptr.readSingleFrom(_storage);
   }
 
   /*
@@ -787,12 +771,12 @@ library InitCrowdsale {
   */
   function symbol(address _storage, bytes32 _exec_id) public view returns (bytes32 token_symbol) {
     // Create 'read' calldata buffer in memory
-    uint ptr = cdBuff(RD_SING);
+    uint ptr = ReadFromBuffers.cdBuff(RD_SING);
     // Push exec id and token symbol storage location to buffer
-    cdPush(ptr, _exec_id);
-    cdPush(ptr, TOKEN_SYMBOL);
+    ptr.cdPush(_exec_id);
+    ptr.cdPush(TOKEN_SYMBOL);
     // Read from storage
-    token_symbol = readSingleFrom(ptr, _storage);
+    token_symbol = ptr.readSingleFrom(_storage);
   }
 
   /*
@@ -808,19 +792,19 @@ library InitCrowdsale {
   function getTokenInfo(address _storage, bytes32 _exec_id) public view
   returns (bytes32 token_name, bytes32 token_symbol, uint token_decimals, uint total_supply) {
     // Create 'readMulti' calldata buffer in memory
-    uint ptr = cdBuff(RD_MULTI);
+    uint ptr = ReadFromBuffers.cdBuff(RD_MULTI);
     // Push exec id, data read offset, and read size to buffer
-    cdPush(ptr, _exec_id);
-    cdPush(ptr, 0x40);
-    cdPush(ptr, bytes32(4));
+    ptr.cdPush(_exec_id);
+    ptr.cdPush(0x40);
+    ptr.cdPush(bytes32(4));
     // Place token name, symbol, decimals, and total supply storage locations in buffer
-    cdPush(ptr, TOKEN_NAME);
-    cdPush(ptr, TOKEN_SYMBOL);
-    cdPush(ptr, TOKEN_DECIMALS);
-    cdPush(ptr, TOKEN_TOTAL_SUPPLY);
+    ptr.cdPush(TOKEN_NAME);
+    ptr.cdPush(TOKEN_SYMBOL);
+    ptr.cdPush(TOKEN_DECIMALS);
+    ptr.cdPush(TOKEN_TOTAL_SUPPLY);
 
     // Read from storage
-    bytes32[] memory read_values = readMultiFrom(ptr, _storage);
+    bytes32[] memory read_values = ptr.readMultiFrom(_storage);
     // Ensure correct return length
     assert(read_values.length == 4);
 
@@ -842,12 +826,12 @@ library InitCrowdsale {
   function getTransferAgentStatus(address _storage, bytes32 _exec_id, address _agent) public view
   returns (bool is_transfer_agent) {
     // Create 'read' calldata buffer in memory
-    uint ptr = cdBuff(RD_SING);
+    uint ptr = ReadFromBuffers.cdBuff(RD_SING);
     // Push exec id and transfer agent status storage location to buffer
-    cdPush(ptr, _exec_id);
-    cdPush(ptr, keccak256(keccak256(_agent), TOKEN_TRANSFER_AGENTS));
+    ptr.cdPush(_exec_id);
+    ptr.cdPush(keccak256(keccak256(_agent), TOKEN_TRANSFER_AGENTS));
     // Read from storage
-    is_transfer_agent = (readSingleFrom(ptr, _storage) == bytes32(0) ? false : true);
+    is_transfer_agent = (ptr.readSingleFrom(_storage) == 0 ? false : true);
   }
 
   /*
@@ -859,14 +843,14 @@ library InitCrowdsale {
   @return reserved_destinations: A list of the addresses which have reserved tokens or percents
   */
   function getReservedTokenDestinationList(address _storage, bytes32 _exec_id) public view
-  returns (uint num_destinations, address[] reserved_destinations) {
+  returns (uint num_destinations, address[] memory reserved_destinations) {
     // Create 'read' calldata buffer in memory
-    uint ptr = cdBuff(RD_SING);
+    uint ptr = ReadFromBuffers.cdBuff(RD_SING);
     // Push exec id and reserved token destination list location to calldata buffer
-    cdPush(ptr, _exec_id);
-    cdPush(ptr, TOKEN_RESERVED_DESTINATIONS);
+    ptr.cdPush(_exec_id);
+    ptr.cdPush(TOKEN_RESERVED_DESTINATIONS);
     // Read reserved destination list length from storage
-    num_destinations = uint(readSingleFrom(ptr, _storage));
+    num_destinations = uint(ptr.readSingleFrom(_storage));
 
     // If num_destinations is 0, return now
     if (num_destinations == 0)
@@ -875,17 +859,17 @@ library InitCrowdsale {
     /// Loop through each list in storage, and get each address -
 
     // Overwrite previous buffer with new 'readMulti' calldata buffer -
-    cdOverwrite(ptr, RD_MULTI);
+    ptr.cdOverwrite(RD_MULTI);
     // Push exec id, data read offset, and read size to buffer
-    cdPush(ptr, _exec_id);
-    cdPush(ptr, 0x40);
-    cdPush(ptr, bytes32(num_destinations));
+    ptr.cdPush(_exec_id);
+    ptr.cdPush(0x40);
+    ptr.cdPush(bytes32(num_destinations));
     // Add each destination index location to calldata
     for (uint i = 1; i <= num_destinations; i++)
-      cdPush(ptr, bytes32((32 * i) + uint(TOKEN_RESERVED_DESTINATIONS)));
+      ptr.cdPush(bytes32((32 * i) + uint(TOKEN_RESERVED_DESTINATIONS)));
 
     // Read from storage, and return data to buffer
-    reserved_destinations = readMultiAddressFrom(ptr, _storage);
+    reserved_destinations = ptr.readMultiFrom(_storage).toAddressArr();
     // Ensure correct return length
     assert(reserved_destinations.length == num_destinations);
   }
@@ -904,20 +888,20 @@ library InitCrowdsale {
   function getReservedDestinationInfo(address _storage, bytes32 _exec_id, address _destination) public view
   returns (uint destination_list_index, uint num_tokens, uint num_percent, uint percent_decimals) {
     // Create 'readMulti' calldata buffer in memory
-    uint ptr = cdBuff(RD_MULTI);
+    uint ptr = ReadFromBuffers.cdBuff(RD_MULTI);
     // Push exec id, data read offset, and read size to buffer
-    cdPush(ptr, _exec_id);
-    cdPush(ptr, 0x40);
-    cdPush(ptr, bytes32(4));
+    ptr.cdPush(_exec_id);
+    ptr.cdPush(0x40);
+    ptr.cdPush(bytes32(4));
     // Push reserved destination information storage locations to buffer -
     uint base_loc = uint(keccak256(keccak256(_destination), TOKEN_RESERVED_ADDR_INFO));
-    cdPush(ptr, bytes32(base_loc));
-    cdPush(ptr, bytes32(32 + base_loc));
-    cdPush(ptr, bytes32(64 + base_loc));
-    cdPush(ptr, bytes32(96 + base_loc));
+    ptr.cdPush(bytes32(base_loc));
+    ptr.cdPush(bytes32(32 + base_loc));
+    ptr.cdPush(bytes32(64 + base_loc));
+    ptr.cdPush(bytes32(96 + base_loc));
 
     // Read from storage, and return data to buffer
-    bytes32[] memory read_values = readMultiFrom(ptr, _storage);
+    bytes32[] memory read_values = ptr.readMultiFrom(_storage);
     // Ensure correct return length
     assert(read_values.length == 4);
 
@@ -930,232 +914,5 @@ library InitCrowdsale {
     num_tokens = uint(read_values[1]);
     num_percent = uint(read_values[2]);
     percent_decimals = uint(read_values[3]);
-  }
-
-  /*
-  Creates a buffer for return data storage. Buffer pointer stores the lngth of the buffer
-
-  @return ptr: The location in memory where the length of the buffer is stored - elements stored consecutively after this location
-  */
-  function stBuff() internal pure returns (uint ptr) {
-    assembly {
-      // Get buffer location - free memory
-      ptr := mload(0x40)
-      // Ensure free-memory pointer is cleared
-      mstore(ptr, 0)
-      // Update free-memory pointer - it's important to note that this is not actually free memory, if the pointer is meant to expand
-      mstore(0x40, add(0x20, ptr))
-    }
-  }
-
-  /*
-  Pushes a value to the end of a storage return buffer, and updates the length
-
-  @param _ptr: A pointer to the start of the buffer
-  @param _val: The value to push to the buffer
-  */
-  function stPush(uint _ptr, bytes32 _val) internal pure {
-    assembly {
-      // Get end of buffer - 32 bytes plus the length stored at the pointer
-      let len := add(0x20, mload(_ptr))
-      // Push value to end of buffer (overwrites memory - be careful!)
-      mstore(add(_ptr, len), _val)
-      // Increment buffer length
-      mstore(_ptr, len)
-      // If the free-memory pointer does not point beyond the buffer's current size, update it
-      if lt(mload(0x40), add(add(0x20, _ptr), len)) {
-        mstore(0x40, add(add(0x40, _ptr), len)) // Ensure free memory pointer points to the beginning of a memory slot
-      }
-    }
-  }
-
-  /*
-  Returns the bytes32[] stored at the buffer
-
-  @param _ptr: A pointer to the location in memory where the calldata for the call is stored
-  @return store_data: The return values, which will be stored
-  */
-  function getBuffer(uint _ptr) internal pure returns (bytes32[] store_data){
-    assembly {
-      // If the size stored at the pointer is not evenly divislble into 32-byte segments, this was improperly constructed
-      if gt(mod(mload(_ptr), 0x20), 0) { revert (0, 0) }
-      mstore(_ptr, div(mload(_ptr), 0x20))
-      store_data := _ptr
-    }
-  }
-
-  /*
-  Creates a calldata buffer in memory with the given function selector
-
-  @param _selector: The function selector to push to the first location in the buffer
-  @return ptr: The location in memory where the length of the buffer is stored - elements stored consecutively after this location
-  */
-  function cdBuff(bytes4 _selector) internal pure returns (uint ptr) {
-    assembly {
-      // Get buffer location - free memory
-      ptr := mload(0x40)
-      // Place initial length (4 bytes) in buffer
-      mstore(ptr, 0x04)
-      // Place function selector in buffer, after length
-      mstore(add(0x20, ptr), _selector)
-      // Update free-memory pointer - it's important to note that this is not actually free memory, if the pointer is meant to expand
-      mstore(0x40, add(0x40, ptr))
-    }
-  }
-
-  /*
-  Creates a new calldata buffer at the pointer with the given selector. Does not update free memory
-
-  @param _ptr: A pointer to the buffer to overwrite - will be the pointer to the new buffer as well
-  @param _selector: The function selector to place in the buffer
-  */
-  function cdOverwrite(uint _ptr, bytes4 _selector) internal pure {
-    assembly {
-      // Store initial length of buffer - 4 bytes
-      mstore(_ptr, 0x04)
-      // Store function selector after length
-      mstore(add(0x20, _ptr), _selector)
-    }
-  }
-
-  /*
-  Pushes a value to the end of a calldata buffer, and updates the length
-
-  @param _ptr: A pointer to the start of the buffer
-  @param _val: The value to push to the buffer
-  */
-  function cdPush(uint _ptr, bytes32 _val) internal pure {
-    assembly {
-      // Get end of buffer - 32 bytes plus the length stored at the pointer
-      let len := add(0x20, mload(_ptr))
-      // Push value to end of buffer (overwrites memory - be careful!)
-      mstore(add(_ptr, len), _val)
-      // Increment buffer length
-      mstore(_ptr, len)
-      // If the free-memory pointer does not point beyond the buffer's current size, update it
-      if lt(mload(0x40), add(add(0x20, _ptr), len)) {
-        mstore(0x40, add(add(0x2c, _ptr), len)) // Ensure free memory pointer points to the beginning of a memory slot
-      }
-    }
-  }
-
-  /*
-  Executes a 'readMulti' function call, given a pointer to a calldata buffer
-
-  @param _ptr: A pointer to the location in memory where the calldata for the call is stored
-  @param _storage: The storage address from which to read
-  @return read_values: The values read from storage
-  */
-  function readMultiFrom(uint _ptr, address _storage) internal view returns (bytes32[] read_values) {
-    bool success;
-    assembly {
-      // Minimum length for 'readMulti' - 1 location is 0x84
-      if lt(mload(_ptr), 0x84) { revert (0, 0) }
-      // Read from storage
-      success := staticcall(gas, _storage, add(0x20, _ptr), mload(_ptr), 0, 0)
-      // If call succeed, get return information
-      if gt(success, 0) {
-        // Ensure data will not be copied beyond the pointer
-        if gt(sub(returndatasize, 0x20), mload(_ptr)) { revert (0, 0) }
-        // Copy returned data to pointer, overwriting it in the process
-        // Copies returndatasize, but ignores the initial read offset so that the bytes32[] returned in the read is sitting directly at the pointer
-        returndatacopy(_ptr, 0x20, sub(returndatasize, 0x20))
-        // Set return bytes32[] to pointer, which should now have the stored length of the returned array
-        read_values := _ptr
-      }
-    }
-    if (!success)
-      triggerException(ERR_READ_FAILED);
-  }
-
-  /*
-  Executes a 'read' function call, given a pointer to a calldata buffer
-
-  @param _ptr: A pointer to the location in memory where the calldata for the call is stored
-  @param _storage: The storage address from which to read
-  @return read_value: The value read from storage
-  */
-  function readSingleFrom(uint _ptr, address _storage) internal view returns (bytes32 read_value) {
-    bool success;
-    assembly {
-      // Length for 'read' buffer must be 0x44
-      if iszero(eq(mload(_ptr), 0x44)) { revert (0, 0) }
-      // Read from storage, and store return to pointer
-      success := staticcall(gas, _storage, add(0x20, _ptr), mload(_ptr), _ptr, 0x20)
-      // If call succeeded, store return at pointer
-      if gt(success, 0) { read_value := mload(_ptr) }
-    }
-    if (!success)
-      triggerException(ERR_READ_FAILED);
-  }
-
-  /*
-  Executes a 'readMulti' function call, given a pointer to a calldata buffer
-
-  @param _ptr: A pointer to the location in memory where the calldata for the call is stored
-  @param _storage: The address to read from
-  @return read_values: The values read from storage
-  */
-  function readMultiAddressFrom(uint _ptr, address _storage) internal view returns (address[] read_values) {
-    bool success;
-    assembly {
-      // Minimum length for 'readMulti' - 1 location is 0x84
-      if lt(mload(_ptr), 0x84) { revert (0, 0) }
-      // Read from storage
-      success := staticcall(gas, _storage, add(0x20, _ptr), mload(_ptr), 0, 0)
-      // If call succeed, get return information
-      if gt(success, 0) {
-        // Ensure data will not be copied beyond the pointer
-        if gt(sub(returndatasize, 0x20), mload(_ptr)) { revert (0, 0) }
-        // Copy returned data to pointer, overwriting it in the process
-        // Copies returndatasize, but ignores the initial read offset so that the bytes32[] returned in the read is sitting directly at the pointer
-        returndatacopy(_ptr, 0x20, sub(returndatasize, 0x20))
-        // Set return bytes32[] to pointer, which should now have the stored length of the returned array
-        read_values := _ptr
-      }
-    }
-    if (!success)
-      triggerException(ERR_READ_FAILED);
-  }
-
-  /*
-  Executes a 'readMulti' function call, given a pointer to a calldata buffer
-
-  @param _ptr: A pointer to the location in memory where the calldata for the call is stored
-  @param _storage: The address to read from
-  @return read_values: The values read from storage
-  */
-  function readMultiUintFrom(uint _ptr, address _storage) internal view returns (uint[] read_values) {
-    bool success;
-    assembly {
-      // Minimum length for 'readMulti' - 1 location is 0x84
-      if lt(mload(_ptr), 0x84) { revert (0, 0) }
-      // Read from storage
-      success := staticcall(gas, _storage, add(0x20, _ptr), mload(_ptr), 0, 0)
-      // If call succeed, get return information
-      if gt(success, 0) {
-        // Ensure data will not be copied beyond the pointer
-        if gt(sub(returndatasize, 0x20), mload(_ptr)) { revert (0, 0) }
-        // Copy returned data to pointer, overwriting it in the process
-        // Copies returndatasize, but ignores the initial read offset so that the bytes32[] returned in the read is sitting directly at the pointer
-        returndatacopy(_ptr, 0x20, sub(returndatasize, 0x20))
-        // Set return bytes32[] to pointer, which should now have the stored length of the returned array
-        read_values := _ptr
-      }
-    }
-    if (!success)
-      triggerException(ERR_READ_FAILED);
-  }
-
-  /*
-  Reverts state changes, but passes message back to caller
-
-  @param _message: The message to return to the caller
-  */
-  function triggerException(bytes32 _message) internal pure {
-    assembly {
-      mstore(0, _message)
-      revert(0, 0x20)
-    }
   }
 }

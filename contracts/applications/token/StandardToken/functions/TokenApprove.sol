@@ -5,18 +5,13 @@ library TokenApprove {
   /// TOKEN STORAGE ///
 
   // Storage seed for user allowances mapping
-  bytes32 public constant TOKEN_ALLOWANCES = keccak256("token_allowances");
+  bytes32 internal constant TOKEN_ALLOWANCES = keccak256("token_allowances");
 
   /// FUNCTION SELECTORS ///
 
   // Function selector for storage "read"
   // read(bytes32 _exec_id, bytes32 _location) view returns (bytes32 data_read);
-  bytes4 public constant RD_SING = bytes4(keccak256("read(bytes32,bytes32)"));
-
-  /// EXCEPTION MESSAGES ///
-
-  bytes32 public constant ERR_UNKNOWN_CONTEXT = bytes32("UnknownContext"); // Malformed '_context' array
-  bytes32 public constant ERR_READ_FAILED = bytes32("StorageReadFailed"); // Read from storage address failed
+  bytes4 internal constant RD_SING = bytes4(keccak256("read(bytes32,bytes32)"));
 
   /*
   Approves another address to spend tokens on the sender's behalf
@@ -29,12 +24,12 @@ library TokenApprove {
     3. Wei amount sent with transaction to storage
   @return store_data: A formatted storage request - first 64 bytes designate a forwarding address (and amount) for any wei sent
   */
-  function approve(address _spender, uint _amt, bytes _context) public pure
-  returns (bytes32[] store_data) {
+  function approve(address _spender, uint _amt, bytes memory _context) public pure
+  returns (bytes32[] memory store_data) {
     // Ensure valid inputs
     require(_spender != address(0) && _amt != 0);
     if (_context.length != 96)
-      triggerException(ERR_UNKNOWN_CONTEXT);
+      triggerException(bytes32("UnknownContext"));
 
     address sender;
     bytes32 exec_id;
@@ -66,11 +61,11 @@ library TokenApprove {
     3. Wei amount sent with transaction to storage
   @return store_data: A formatted storage request - first 64 bytes designate a forwarding address (and amount) for any wei sent
   */
-  function increaseApproval(address _spender, uint _amt, bytes _context) public view returns (bytes32[] store_data) {
+  function increaseApproval(address _spender, uint _amt, bytes memory _context) public view returns (bytes32[] memory store_data) {
     // Ensure valid inputs
     require(_spender != address(0) && _amt != 0);
     if (_context.length != 96)
-      triggerException(ERR_UNKNOWN_CONTEXT);
+      triggerException(bytes32("UnknownContext"));
 
     address sender;
     bytes32 exec_id;
@@ -113,11 +108,11 @@ library TokenApprove {
     3. Wei amount sent with transaction to storage
   @return store_data: A formatted storage request - first 64 bytes designate a forwarding address (and amount) for any wei sent
   */
-  function decreaseApproval(address _spender, uint _amt, bytes _context) public view returns (bytes32[] store_data) {
+  function decreaseApproval(address _spender, uint _amt, bytes memory _context) public view returns (bytes32[] memory store_data) {
     // Ensure valid inputs
     require(_spender != address(0) && _amt != 0);
     if (_context.length != 96)
-      triggerException(ERR_UNKNOWN_CONTEXT);
+      triggerException(bytes32("UnknownContext"));
 
     address sender;
     bytes32 exec_id;
@@ -203,7 +198,7 @@ library TokenApprove {
   @param _ptr: A pointer to the location in memory where the calldata for the call is stored
   @return store_data: The return values, which will be stored
   */
-  function getBuffer(uint _ptr) internal pure returns (bytes32[] store_data){
+  function getBuffer(uint _ptr) internal pure returns (bytes32[] memory store_data){
     assembly {
       // If the size stored at the pointer is not evenly divislble into 32-byte segments, this was improperly constructed
       if gt(mod(mload(_ptr), 0x20), 0) { revert (0, 0) }
@@ -258,7 +253,7 @@ library TokenApprove {
   @param _ptr: A pointer to the location in memory where the calldata for the call is stored
   @return read_values: The values read from storage
   */
-  function readMulti(uint _ptr) internal view returns (bytes32[] read_values) {
+  function readMulti(uint _ptr) internal view returns (bytes32[] memory read_values) {
     bool success;
     assembly {
       // Minimum length for 'readMulti' - 1 location is 0x84
@@ -277,7 +272,7 @@ library TokenApprove {
       }
     }
     if (!success)
-      triggerException(ERR_READ_FAILED);
+      triggerException(bytes32("StorageReadFailed"));
   }
 
   /*
@@ -297,7 +292,7 @@ library TokenApprove {
       if gt(success, 0) { read_value := mload(_ptr) }
     }
     if (!success)
-      triggerException(ERR_READ_FAILED);
+      triggerException(bytes32("StorageReadFailed"));
   }
 
   /*
@@ -313,7 +308,7 @@ library TokenApprove {
   }
 
   // Parses context array and returns execution id, sender address, and sent wei amount
-  function parse(bytes _context) internal pure returns (bytes32 exec_id, address from, uint wei_sent) {
+  function parse(bytes memory _context) internal pure returns (bytes32 exec_id, address from, uint wei_sent) {
     assembly {
       exec_id := mload(add(0x20, _context))
       from := mload(add(0x40, _context))
@@ -321,6 +316,6 @@ library TokenApprove {
     }
     // Ensure sender and exec id are valid
     if (from == address(0) || exec_id == bytes32(0))
-      triggerException(ERR_UNKNOWN_CONTEXT);
+      triggerException(bytes32("UnknownContext"));
   }
 }

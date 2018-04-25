@@ -6,37 +6,31 @@ library AppConsole {
 
   // Provider namespace - all app and version storage is seeded to a provider
   // [PROVIDERS][provider_id]
-  bytes32 public constant PROVIDERS = keccak256("registry_providers");
+  bytes32 internal constant PROVIDERS = keccak256("registry_providers");
 
   // Storage location for a list of all applications released by this provider
   // [PROVIDERS][provider_id][PROVIDER_APP_LIST] = bytes32[] registered_apps
-  bytes32 public constant PROVIDER_APP_LIST = keccak256("provider_app_list");
+  bytes32 internal constant PROVIDER_APP_LIST = keccak256("provider_app_list");
 
   /// APPLICATION STORAGE ///
 
   // Application namespace - all app info and version storage is mapped here
   // [PROVIDERS][provider_id][APPS][app_name]
-  bytes32 public constant APPS = keccak256("apps");
+  bytes32 internal constant APPS = keccak256("apps");
 
   // Application description location - (bytes array)
   // [PROVIDERS][provider_id][APPS][app_name][APP_DESC] = bytes description
-  bytes32 public constant APP_DESC = keccak256("app_desc");
+  bytes32 internal constant APP_DESC = keccak256("app_desc");
 
   // Application storage address location - address
   // [PROVIDERS][provider_id][APPS][app_name][APP_STORAGE_IMPL] = address app_default_storage_addr
-  bytes32 public constant APP_STORAGE_IMPL = keccak256("app_storage_impl");
+  bytes32 internal constant APP_STORAGE_IMPL = keccak256("app_storage_impl");
 
   /// FUNCTION SELECTORS ///
 
   // Function selector for storage 'readMulti'
   // readMulti(bytes32 exec_id, bytes32[] locations)
-  bytes4 public constant RD_MULTI = bytes4(keccak256("readMulti(bytes32,bytes32[])"));
-
-  /// EXCEPTION MESSAGES ///
-
-  bytes32 public constant ERR_UNKNOWN_CONTEXT = bytes32("UnknownContext"); // Malformed '_context' array
-  bytes32 public constant ERR_INSUFFICIENT_PERMISSIONS = bytes32("InsufficientPermissions"); // Action not allowed
-  bytes32 public constant ERR_READ_FAILED = bytes32("StorageReadFailed"); // Read from storage address failed
+  bytes4 internal constant RD_MULTI = bytes4(keccak256("readMulti(bytes32,bytes32[])"));
 
   /// FUNCTIONS ///
 
@@ -52,8 +46,8 @@ library AppConsole {
     3. Wei amount sent with transaction to storage
   @return store_data: A formatted storage request - first 64 bytes designate a forwarding address (and amount) for any wei sent
   */
-  function registerApp(bytes32 _app_name, address _app_storage, bytes _app_desc, bytes _context) public view
-  returns (bytes32[] store_data) {
+  function registerApp(bytes32 _app_name, address _app_storage, bytes _app_desc, bytes memory _context) public view
+  returns (bytes32[] memory store_data) {
     // Ensure input is correctly formatted
     require(_context.length == 96);
     require(_app_name != bytes32(0) && _app_desc.length > 0 && _app_storage != address(0));
@@ -80,7 +74,7 @@ library AppConsole {
     bytes32[] memory read_values = readMulti(ptr);
     // Check returned app storage location - if nonzero, application is already registered
     if (read_values[0] != bytes32(0))
-      triggerException(ERR_INSUFFICIENT_PERMISSIONS);
+      triggerException(bytes32("InsufficientPermissions"));
 
     // Get returned provider app list length
     uint num_apps = uint(read_values[1]);
@@ -189,7 +183,7 @@ library AppConsole {
   @param _ptr: A pointer to the location in memory where the calldata for the call is stored
   @return store_data: The return values, which will be stored
   */
-  function getBuffer(uint _ptr) internal pure returns (bytes32[] store_data){
+  function getBuffer(uint _ptr) internal pure returns (bytes32[] memory store_data){
     assembly {
       // If the size stored at the pointer is not evenly divislble into 32-byte segments, this was improperly constructed
       if gt(mod(mload(_ptr), 0x20), 0) { revert (0, 0) }
@@ -244,7 +238,7 @@ library AppConsole {
   @param _ptr: A pointer to the location in memory where the calldata for the call is stored
   @return read_values: The values read from storage
   */
-  function readMulti(uint _ptr) internal view returns (bytes32[] read_values) {
+  function readMulti(uint _ptr) internal view returns (bytes32[] memory read_values) {
     bool success;
     assembly {
       // Minimum length for 'readMulti' - 1 location is 0x84
@@ -263,7 +257,7 @@ library AppConsole {
       }
     }
     if (!success)
-      triggerException(ERR_READ_FAILED);
+      triggerException(bytes32("StorageReadFailed"));
   }
 
   /*
@@ -280,7 +274,7 @@ library AppConsole {
 
 
   // Parses context array and returns execution id, sender address, and sent wei amount
-  function parse(bytes _context) internal pure returns (bytes32 exec_id, address from, uint wei_sent) {
+  function parse(bytes memory _context) internal pure returns (bytes32 exec_id, address from, uint wei_sent) {
     assembly {
       exec_id := mload(add(0x20, _context))
       from := mload(add(0x40, _context))
@@ -288,6 +282,6 @@ library AppConsole {
     }
     // Ensure sender and exec id are valid
     if (from == address(0) || exec_id == bytes32(0))
-      triggerException(ERR_UNKNOWN_CONTEXT);
+      triggerException(bytes32("UnknownContext"));
   }
 }

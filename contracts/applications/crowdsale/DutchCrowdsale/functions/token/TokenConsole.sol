@@ -5,25 +5,19 @@ library TokenConsole {
   /// CROWDSALE STORAGE ///
 
   // Storage location of crowdsale admin address
-  bytes32 public constant ADMIN = keccak256("admin");
+  bytes32 internal constant ADMIN = keccak256("admin");
 
   /// TOKEN STORAGE ///
 
   // Storage seed for token 'transfer agent' status for any address
   // Transfer agents can transfer tokens, even if the crowdsale has not yet been finalized
-  bytes32 public constant TOKEN_TRANSFER_AGENTS = keccak256("token_transfer_agents");
+  bytes32 internal constant TOKEN_TRANSFER_AGENTS = keccak256("token_transfer_agents");
 
   /// FUNCTION SELECTORS ///
 
   // Function selector for storage "read"
   // read(bytes32 _exec_id, bytes32 _location) view returns (bytes32 data_read);
-  bytes4 public constant RD_SING = bytes4(keccak256("read(bytes32,bytes32)"));
-
-  /// EXCEPTION MESSAGES ///
-
-  bytes32 public constant ERR_UNKNOWN_CONTEXT = bytes32("UnknownContext"); // Malformed '_context' array
-  bytes32 public constant ERR_INSUFFICIENT_PERMISSIONS = bytes32("InsufficientPermissions"); // Action not allowed
-  bytes32 public constant ERR_READ_FAILED = bytes32("StorageReadFailed"); // Read from storage address failed
+  bytes4 internal constant RD_SING = bytes4(keccak256("read(bytes32,bytes32)"));
 
   /*
   Allows the admin to set an address's transfer agent status - transfer agents can transfer tokens prior to the end of the crowdsale
@@ -36,11 +30,12 @@ library TokenConsole {
     3. Wei amount sent with transaction to storage
   @return store_data: A formatted storage request - first 64 bytes designate a forwarding address (and amount) for any wei sent
   */
-  function setTransferAgentStatus(address _agent, bool _is_transfer_agent, bytes _context) public view returns (bytes32[] store_data) {
+  function setTransferAgentStatus(address _agent, bool _is_transfer_agent, bytes memory _context) public view
+  returns (bytes32[] memory store_data) {
     // Ensure valid input
     require(_agent != address(0));
     if (_context.length != 96)
-      triggerException(ERR_UNKNOWN_CONTEXT);
+      triggerException(bytes32("UnknownContext"));
 
     // Parse context array and get sender address and execution id
     address sender;
@@ -56,7 +51,7 @@ library TokenConsole {
     // Read from storage and store return in buffer -
     // Check that sender is equal to the returned admin address
     if (bytes32(sender) != readSingle(ptr))
-      triggerException(ERR_INSUFFICIENT_PERMISSIONS);
+      triggerException(bytes32("InsufficientPermissions"));
 
     // Sender is admin address - create storage buffer (overwrite previous read buffer), and set return values -
     stOverwrite(ptr);
@@ -110,7 +105,7 @@ library TokenConsole {
   @param _ptr: A pointer to the location in memory where the calldata for the call is stored
   @return store_data: The return values, which will be stored
   */
-  function getBuffer(uint _ptr) internal pure returns (bytes32[] store_data){
+  function getBuffer(uint _ptr) internal pure returns (bytes32[] memory store_data){
     assembly {
       // If the size stored at the pointer is not evenly divislble into 32-byte segments, this was improperly constructed
       if gt(mod(mload(_ptr), 0x20), 0) { revert (0, 0) }
@@ -165,7 +160,7 @@ library TokenConsole {
   @param _ptr: A pointer to the location in memory where the calldata for the call is stored
   @return read_values: The values read from storage
   */
-  function readMulti(uint _ptr) internal view returns (bytes32[] read_values) {
+  function readMulti(uint _ptr) internal view returns (bytes32[] memory read_values) {
     bool success;
     assembly {
       // Minimum length for 'readMulti' - 1 location is 0x84
@@ -184,7 +179,7 @@ library TokenConsole {
       }
     }
     if (!success)
-      triggerException(ERR_READ_FAILED);
+      triggerException(bytes32("StorageReadFailed"));
   }
 
   /*
@@ -204,7 +199,7 @@ library TokenConsole {
       if gt(success, 0) { read_value := mload(_ptr) }
     }
     if (!success)
-      triggerException(ERR_READ_FAILED);
+      triggerException(bytes32("StorageReadFailed"));
   }
 
   /*
@@ -220,7 +215,7 @@ library TokenConsole {
   }
 
   // Parses context array and returns execution id, sender address, and sent wei amount
-  function parse(bytes _context) internal pure returns (bytes32 exec_id, address from, uint wei_sent) {
+  function parse(bytes memory _context) internal pure returns (bytes32 exec_id, address from, uint wei_sent) {
     assembly {
       exec_id := mload(add(0x20, _context))
       from := mload(add(0x40, _context))
@@ -228,6 +223,6 @@ library TokenConsole {
     }
     // Ensure sender and exec id are valid
     if (from == address(0) || exec_id == bytes32(0))
-      triggerException(ERR_UNKNOWN_CONTEXT);
+      triggerException(bytes32("UnknownContext"));
   }
 }

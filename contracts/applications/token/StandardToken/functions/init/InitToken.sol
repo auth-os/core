@@ -6,40 +6,35 @@ library InitToken {
 
   // Storage location for token administrator address
   // Serves no purpose in this standard token contract, but can be used in other token contracts
-  bytes32 public constant TOKEN_ADMIN = keccak256("token_admin");
+  bytes32 internal constant TOKEN_ADMIN = keccak256("token_admin");
 
   // Storage location for token name
-  bytes32 public constant TOKEN_NAME = keccak256("token_name");
+  bytes32 internal constant TOKEN_NAME = keccak256("token_name");
 
   // Storage location for token ticker symbol
-  bytes32 public constant TOKEN_SYMBOL = keccak256("token_symbol");
+  bytes32 internal constant TOKEN_SYMBOL = keccak256("token_symbol");
 
   // Storage location for token decimals
-  bytes32 public constant TOKEN_DECIMALS = keccak256("token_decimals");
+  bytes32 internal constant TOKEN_DECIMALS = keccak256("token_decimals");
 
   // Storage location for token totalSupply
-  bytes32 public constant TOKEN_TOTAL_SUPPLY = keccak256("token_total_supply");
+  bytes32 internal constant TOKEN_TOTAL_SUPPLY = keccak256("token_total_supply");
 
   // Storage seed for user balances mapping
-  bytes32 public constant TOKEN_BALANCES = keccak256("token_balances");
+  bytes32 internal constant TOKEN_BALANCES = keccak256("token_balances");
 
   // Storage seed for user allowances mapping
-  bytes32 public constant TOKEN_ALLOWANCES = keccak256("token_allowances");
+  bytes32 internal constant TOKEN_ALLOWANCES = keccak256("token_allowances");
 
   /// FUNCTION SELECTORS ///
 
   // Function selector for storage "read"
   // read(bytes32 _exec_id, bytes32 _location) view returns (bytes32 data_read);
-  bytes4 public constant RD_SING = bytes4(keccak256("read(bytes32,bytes32)"));
+  bytes4 internal constant RD_SING = bytes4(keccak256("read(bytes32,bytes32)"));
 
   // Function selector for storage 'readMulti'
   // readMulti(bytes32 exec_id, bytes32[] locations)
-  bytes4 public constant RD_MULTI = bytes4(keccak256("readMulti(bytes32,bytes32[])"));
-
-  /// EXCEPTION MESSAGES ///
-
-  bytes32 public constant ERR_READ_FAILED = bytes32("StorageReadFailed"); // Read from storage address failed
-
+  bytes4 internal constant RD_MULTI = bytes4(keccak256("readMulti(bytes32,bytes32[])"));
 
   /*
   Initializes a standard token application. Does not check for valid name, symbol, decimals, supply, or owner.
@@ -52,7 +47,7 @@ library InitToken {
   @return store_data: A formatted storage request - [location][data][location][data]...
   */
   function init(bytes32 _name, bytes32 _symbol, uint _decimals, uint _total_supply, address _owner) public pure
-  returns (bytes32[] store_data) {
+  returns (bytes32[] memory store_data) {
     // Create storage data return buffer in memory
     uint ptr = stBuff();
     // Push payment destination and amount to calldata buffer (0, 0)
@@ -264,7 +259,7 @@ library InitToken {
   @param _ptr: A pointer to the location in memory where the calldata for the call is stored
   @return store_data: The return values, which will be stored
   */
-  function getBuffer(uint _ptr) internal pure returns (bytes32[] store_data){
+  function getBuffer(uint _ptr) internal pure returns (bytes32[] memory store_data){
     assembly {
       // If the size stored at the pointer is not evenly divislble into 32-byte segments, this was improperly constructed
       if gt(mod(mload(_ptr), 0x20), 0) { revert (0, 0) }
@@ -320,7 +315,7 @@ library InitToken {
   @param _storage: The storage address from which to read
   @return read_values: The values read from storage
   */
-  function readMultiFrom(uint _ptr, address _storage) internal view returns (bytes32[] read_values) {
+  function readMultiFrom(uint _ptr, address _storage) internal view returns (bytes32[] memory read_values) {
     bool success;
     assembly {
       // Minimum length for 'readMulti' - 1 location is 0x84
@@ -339,7 +334,7 @@ library InitToken {
       }
     }
     if (!success)
-      triggerException(ERR_READ_FAILED);
+      triggerException(bytes32("StorageReadFailed"));
   }
 
   /*
@@ -360,7 +355,7 @@ library InitToken {
       if gt(success, 0) { read_value := mload(_ptr) }
     }
     if (!success)
-      triggerException(ERR_READ_FAILED);
+      triggerException(bytes32("StorageReadFailed"));
   }
 
   /*

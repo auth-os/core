@@ -6,95 +6,91 @@ library InitRegistry {
 
   // Provider namespace - all app and version storage is seeded to a provider
   // [PROVIDERS][provider_id]
-  bytes32 public constant PROVIDERS = keccak256("registry_providers");
+  bytes32 internal constant PROVIDERS = keccak256("registry_providers");
 
   // Storage location for a list of all applications released by this provider
   // [PROVIDERS][provider_id][PROVIDER_APP_LIST] = bytes32[] registered_apps
-  bytes32 public constant PROVIDER_APP_LIST = keccak256("provider_app_list");
+  bytes32 internal constant PROVIDER_APP_LIST = keccak256("provider_app_list");
 
   /// APPLICATION STORAGE ///
 
   // Application namespace - all app info and version storage is mapped here
   // [PROVIDERS][provider_id][APPS][app_name]
-  bytes32 public constant APPS = keccak256("apps");
+  bytes32 internal constant APPS = keccak256("apps");
 
   // Application description location - (bytes array)
   // [PROVIDERS][provider_id][APPS][app_name][APP_DESC] = bytes description
-  bytes32 public constant APP_DESC = keccak256("app_desc");
+  bytes32 internal constant APP_DESC = keccak256("app_desc");
 
   // Application version list location - (bytes32 array)
   // [PROVIDERS][provider_id][APPS][app_name][APP_VERSIONS_LIST] = bytes32[] version_names
-  bytes32 public constant APP_VERSIONS_LIST = keccak256("app_versions_list");
+  bytes32 internal constant APP_VERSIONS_LIST = keccak256("app_versions_list");
 
   // Application storage address location - address
   // [PROVIDERS][provider_id][APPS][app_name][APP_STORAGE_IMPL] = address app_default_storage_addr
-  bytes32 public constant APP_STORAGE_IMPL = keccak256("app_storage_impl");
+  bytes32 internal constant APP_STORAGE_IMPL = keccak256("app_storage_impl");
 
   /// VERSION STORAGE ///
 
   // Version namespace - all version and function info is mapped here
   // [PROVIDERS][provider_id][APPS][app_hash][VERSIONS]
-  bytes32 public constant VERSIONS = keccak256("versions");
+  bytes32 internal constant VERSIONS = keccak256("versions");
 
   // Version description location - (bytes array)
   // [PROVIDERS][provider_id][APPS][app_hash][VERSIONS][ver_hash][VER_DESC] = bytes description
-  bytes32 public constant VER_DESC = keccak256("ver_desc");
+  bytes32 internal constant VER_DESC = keccak256("ver_desc");
 
   // Version "is finalized" location - whether a version is ready for use (all intended functions implemented)
   // [PROVIDERS][provider_id][APPS][app_hash][VERSIONS][ver_name][VER_IS_FINALIZED] = bool is_finalized
-  bytes32 public constant VER_IS_FINALIZED = keccak256("ver_is_finalized");
+  bytes32 internal constant VER_IS_FINALIZED = keccak256("ver_is_finalized");
 
   // Version function list location - (bytes4 array)
   // [PROVIDERS][provider_id][APPS][app_hash][VERSIONS][ver_name][VER_FUNCTION_LIST] = bytes4[] function_signatures
-  bytes32 public constant VER_FUNCTION_LIST = keccak256("ver_functions_list");
+  bytes32 internal constant VER_FUNCTION_LIST = keccak256("ver_functions_list");
 
   // Version function address location - stores the address where each corresponding version's function is located
   // [PROVIDERS][provider_id][APPS][app_hash][VERSIONS][ver_name][VER_FUNCTION_ADDRESSES] = address[] function_addresses
-  bytes32 public constant VER_FUNCTION_ADDRESSES = keccak256("ver_function_addrs");
+  bytes32 internal constant VER_FUNCTION_ADDRESSES = keccak256("ver_function_addrs");
 
   // Version storage address - if nonzero, overrides application-specified storage address
   // [PROVIDERS][provider_id][APPS][app_hash][VERSIONS][ver_name][VER_PERMISSIONED] = address version_storage_addr
-  bytes32 public constant VER_STORAGE_IMPL = keccak256("ver_storage_impl");
+  bytes32 internal constant VER_STORAGE_IMPL = keccak256("ver_storage_impl");
 
   // Version initialization address location - contains the version's 'init' function
   // [PROVIDERS][provider_id][APPS][app_hash][VERSIONS][ver_name][VER_INIT_ADDR] = address ver_init_addr
-  bytes32 public constant VER_INIT_ADDR = keccak256("ver_init_addr");
+  bytes32 internal constant VER_INIT_ADDR = keccak256("ver_init_addr");
 
   // Version initialization function signature - called when initializing an instance of a version
   // [PROVIDERS][provider_id][APPS][app_hash][VERSIONS][ver_name][VER_INIT_SIG] = bytes4 init_signature
-  bytes32 public constant VER_INIT_SIG = keccak256("ver_init_signature");
+  bytes32 internal constant VER_INIT_SIG = keccak256("ver_init_signature");
 
   // Version 'init' function description location - bytes of a version's initialization function description
   // [PROVIDERS][provider_id][APPS][app_hash][VERSIONS][ver_name][VER_INIT_DESC] = bytes description
-  bytes32 public constant VER_INIT_DESC = keccak256("ver_init_desc");
+  bytes32 internal constant VER_INIT_DESC = keccak256("ver_init_desc");
 
   /// FUNCTION STORAGE ///
 
   // Function namespace - function information is mapped here
   // [PROVIDERS][provider_id][APPS][app_hash][VERSIONS][ver_hash][FUNCTIONS][func_signature]
-  bytes32 public constant FUNCTIONS = keccak256("functions");
+  bytes32 internal constant FUNCTIONS = keccak256("functions");
 
   // Storage location of a function's implementing address
   // [PROVIDERS][provider_id][APPS][app_hash][VERSIONS][ver_hash][FUNCTIONS][func_signature][FUNC_IMPL_ADDR] = address implementation
-  bytes32 public constant FUNC_IMPL_ADDR = keccak256("function_impl_addr");
+  bytes32 internal constant FUNC_IMPL_ADDR = keccak256("function_impl_addr");
 
   // Storage location of a function's description
   // [PROVIDERS][provider_id][APPS][app_hash][VERSIONS][ver_hash][FUNCTIONS][func_signature][FUNC_DESC] = bytes description
-  bytes32 public constant FUNC_DESC = keccak256("func_desc");
+  bytes32 internal constant FUNC_DESC = keccak256("func_desc");
 
   /// FUNCTION SELECTORS ///
 
   // Function selector for storage "read"
   // read(bytes32 _exec_id, bytes32 _location) view returns (bytes32 data_read);
-  bytes4 public constant RD_SING = bytes4(keccak256("read(bytes32,bytes32)"));
+  bytes4 internal constant RD_SING = bytes4(keccak256("read(bytes32,bytes32)"));
 
   // Function selector for storage "readMulti"
   // readMulti(bytes32 _exec_id, bytes32[] _locations) view returns (bytes32[] data_read)
-  bytes4 public constant RD_MULTI = bytes4(keccak256("readMulti(bytes32,bytes32[])"));
-
-  /// EXCEPTION MESSAGES ///
-
-  bytes32 public constant ERR_READ_FAILED = bytes32("StorageReadFailed"); // Read from storage address failed
+  bytes4 internal constant RD_MULTI = bytes4(keccak256("readMulti(bytes32,bytes32[])"));
 
   /// SCRIPT REGISTRY INIT ///
 
@@ -112,7 +108,7 @@ library InitRegistry {
   @return registered_apps: A list of the names of all applications registered by this provider
   */
   function getProviderInfo(address _storage, bytes32 _exec_id, bytes32 _provider) public view
-  returns (bytes32[] registered_apps) {
+  returns (bytes32[] memory registered_apps) {
     // Ensure valid input
     require(_storage != address(0) && _exec_id != bytes32(0) && _provider != bytes32(0));
 
@@ -151,7 +147,7 @@ library InitRegistry {
   @return registered_apps: A list of the names of all applications registered by this provider
   */
   function getProviderInfoFromAddress(address _storage, bytes32 _exec_id, address _provider) public view
-  returns (bytes32 provider, bytes32[] registered_apps) {
+  returns (bytes32 provider, bytes32[] memory registered_apps) {
     // Ensure valid input
     require(_storage != address(0) && _exec_id != bytes32(0) && _provider != address(0));
     // Get provider id from provider address
@@ -196,7 +192,7 @@ library InitRegistry {
   @return app_description: The bytes of an application's description
   */
   function getAppInfo(address _storage, bytes32 _exec_id, bytes32 _provider, bytes32 _app) public view
-  returns (uint num_versions, address app_default_storage, bytes app_description) {
+  returns (uint num_versions, address app_default_storage, bytes memory app_description) {
     // Ensure valid input
     require(_storage != address(0) && _exec_id != bytes32(0));
     require(_provider != bytes32(0) && _app != bytes32(0));
@@ -254,7 +250,7 @@ library InitRegistry {
   @return version_list: A list of all version names associated with this application, in order from oldest to latest
   */
   function getAppVersions(address _storage, bytes32 _exec_id, bytes32 _provider, bytes32 _app) public view
-  returns (uint app_version_count, bytes32[] version_list) {
+  returns (uint app_version_count, bytes32[] memory version_list) {
     // Ensure valid input
     require(_storage != address(0) && _exec_id != bytes32(0));
     require(_provider != bytes32(0) && _app != bytes32(0));
@@ -305,7 +301,7 @@ library InitRegistry {
   @return allowed: An array of addresses whcih implement the application's functions
   */
   function getAppLatestInfo(address _storage, bytes32 _exec_id, bytes32 _provider, bytes32 _app) public view
-  returns (address app_storage_addr, bytes32 latest_version, address app_init_addr, address[] allowed) {
+  returns (address app_storage_addr, bytes32 latest_version, address app_init_addr, address[] memory allowed) {
     // Ensure valid input
     require(_storage != address(0) && _exec_id != bytes32(0));
     require(_provider != bytes32(0) && _app != bytes32(0));
@@ -448,7 +444,7 @@ library InitRegistry {
   @return version_description: The bytes of a version's description
   */
   function getVersionInfo(address _storage, bytes32 _exec_id, bytes32 _provider, bytes32 _app, bytes32 _version) public view
-  returns (bool is_finalized, uint num_functions, address version_storage, bytes version_description) {
+  returns (bool is_finalized, uint num_functions, address version_storage, bytes memory version_description) {
     // Ensure valid input
     require(_storage != address(0) && _exec_id != bytes32(0));
     require(_provider != bytes32(0) && _app != bytes32(0) && _version != bytes32(0));
@@ -520,7 +516,7 @@ library InitRegistry {
   @return init_description: The bytes of the version's initialization description
   */
   function getVersionInitInfo(address _storage, bytes32 _exec_id, bytes32 _provider, bytes32 _app, bytes32 _version) public view
-  returns (address init_impl, bytes4 init_signature, bytes init_description) {
+  returns (address init_impl, bytes4 init_signature, bytes memory init_description) {
     // Ensure valid input
     require(_storage != address(0) && _exec_id != bytes32(0));
     require(_provider != bytes32(0) && _app != bytes32(0) && _version != bytes32(0));
@@ -589,7 +585,7 @@ library InitRegistry {
   @return function_locations: The addresses where each corresponding function is implemented
   */
   function getVersionImplementation(address _storage, bytes32 _exec_id, bytes32 _provider, bytes32 _app, bytes32 _version) public view
-  returns (bytes4[] function_signatures, address[] function_locations) {
+  returns (bytes4[] memory function_signatures, address[] memory function_locations) {
     // Ensure valid input
     require(_storage != address(0) && _exec_id != bytes32(0));
     require(_provider != bytes32(0) && _app != bytes32(0) && _version != bytes32(0));
@@ -659,7 +655,7 @@ library InitRegistry {
   @return impl_description: The bytes of the function's description
   */
   function getImplementationInfo(address _storage, bytes32 _exec_id, bytes32 _provider, bytes32 _app, bytes32 _version, bytes4 _impl_signature) public view
-  returns (address impl_location, bytes impl_description) {
+  returns (address impl_location, bytes memory impl_description) {
     // Ensure valid input
     require(_storage != address(0) && _exec_id != bytes32(0));
     require(_provider != bytes32(0) && _app != bytes32(0) && _version != bytes32(0) && _impl_signature != bytes4(0));
@@ -781,7 +777,7 @@ library InitRegistry {
   @param _storage: The address to read from
   @return read_values: The values read from storage
   */
-  function readMultiFrom(uint _ptr, address _storage) internal view returns (bytes32[] read_values) {
+  function readMultiFrom(uint _ptr, address _storage) internal view returns (bytes32[] memory read_values) {
     bool success;
     assembly {
       // Minimum length for 'readMulti' - 1 location is 0x84
@@ -800,7 +796,7 @@ library InitRegistry {
       }
     }
     if (!success)
-      triggerException(ERR_READ_FAILED);
+      triggerException(bytes32("StorageReadFailed"));
   }
 
   /*
@@ -810,7 +806,7 @@ library InitRegistry {
   @param _storage: The address to read from
   @return read_values: The values read from storage
   */
-  function readMultiBytes4From(uint _ptr, address _storage) internal view returns (bytes4[] read_values) {
+  function readMultiBytes4From(uint _ptr, address _storage) internal view returns (bytes4[] memory read_values) {
     bool success;
     assembly {
       // Minimum length for 'readMulti' - 1 location is 0x84
@@ -829,7 +825,7 @@ library InitRegistry {
       }
     }
     if (!success)
-      triggerException(ERR_READ_FAILED);
+      triggerException(bytes32("StorageReadFailed"));
   }
 
   /*
@@ -839,7 +835,7 @@ library InitRegistry {
   @param _storage: The address to read from
   @return read_values: The values read from storage
   */
-  function readMultiAddressFrom(uint _ptr, address _storage) internal view returns (address[] read_values) {
+  function readMultiAddressFrom(uint _ptr, address _storage) internal view returns (address[] memory read_values) {
     bool success;
     assembly {
       // Minimum length for 'readMulti' - 1 location is 0x84
@@ -858,7 +854,7 @@ library InitRegistry {
       }
     }
     if (!success)
-      triggerException(ERR_READ_FAILED);
+      triggerException(bytes32("StorageReadFailed"));
   }
 
   /*
@@ -869,7 +865,7 @@ library InitRegistry {
   @param _storage: The address to read from
   @return read_values: The bytes array read from storage
   */
-  function readMultiBytesFrom(uint _ptr, uint _arr_len, address _storage) internal view returns (bytes read_values) {
+  function readMultiBytesFrom(uint _ptr, uint _arr_len, address _storage) internal view returns (bytes memory read_values) {
     bool success;
     assembly {
       // Minimum length for 'readMulti' - 1 location is 0x84
@@ -890,7 +886,7 @@ library InitRegistry {
       }
     }
     if (!success)
-      triggerException(ERR_READ_FAILED);
+      triggerException(bytes32("StorageReadFailed"));
   }
 
   /*
@@ -911,7 +907,7 @@ library InitRegistry {
       if gt(success, 0) { read_value := mload(_ptr) }
     }
     if (!success)
-      triggerException(ERR_READ_FAILED);
+      triggerException(bytes32("StorageReadFailed"));
   }
 
   /*

@@ -5,77 +5,71 @@ library InitCrowdsale {
   /// CROWDSALE STORAGE ///
 
   // Storage location of crowdsale admin address
-  bytes32 public constant ADMIN = keccak256("admin");
+  bytes32 internal constant ADMIN = keccak256("admin");
 
   // Whether the crowdsale and token are initialized, and the application is ready to run
-  bytes32 public constant CROWDSALE_IS_INIT = keccak256("crowdsale_is_init");
+  bytes32 internal constant CROWDSALE_IS_INIT = keccak256("crowdsale_is_init");
 
   // Whether or not the crowdsale is post-purchase
-  bytes32 public constant CROWDSALE_IS_FINALIZED = keccak256("crowdsale_is_finalized");
+  bytes32 internal constant CROWDSALE_IS_FINALIZED = keccak256("crowdsale_is_finalized");
 
   // Storage location of team funds wallet
-  bytes32 public constant WALLET = keccak256("crowdsale_wallet");
+  bytes32 internal constant WALLET = keccak256("crowdsale_wallet");
 
   // Storage location of amount of wei raised during the crowdsale, total
-  bytes32 public constant WEI_RAISED = keccak256("crowdsale_wei_raised");
+  bytes32 internal constant WEI_RAISED = keccak256("crowdsale_wei_raised");
 
   // Storage location of the maximum number of tokens to sell
-  bytes32 public constant MAX_TOKEN_SELL_CAP = keccak256("token_sell_cap");
+  bytes32 internal constant MAX_TOKEN_SELL_CAP = keccak256("token_sell_cap");
 
   // Storage location for the amount of tokens still available for purchase in this crowdsale
-  bytes32 public constant TOKENS_REMAINING = keccak256("crowdsale_tokens_remaining");
+  bytes32 internal constant TOKENS_REMAINING = keccak256("crowdsale_tokens_remaining");
 
   // Storage location of crowdsale start time
-  bytes32 public constant CROWDSALE_STARTS_AT = keccak256("crowdsale_starts_at");
+  bytes32 internal constant CROWDSALE_STARTS_AT = keccak256("crowdsale_starts_at");
 
   // Storage location of duration of crowdsale
-  bytes32 public constant CROWDSALE_DURATION = keccak256("crowdsale_duration");
+  bytes32 internal constant CROWDSALE_DURATION = keccak256("crowdsale_duration");
 
   // Storage location of the token/wei rate at the beginning of the sale
-  bytes32 public constant STARTING_SALE_RATE = keccak256("crowdsale_start_rate");
+  bytes32 internal constant STARTING_SALE_RATE = keccak256("crowdsale_start_rate");
 
   // Storage location of the token/wei rate at the beginning of the sale
-  bytes32 public constant ENDING_SALE_RATE = keccak256("crowdsale_end_rate");
+  bytes32 internal constant ENDING_SALE_RATE = keccak256("crowdsale_end_rate");
 
   /// TOKEN STORAGE ///
 
   // Storage location for token name
-  bytes32 public constant TOKEN_NAME = keccak256("token_name");
+  bytes32 internal constant TOKEN_NAME = keccak256("token_name");
 
   // Storage location for token ticker symbol
-  bytes32 public constant TOKEN_SYMBOL = keccak256("token_symbol");
+  bytes32 internal constant TOKEN_SYMBOL = keccak256("token_symbol");
 
   // Storage location for token decimals
-  bytes32 public constant TOKEN_DECIMALS = keccak256("token_decimals");
+  bytes32 internal constant TOKEN_DECIMALS = keccak256("token_decimals");
 
   // Storage location for token totalSupply
-  bytes32 public constant TOKEN_TOTAL_SUPPLY = keccak256("token_total_supply");
+  bytes32 internal constant TOKEN_TOTAL_SUPPLY = keccak256("token_total_supply");
 
   // Storage seed for user balances mapping
-  bytes32 public constant TOKEN_BALANCES = keccak256("token_balances");
+  bytes32 internal constant TOKEN_BALANCES = keccak256("token_balances");
 
   // Storage seed for user allowances mapping
-  bytes32 public constant TOKEN_ALLOWANCES = keccak256("token_allowances");
+  bytes32 internal constant TOKEN_ALLOWANCES = keccak256("token_allowances");
 
   // Storage seed for token 'transfer agent' status for any address
   // Transfer agents can transfer tokens, even if the crowdsale has not yet been finalized
-  bytes32 public constant TOKEN_TRANSFER_AGENTS = keccak256("token_transfer_agents");
+  bytes32 internal constant TOKEN_TRANSFER_AGENTS = keccak256("token_transfer_agents");
 
   /// FUNCTION SELECTORS ///
 
   // Function selector for storage "read"
   // read(bytes32 _exec_id, bytes32 _location) view returns (bytes32 data_read);
-  bytes4 public constant RD_SING = bytes4(keccak256("read(bytes32,bytes32)"));
+  bytes4 internal constant RD_SING = bytes4(keccak256("read(bytes32,bytes32)"));
 
   // Function selector for storage 'readMulti'
   // readMulti(bytes32 exec_id, bytes32[] locations)
-  bytes4 public constant RD_MULTI = bytes4(keccak256("readMulti(bytes32,bytes32[])"));
-
-  /// EXCEPTION MESSAGES ///
-
-  bytes32 public constant ERR_IMPROPER_INITIALIZATION = bytes32("ImproperInitialization"); // Initialization variables invalid
-  bytes32 public constant ERR_READ_FAILED = bytes32("StorageReadFailed"); // Read from storage address failed
-
+  bytes4 internal constant RD_MULTI = bytes4(keccak256("readMulti(bytes32,bytes32[])"));
 
   /*
   Creates a dutch auction style crowdsale with initial conditions. The sender (admin) should now initialize the crowdsale's token,
@@ -92,7 +86,7 @@ library InitCrowdsale {
   @return store_data: A formatted storage request
   */
   function init(address _wallet, uint _total_supply, uint _max_amount_to_sell, uint _starting_rate, uint _ending_rate, uint _duration, uint _start_time, address _admin) public view
-  returns (bytes32[] store_data) {
+  returns (bytes32[] memory store_data) {
     // Ensure valid input
     if (
       _wallet == address(0)
@@ -103,7 +97,7 @@ library InitCrowdsale {
       || _start_time <= now
       || _duration == 0
       || _admin == address(0)
-    ) triggerException(ERR_IMPROPER_INITIALIZATION);
+    ) triggerException(bytes32("ImproperInitialization"));
 
     // Create storage data return buffer in memory
     uint ptr = stBuff();
@@ -491,7 +485,7 @@ library InitCrowdsale {
   @param _ptr: A pointer to the location in memory where the calldata for the call is stored
   @return store_data: The return values, which will be stored
   */
-  function getBuffer(uint _ptr) internal pure returns (bytes32[] store_data){
+  function getBuffer(uint _ptr) internal pure returns (bytes32[] memory store_data){
     assembly {
       // If the size stored at the pointer is not evenly divislble into 32-byte segments, this was improperly constructed
       if gt(mod(mload(_ptr), 0x20), 0) { revert (0, 0) }
@@ -547,7 +541,7 @@ library InitCrowdsale {
   @param _storage: The storage address from which to read
   @return read_values: The values read from storage
   */
-  function readMultiFrom(uint _ptr, address _storage) internal view returns (bytes32[] read_values) {
+  function readMultiFrom(uint _ptr, address _storage) internal view returns (bytes32[] memory read_values) {
     bool success;
     assembly {
       // Minimum length for 'readMulti' - 1 location is 0x84
@@ -566,7 +560,7 @@ library InitCrowdsale {
       }
     }
     if (!success)
-      triggerException(ERR_READ_FAILED);
+      triggerException(bytes32("StorageReadFailed"));
   }
 
   /*
@@ -587,7 +581,7 @@ library InitCrowdsale {
       if gt(success, 0) { read_value := mload(_ptr) }
     }
     if (!success)
-      triggerException(ERR_READ_FAILED);
+      triggerException(bytes32("StorageReadFailed"));
   }
 
   /*
@@ -597,7 +591,7 @@ library InitCrowdsale {
   @param _storage: The address to read from
   @return read_values: The values read from storage
   */
-  function readMultiUintFrom(uint _ptr, address _storage) internal view returns (uint[] read_values) {
+  function readMultiUintFrom(uint _ptr, address _storage) internal view returns (uint[] memory read_values) {
     bool success;
     assembly {
       // Minimum length for 'readMulti' - 1 location is 0x84
@@ -616,7 +610,7 @@ library InitCrowdsale {
       }
     }
     if (!success)
-      triggerException(ERR_READ_FAILED);
+      triggerException(bytes32("StorageReadFailed"));
   }
 
   /*

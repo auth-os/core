@@ -6,63 +6,57 @@ library VersionConsole {
 
   // Provider namespace - all app and version storage is seeded to a provider
   // [PROVIDERS][provider_id]
-  bytes32 public constant PROVIDERS = keccak256("registry_providers");
+  bytes32 internal constant PROVIDERS = keccak256("registry_providers");
 
   /// APPLICATION STORAGE ///
 
   // Application namespace - all app info and version storage is mapped here
   // [PROVIDERS][provider_id][APPS][app_name]
-  bytes32 public constant APPS = keccak256("apps");
+  bytes32 internal constant APPS = keccak256("apps");
 
   // Application version list location - (bytes32 array)
   // [PROVIDERS][provider_id][APPS][app_name][APP_VERSIONS_LIST] = bytes32[] version_names
-  bytes32 public constant APP_VERSIONS_LIST = keccak256("app_versions_list");
+  bytes32 internal constant APP_VERSIONS_LIST = keccak256("app_versions_list");
 
   // Application storage address location - address
   // [PROVIDERS][provider_id][APPS][app_name][APP_STORAGE_IMPL] = address app_default_storage_addr
-  bytes32 public constant APP_STORAGE_IMPL = keccak256("app_storage_impl");
+  bytes32 internal constant APP_STORAGE_IMPL = keccak256("app_storage_impl");
 
   /// VERSION STORAGE ///
 
   // Version namespace - all version and function info is mapped here
   // [PROVIDERS][provider_id][APPS][app_hash][VERSIONS]
-  bytes32 public constant VERSIONS = keccak256("versions");
+  bytes32 internal constant VERSIONS = keccak256("versions");
 
   // Version description location - (bytes array)
   // [PROVIDERS][provider_id][APPS][app_hash][VERSIONS][ver_hash][VER_DESC] = bytes description
-  bytes32 public constant VER_DESC = keccak256("ver_desc");
+  bytes32 internal constant VER_DESC = keccak256("ver_desc");
 
   // Version "is finalized" location - whether a version is ready for use (all intended functions implemented)
   // [PROVIDERS][provider_id][APPS][app_hash][VERSIONS][ver_name][VER_IS_FINALIZED] = bool is_finalized
-  bytes32 public constant VER_IS_FINALIZED = keccak256("ver_is_finalized");
+  bytes32 internal constant VER_IS_FINALIZED = keccak256("ver_is_finalized");
 
   // Version storage address - if nonzero, overrides application-specified storage address
   // [PROVIDERS][provider_id][APPS][app_hash][VERSIONS][ver_name][VER_PERMISSIONED] = address version_storage_addr
-  bytes32 public constant VER_STORAGE_IMPL = keccak256("ver_storage_impl");
+  bytes32 internal constant VER_STORAGE_IMPL = keccak256("ver_storage_impl");
 
   // Version initialization address location - contains the version's 'init' function
   // [PROVIDERS][provider_id][APPS][app_hash][VERSIONS][ver_name][VER_INIT_ADDR] = address ver_init_addr
-  bytes32 public constant VER_INIT_ADDR = keccak256("ver_init_addr");
+  bytes32 internal constant VER_INIT_ADDR = keccak256("ver_init_addr");
 
   // Version initialization function signature - called when initializing an instance of a version
   // [PROVIDERS][provider_id][APPS][app_hash][VERSIONS][ver_name][VER_INIT_SIG] = bytes4 init_signature
-  bytes32 public constant VER_INIT_SIG = keccak256("ver_init_signature");
+  bytes32 internal constant VER_INIT_SIG = keccak256("ver_init_signature");
 
   // Version 'init' function description location - bytes of a version's initialization function description
   // [PROVIDERS][provider_id][APPS][app_hash][VERSIONS][ver_name][VER_INIT_DESC] = bytes description
-  bytes32 public constant VER_INIT_DESC = keccak256("ver_init_desc");
+  bytes32 internal constant VER_INIT_DESC = keccak256("ver_init_desc");
 
   /// FUNCTION SELECTORS ///
 
   // Function selector for storage 'readMulti'
   // readMulti(bytes32 exec_id, bytes32[] locations)
-  bytes4 public constant RD_MULTI = bytes4(keccak256("readMulti(bytes32,bytes32[])"));
-
-  /// EXCEPTION MESSAGES ///
-
-  bytes32 public constant ERR_UNKNOWN_CONTEXT = bytes32("UnknownContext"); // Malformed '_context' array
-  bytes32 public constant ERR_INSUFFICIENT_PERMISSIONS = bytes32("InsufficientPermissions"); // Action not allowed
-  bytes32 public constant ERR_READ_FAILED = bytes32("StorageReadFailed"); // Read from storage address failed
+  bytes4 internal constant RD_MULTI = bytes4(keccak256("readMulti(bytes32,bytes32[])"));
 
   /// FUNCTIONS ///
 
@@ -79,8 +73,8 @@ library VersionConsole {
     3. Wei amount sent with transaction to storage
   @return store_data: A formatted storage request - first 64 bytes designate a forwarding address (and amount) for any wei sent
   */
-  function registerVersion(bytes32 _app, bytes32 _ver_name, address _ver_storage, bytes _ver_desc, bytes _context) public view
-  returns (bytes32[] store_data) {
+  function registerVersion(bytes32 _app, bytes32 _ver_name, address _ver_storage, bytes memory _ver_desc, bytes memory _context) public view
+  returns (bytes32[] memory store_data) {
     // Ensure input is correctly formatted
     require(_context.length == 96);
     require(_app != bytes32(0) && _ver_name != bytes32(0) && _ver_desc.length > 0);
@@ -115,7 +109,7 @@ library VersionConsole {
       read_values[0] == bytes32(0) // Application does not exist
       || read_values[1] != bytes32(0) // Version name already exists
     ) {
-      triggerException(ERR_INSUFFICIENT_PERMISSIONS);
+      triggerException(bytes32("InsufficientPermissions"));
     }
 
     // If passed in version storage address is zero, set version storage address to returned app default storage address
@@ -168,8 +162,8 @@ library VersionConsole {
     3. Wei amount sent with transaction to storage
   @return store_data: A formatted storage request - first 64 bytes designate a forwarding address (and amount) for any wei sent
   */
-  function finalizeVersion(bytes32 _app, bytes32 _ver_name, address _ver_init_address, bytes4 _init_sig, bytes _init_description, bytes _context) public view
-  returns (bytes32[] store_data) {
+  function finalizeVersion(bytes32 _app, bytes32 _ver_name, address _ver_init_address, bytes4 _init_sig, bytes memory _init_description, bytes memory _context) public view
+  returns (bytes32[] memory store_data) {
     // Ensure input is correctly formatted
     require(_context.length == 96);
     require(_app != bytes32(0) && _ver_name != bytes32(0));
@@ -206,7 +200,7 @@ library VersionConsole {
       || read_values[1] == bytes32(0) // Version does not exist
       || read_values[2] != bytes32(0) // Version already finalized
     ) {
-      triggerException(ERR_INSUFFICIENT_PERMISSIONS);
+      triggerException(bytes32("InsufficientPermissions"));
     }
 
     /// App and version are registered, and version is ready to be finalized -
@@ -273,7 +267,7 @@ library VersionConsole {
   @param _base_location: The storage location of the length of the array
   @param _arr: The bytes array to push
   */
-  function stPushBytes(uint _ptr, bytes32 _base_location, bytes _arr) internal pure {
+  function stPushBytes(uint _ptr, bytes32 _base_location, bytes memory _arr) internal pure {
     assembly {
       // Get end of buffer - 32 bytes plus the length stored at the pointer
       let len := add(0x20, mload(_ptr))
@@ -300,7 +294,7 @@ library VersionConsole {
   @param _ptr: A pointer to the location in memory where the calldata for the call is stored
   @return store_data: The return values, which will be stored
   */
-  function getBuffer(uint _ptr) internal pure returns (bytes32[] store_data){
+  function getBuffer(uint _ptr) internal pure returns (bytes32[] memory store_data){
     assembly {
       // If the size stored at the pointer is not evenly divislble into 32-byte segments, this was improperly constructed
       if gt(mod(mload(_ptr), 0x20), 0) { revert (0, 0) }
@@ -355,7 +349,7 @@ library VersionConsole {
   @param _ptr: A pointer to the location in memory where the calldata for the call is stored
   @return read_values: The values read from storage
   */
-  function readMulti(uint _ptr) internal view returns (bytes32[] read_values) {
+  function readMulti(uint _ptr) internal view returns (bytes32[] memory read_values) {
     bool success;
     assembly {
       // Minimum length for 'readMulti' - 1 location is 0x84
@@ -374,7 +368,7 @@ library VersionConsole {
       }
     }
     if (!success)
-      triggerException(ERR_READ_FAILED);
+      triggerException(bytes32("StorageReadFailed"));
   }
 
   /*
@@ -391,7 +385,7 @@ library VersionConsole {
 
 
   // Parses context array and returns execution id, sender address, and sent wei amount
-  function parse(bytes _context) internal pure returns (bytes32 exec_id, address from, uint wei_sent) {
+  function parse(bytes memory _context) internal pure returns (bytes32 exec_id, address from, uint wei_sent) {
     assembly {
       exec_id := mload(add(0x20, _context))
       from := mload(add(0x40, _context))
@@ -399,6 +393,6 @@ library VersionConsole {
     }
     // Ensure sender and exec id are valid
     if (from == address(0) || exec_id == bytes32(0))
-      triggerException(ERR_UNKNOWN_CONTEXT);
+      triggerException(bytes32("UnknownContext"));
   }
 }

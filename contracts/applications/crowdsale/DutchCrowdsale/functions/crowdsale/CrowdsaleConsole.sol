@@ -5,49 +5,42 @@ library CrowdsaleConsole {
   /// CROWDSALE STORAGE ///
 
   // Storage location of crowdsale admin address
-  bytes32 public constant ADMIN = keccak256("admin");
+  bytes32 internal constant ADMIN = keccak256("admin");
 
   // Whether the crowdsale and token are initialized, and the application is ready to run
-  bytes32 public constant CROWDSALE_IS_INIT = keccak256("crowdsale_is_init");
+  bytes32 internal constant CROWDSALE_IS_INIT = keccak256("crowdsale_is_init");
 
   // Whether or not the crowdsale is post-purchase
-  bytes32 public constant CROWDSALE_IS_FINALIZED = keccak256("crowdsale_is_finalized");
+  bytes32 internal constant CROWDSALE_IS_FINALIZED = keccak256("crowdsale_is_finalized");
 
   // Storage location of crowdsale start time
-  bytes32 public constant CROWDSALE_STARTS_AT = keccak256("crowdsale_starts_at");
+  bytes32 internal constant CROWDSALE_STARTS_AT = keccak256("crowdsale_starts_at");
 
   // Storage location of duration of crowdsale
-  bytes32 public constant CROWDSALE_DURATION = keccak256("crowdsale_duration");
+  bytes32 internal constant CROWDSALE_DURATION = keccak256("crowdsale_duration");
 
   /// TOKEN STORAGE ///
 
   // Storage location for token name
-  bytes32 public constant TOKEN_NAME = keccak256("token_name");
+  bytes32 internal constant TOKEN_NAME = keccak256("token_name");
 
   // Storage location for token ticker symbol
-  bytes32 public constant TOKEN_SYMBOL = keccak256("token_symbol");
+  bytes32 internal constant TOKEN_SYMBOL = keccak256("token_symbol");
 
   // Storage location for token decimals
-  bytes32 public constant TOKEN_DECIMALS = keccak256("token_decimals");
+  bytes32 internal constant TOKEN_DECIMALS = keccak256("token_decimals");
 
   /// FUNCTION SELECTORS ///
 
   // Function selector for storage 'readMulti'
   // readMulti(bytes32 exec_id, bytes32[] locations)
-  bytes4 public constant RD_MULTI = bytes4(keccak256("readMulti(bytes32,bytes32[])"));
-
-  /// EXCEPTION MESSAGES ///
-
-  bytes32 public constant ERR_UNKNOWN_CONTEXT = bytes32("UnknownContext"); // Malformed '_context' array
-  bytes32 public constant ERR_IMPROPER_INITIALIZATION = bytes32("ImproperInitialization"); // Initialization variables invalid
-  bytes32 public constant ERR_INSUFFICIENT_PERMISSIONS = bytes32("InsufficientPermissions"); // Action not allowed
-  bytes32 public constant ERR_READ_FAILED = bytes32("StorageReadFailed"); // Read from storage address failed
+  bytes4 internal constant RD_MULTI = bytes4(keccak256("readMulti(bytes32,bytes32[])"));
 
   // Modifier - will only allow access to a crowdsale's admin address
   // Additionally, crowdasle must not be initialized
-  modifier onlyAdminAndNotInit(bytes _context) {
+  modifier onlyAdminAndNotInit(bytes memory _context) {
     if (_context.length != 96)
-      triggerException(ERR_UNKNOWN_CONTEXT);
+      triggerException(bytes32("UnknownContext"));
     // Get sender and exec id for this instance
     address sender;
     bytes32 exec_id;
@@ -67,7 +60,7 @@ library CrowdsaleConsole {
 
     // Check that the sender is the admin address and that the crowdsale is not yet initialized
     if (read_values[0] != bytes32(sender) || read_values[1] != bytes32(0))
-      triggerException(ERR_INSUFFICIENT_PERMISSIONS);
+      triggerException(bytes32("InsufficientPermissions"));
 
     // All checks passed - sender is crowdsale admin, and crowdsale is not initialized
     _;
@@ -84,14 +77,14 @@ library CrowdsaleConsole {
     3. Wei amount sent with transaction to storage
   @return store_data: A formatted storage request - first 64 bytes designate a forwarding address (and amount) for any wei sent
   */
-  function initCrowdsaleToken(bytes32 _name, bytes32 _symbol, uint _decimals, bytes _context) public onlyAdminAndNotInit(_context) view
-  returns (bytes32[] store_data) {
+  function initCrowdsaleToken(bytes32 _name, bytes32 _symbol, uint _decimals, bytes memory _context) public onlyAdminAndNotInit(_context) view
+  returns (bytes32[] memory store_data) {
     // Ensure valid input
     if (
       _name == bytes32(0)
       || _symbol == bytes32(0)
       || _decimals > 18
-    ) triggerException(ERR_IMPROPER_INITIALIZATION);
+    ) triggerException(bytes32("ImproperInitialization"));
 
     // Create memory buffer for return data
     uint ptr = stBuff();
@@ -122,7 +115,8 @@ library CrowdsaleConsole {
     3. Wei amount sent with transaction to storage
   @return store_data: A formatted storage request - first 64 bytes designate a forwarding address (and amount) for any wei sent
   */
-  function setCrowdsaleStartAndDuration(uint _start_time, uint _duration, bytes _context) public onlyAdminAndNotInit(_context) view returns (bytes32[] store_data) {
+  function setCrowdsaleStartAndDuration(uint _start_time, uint _duration, bytes memory _context) public onlyAdminAndNotInit(_context) view
+  returns (bytes32[] memory store_data) {
     // Ensure valid input
     require(_start_time > now && _duration > 0);
 
@@ -151,8 +145,8 @@ library CrowdsaleConsole {
     3. Wei amount sent with transaction to storage
   @return store_data: A formatted storage request - first 64 bytes designate a forwarding address (and amount) for any wei sent
   */
-  function initializeCrowdsale(bytes _context) public onlyAdminAndNotInit(_context) view
-  returns (bytes32[] store_data) {
+  function initializeCrowdsale(bytes memory _context) public onlyAdminAndNotInit(_context) view
+  returns (bytes32[] memory store_data) {
     // Get execuion id from _context
     bytes32 exec_id;
     (exec_id, , ) = parse(_context);
@@ -172,7 +166,7 @@ library CrowdsaleConsole {
     if (
       read_values[0] < bytes32(now)
       || read_values[1] == bytes32(0)
-    ) triggerException(ERR_INSUFFICIENT_PERMISSIONS);
+    ) triggerException(bytes32("InsufficientPermissions"));
 
     // Overwrite read buffer with storage buffer
     stOverwrite(ptr);
@@ -195,10 +189,10 @@ library CrowdsaleConsole {
     3. Wei amount sent with transaction to storage
   @return store_data: A formatted storage request - first 64 bytes designate a forwarding address (and amount) for any wei sent
   */
-  function finalizeCrowdsale(bytes _context) public view returns (bytes32[] store_data) {
+  function finalizeCrowdsale(bytes memory _context) public view returns (bytes32[] memory store_data) {
     // Ensure valid input
     if (_context.length != 96)
-      triggerException(ERR_UNKNOWN_CONTEXT);
+      triggerException(bytes32("UnknownContext"));
 
     // Get sender and exec id for this app instance
     address sender;
@@ -222,7 +216,7 @@ library CrowdsaleConsole {
       read_values[0] != bytes32(sender)
       || read_values[1] == bytes32(0) // Crowdsale init status is false
       || read_values[2] == bytes32(1) // Crowdsale finalization status is true
-    ) triggerException(ERR_INSUFFICIENT_PERMISSIONS);
+    ) triggerException(bytes32("InsufficientPermissions"));
 
     // Create storage buffer, overwriting the previous read buffer
     stOverwrite(ptr);
@@ -292,7 +286,7 @@ library CrowdsaleConsole {
   @param _ptr: A pointer to the location in memory where the calldata for the call is stored
   @return store_data: The return values, which will be stored
   */
-  function getBuffer(uint _ptr) internal pure returns (bytes32[] store_data){
+  function getBuffer(uint _ptr) internal pure returns (bytes32[] memory store_data){
     assembly {
       // If the size stored at the pointer is not evenly divislble into 32-byte segments, this was improperly constructed
       if gt(mod(mload(_ptr), 0x20), 0) { revert (0, 0) }
@@ -347,7 +341,7 @@ library CrowdsaleConsole {
   @param _ptr: A pointer to the location in memory where the calldata for the call is stored
   @return read_values: The values read from storage
   */
-  function readMulti(uint _ptr) internal view returns (bytes32[] read_values) {
+  function readMulti(uint _ptr) internal view returns (bytes32[] memory read_values) {
     bool success;
     assembly {
       // Minimum length for 'readMulti' - 1 location is 0x84
@@ -366,7 +360,7 @@ library CrowdsaleConsole {
       }
     }
     if (!success)
-      triggerException(ERR_READ_FAILED);
+      triggerException(bytes32("StorageReadFailed"));
   }
 
   /*
@@ -375,7 +369,7 @@ library CrowdsaleConsole {
   @param _ptr: A pointer to the location in memory where the calldata for the call is stored
   @return read_values: The values read from storage
   */
-  function readMultiUint(uint _ptr) internal view returns (uint[] read_values) {
+  function readMultiUint(uint _ptr) internal view returns (uint[] memory read_values) {
     bool success;
     assembly {
       // Minimum length for 'readMulti' - 1 location is 0x84
@@ -394,7 +388,7 @@ library CrowdsaleConsole {
       }
     }
     if (!success)
-      triggerException(ERR_READ_FAILED);
+      triggerException(bytes32("StorageReadFailed"));
   }
 
   /*
@@ -414,7 +408,7 @@ library CrowdsaleConsole {
       if gt(success, 0) { read_value := mload(_ptr) }
     }
     if (!success)
-      triggerException(ERR_READ_FAILED);
+      triggerException(bytes32("StorageReadFailed"));
   }
 
   /*
@@ -430,7 +424,7 @@ library CrowdsaleConsole {
   }
 
   // Parses context array and returns execution id, sender address, and sent wei amount
-  function parse(bytes _context) internal pure returns (bytes32 exec_id, address from, uint wei_sent) {
+  function parse(bytes memory _context) internal pure returns (bytes32 exec_id, address from, uint wei_sent) {
     assembly {
       exec_id := mload(add(0x20, _context))
       from := mload(add(0x40, _context))
@@ -438,6 +432,6 @@ library CrowdsaleConsole {
     }
     // Ensure sender and exec id are valid
     if (from == address(0) || exec_id == bytes32(0))
-      triggerException(ERR_UNKNOWN_CONTEXT);
+      triggerException(bytes32("UnknownContext"));
   }
 }

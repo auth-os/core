@@ -5,25 +5,25 @@ library TokenTransferFrom {
   /// CROWDSALE STORAGE ///
 
   // Whether or not the crowdsale is post-purchase
-  bytes32 public constant CROWDSALE_IS_FINALIZED = keccak256("crowdsale_is_finalized");
+  bytes32 internal constant CROWDSALE_IS_FINALIZED = keccak256("crowdsale_is_finalized");
 
   /// TOKEN STORAGE ///
 
   // Storage seed for user balances mapping
-  bytes32 public constant TOKEN_BALANCES = keccak256("token_balances");
+  bytes32 internal constant TOKEN_BALANCES = keccak256("token_balances");
 
   // Storage seed for user allowances mapping
-  bytes32 public constant TOKEN_ALLOWANCES = keccak256("token_allowances");
+  bytes32 internal constant TOKEN_ALLOWANCES = keccak256("token_allowances");
 
   // Storage seed for token 'transfer agent' status for any address
   // Transfer agents can transfer tokens, even if the crowdsale has not yet been finalized
-  bytes32 public constant TOKEN_TRANSFER_AGENTS = keccak256("token_transfer_agents");
+  bytes32 internal constant TOKEN_TRANSFER_AGENTS = keccak256("token_transfer_agents");
 
   /// FUNCTION SELECTORS ///
 
   // Function selector for storage 'readMulti'
   // readMulti(bytes32 exec_id, bytes32[] locations)
-  bytes4 public constant RD_MULTI = bytes4(keccak256("readMulti(bytes32,bytes32[])"));
+  bytes4 internal constant RD_MULTI = bytes4(keccak256("readMulti(bytes32,bytes32[])"));
 
   /// EXCEPTION MESSAGES ///
 
@@ -43,8 +43,8 @@ library TokenTransferFrom {
     3. Wei amount sent with transaction to storage
   @return store_data: A formatted storage request - first 64 bytes designate a forwarding address (and amount) for any wei sent
   */
-  function transferFrom(address _from, address _to, uint _amt, bytes _context) public view
-  returns (bytes32[] store_data) {
+  function transferFrom(address _from, address _to, uint _amt, bytes memory _context) public view
+  returns (bytes32[] memory store_data) {
     // Ensure valid inputs
     require(_to != address(0) && _amt != 0 && _from != address(0));
     if (_context.length != 96)
@@ -150,7 +150,7 @@ library TokenTransferFrom {
   @param _ptr: A pointer to the location in memory where the calldata for the call is stored
   @return store_data: The return values, which will be stored
   */
-  function getBuffer(uint _ptr) internal pure returns (bytes32[] store_data){
+  function getBuffer(uint _ptr) internal pure returns (bytes32[] memory store_data){
     assembly {
       // If the size stored at the pointer is not evenly divislble into 32-byte segments, this was improperly constructed
       if gt(mod(mload(_ptr), 0x20), 0) { revert (0, 0) }
@@ -205,7 +205,7 @@ library TokenTransferFrom {
   @param _ptr: A pointer to the location in memory where the calldata for the call is stored
   @return read_values: The values read from storage
   */
-  function readMulti(uint _ptr) internal view returns (bytes32[] read_values) {
+  function readMulti(uint _ptr) internal view returns (bytes32[] memory read_values) {
     bool success;
     assembly {
       // Minimum length for 'readMulti' - 1 location is 0x84
@@ -240,7 +240,7 @@ library TokenTransferFrom {
   }
 
   // Parses context array and returns execution id, sender address, and sent wei amount
-  function parse(bytes _context) internal pure returns (bytes32 exec_id, address from, uint wei_sent) {
+  function parse(bytes memory _context) internal pure returns (bytes32 exec_id, address from, uint wei_sent) {
     assembly {
       exec_id := mload(add(0x20, _context))
       from := mload(add(0x40, _context))
