@@ -53,6 +53,15 @@ MintedCappedCrowdsale:
 6. TokenTransferFrom: https://ropsten.etherscan.io/address/0x652f3b589ee2dcbe5c3970918106d33fc32da33b#code
 7. TokenApprove: https://ropsten.etherscan.io/address/0xe6dd7740afa6950b725896d1217ff1537c0c2bc5#code
 
+DutchCrowdsale:
+1. InitCrowdsale: https://ropsten.etherscan.io/address/0xf34afc787571e49c1f13abd54a6634c449104ec7#code
+2. CrowdsaleConsole: https://ropsten.etherscan.io/address/0xf17099c4b2cb496eb1280de20a54e786f29be92f#code
+3. TokenConsole: https://ropsten.etherscan.io/address/0xe8456cc64c0f1c2752e1c6637cd245ef393b9415#code
+4. CrowdsaleBuyTokens: https://ropsten.etherscan.io/address/0xae60be91395f880e5dd52f3bda424da46337e9fa#code
+5. TokenTransfer: https://ropsten.etherscan.io/address/0xeaa043430329200c7e9419d69b71e08527d86097#code
+6. TokenTransferFrom: https://ropsten.etherscan.io/address/0xe034e42bc559842969a477909c450602c9818acb#code
+7. TokenApprove: https://ropsten.etherscan.io/address/0x52a3bb96e72d127e845a79fdf59514cd7a4d8b58#code
+
 The 'default' variables in ScriptExec.sol can be examined for information on the registry's execution id, as well as the storage address of the registry. 
 
 ###### Deployment -> Use of Script Registry and Crowdsale contracts:
