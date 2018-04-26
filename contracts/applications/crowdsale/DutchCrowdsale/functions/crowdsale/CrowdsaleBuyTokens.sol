@@ -1,6 +1,13 @@
-pragma solidity ^0.4.21;
+pragma solidity ^0.4.23;
+
+import "../../../../libraries/MemoryBuffers.sol";
+import "../../../../libraries/ArrayUtils.sol";
 
 library CrowdsaleBuyTokens {
+
+  using MemoryBuffers for uint;
+  using ArrayUtils for bytes32[];
+  using Exceptions for bytes32;
 
   /// CROWDSALE STORAGE ///
 
@@ -97,10 +104,6 @@ library CrowdsaleBuyTokens {
   @return store_data: A formatted storage request - first 64 bytes designate a forwarding address (and amount) for any wei sent
   */
   function buy(bytes memory _context) public view returns (bytes32[] memory store_data) {
-    // Ensure valid input
-    if (_context.length != 96)
-      triggerException(bytes32("UnknownContext"));
-
     // Get original sender address, execution id, and wei sent from context array
     address sender;
     bytes32 exec_id;
@@ -108,162 +111,241 @@ library CrowdsaleBuyTokens {
     (exec_id, sender, wei_sent) = parse(_context);
     // Ensure nonzero amount of wei sent
     if (wei_sent == 0)
-      triggerException(bytes32("InsufficientFunds"));
+      bytes32("NoWeiSent").trigger();
 
-    // Create 'readMulti' calldata buffer in memory
-    uint ptr = cdBuff(RD_MULTI);
-    // Place exec id, data read offset, and read size in buffer
-    cdPush(ptr, exec_id);
-    cdPush(ptr, 0x40);
-    cdPush(ptr, bytes32(17));
-    // Place wei raised, tokens remaining, and purchaser balance storage locations to calldata buffer
-    cdPush(ptr, WEI_RAISED);
-    cdPush(ptr, TOKENS_REMAINING);
-    cdPush(ptr, keccak256(keccak256(sender), TOKEN_BALANCES));
-    // Push crowdsale initialization and finalization status storage locations to calldata buffer
-    cdPush(ptr, CROWDSALE_IS_INIT);
-    cdPush(ptr, CROWDSALE_IS_FINALIZED);
-    // Push token start and end sale rates, as well as start time and duration to calldata buffer
-    cdPush(ptr, STARTING_SALE_RATE);
-    cdPush(ptr, ENDING_SALE_RATE);
-    cdPush(ptr, CROWDSALE_STARTS_AT);
-    cdPush(ptr, CROWDSALE_DURATION);
-    // Push team wallet, token decimal count, and crowdsale whitelisted status storage locations to calldata buffer
-    cdPush(ptr, WALLET);
-    cdPush(ptr, TOKEN_DECIMALS);
-    cdPush(ptr, SALE_IS_WHITELISTED);
-    // Push minimum contribution amount and additional purchase information to read buffer
-    cdPush(ptr, CROWDSALE_MINIMUM_CONTRIBUTION); // Global minimum contribution amount in tokens
-    cdPush(ptr, CROWDSALE_UNIQUE_CONTRIBUTORS); // Number of unique addresses that have bought in to the sale
-    cdPush(ptr, keccak256(keccak256(sender), CROWDSALE_UNIQUE_CONTRIBUTORS)); // Whether or not the sender has already participated
-    // If the sale is whitelisted, the following two read locations get the sender's minimum contribution amount (in tokens) and maximum contribution amount (in wei)
-    cdPush(ptr, keccak256(keccak256(sender), SALE_WHITELIST));
-    cdPush(ptr, bytes32(32 + uint(keccak256(keccak256(sender), SALE_WHITELIST))));
+    /// Get crowdsale information and place in CrowdsaleInfo struct
+    CrowdsaleInfo memory sale_stat = getCrowdsaleInfo(exec_id);
+    /// Get sender and spend information and place in SpendInfo struct
+    SpendInfo memory spend_stat = getSpendInfo(sender, exec_id, sale_stat.sale_is_whitelisted);
 
-    // Read from storage, and store returned values in buffer
-    bytes32[] memory read_values = readMulti(ptr);
-    // Ensure correct return length
-    assert(read_values.length == 17);
+    /// Crowdsale is in a valid purchase satte - get current sale rate:
+    getCurrentRate(sale_stat, spend_stat);
 
-    // Get CrowdsaleInfo struct from returned data
-    CrowdsaleInfo memory sale_stat = CrowdsaleInfo({
-      team_wallet: address(read_values[9]),
-      wei_raised: uint(read_values[0]),
-      tokens_remaining: uint(read_values[1]),
-      token_decimals: uint(read_values[10]),
-      start_time: uint(read_values[7]),
-      start_rate: uint(read_values[5]),
-      end_rate: uint(read_values[6]),
-      sale_duration: uint(read_values[8]),
-      sale_is_whitelisted: (read_values[11] == bytes32(0) ? false : true)
-    });
-
-    // Get SpendInfo struct from returned token and balance information
-    SpendInfo memory spend_info = SpendInfo({
-      spender_token_balance: uint(read_values[2]),
-      spend_amount: 0,
-      tokens_purchased: 0,
-      current_rate: 0,
-      sender_has_contributed: (read_values[14] == bytes32(0) ? false : true),
-      num_contributors: uint(read_values[13]),
-      minimum_contribution_amount: sale_stat.sale_is_whitelisted ?
-                                    uint(read_values[15]) : uint(read_values[12]),
-      spend_amount_remaining: sale_stat.sale_is_whitelisted ?
-                                    uint(read_values[16]) : 0
-    });
-
-    /// Check returned values -
-
-    // If the crowdsale is whitelisted, and the spender has no remaining spend amount, revert
-    if (sale_stat.sale_is_whitelisted && spend_info.spend_amount_remaining == 0)
-      triggerException(bytes32("ExceededWhitelistCap"));
-
-    // Ensure crowdsale is in a state that will allow purchase
-    if (
-        sale_stat.tokens_remaining == 0                            // No tokens remaining to purchase
-        || read_values[3] == bytes32(0)                            // Crowdsale not yet initialized
-        || read_values[4] != bytes32(0)                            // Crowdsale already finalized
-        || sale_stat.start_time > now                              // Crowdsale has not begun yet
-        || sale_stat.start_time + sale_stat.sale_duration <= now   // Crowdsale has already ended
-    ) triggerException(bytes32("InsufficientPermissions"));
-
-    // Sanity checks - starting and ending rates, and team wallet should be nonzero
-    assert(sale_stat.end_rate != 0 && sale_stat.start_rate > sale_stat.end_rate && sale_stat.team_wallet != address(0));
-
-    // Crowdsale is allowing purchases - get current sale rate -
-    getCurrentRate(sale_stat, spend_info);
-    // Sanity check
-    assert(sale_stat.start_rate >= spend_info.current_rate && spend_info.current_rate >= sale_stat.end_rate);
+    // Sanity check - current rate should be between the starting and ending rates
+    assert(sale_stat.start_rate >= spend_stat.current_rate && spend_stat.current_rate >= sale_stat.end_rate);
 
     /// Get total amount of wei that can be spent, given the amount sent and the number of tokens remaining -
+    getPurchaseInfo(wei_sent, sale_stat, spend_stat);
 
-    // If the amount that can be purchased is more than the number of tokens remaining:
-    if ((wei_sent * (10 ** sale_stat.token_decimals) / spend_info.current_rate) > sale_stat.tokens_remaining) {
-      spend_info.spend_amount =
-        (spend_info.current_rate * sale_stat.tokens_remaining) / (10 ** sale_stat.token_decimals);
+    /// Amount to spend and amount of tokens to purchase have been calculated - prepare storage return buffer
+    uint ptr = MemoryBuffers.stBuff(sale_stat.team_wallet, spend_stat.spend_amount);
 
-      // No tokens are able to be purchased
-      if (spend_info.spend_amount == 0)
-        triggerException(bytes32("CrowdsaleSoldOut"));
+    // Safely add purchased tokens to purchaser's balance, and check for overflow
+    require(spend_stat.tokens_purchased + spend_stat.spender_token_balance > spend_stat.spender_token_balance);
+    ptr.stPush(
+      keccak256(keccak256(sender), TOKEN_BALANCES),
+      bytes32(spend_stat.spender_token_balance + spend_stat.tokens_purchased)
+    );
+    // Safely subtract purchased token amount from tokens_remaining
+    require(spend_stat.tokens_purchased <= sale_stat.tokens_remaining);
+    ptr.stPush(TOKENS_REMAINING, bytes32(sale_stat.tokens_remaining - spend_stat.tokens_purchased));
+    // Safely add wei spent to total wei raised, and check for overflow
+    require(spend_stat.spend_amount + sale_stat.wei_raised > sale_stat.wei_raised);
+    ptr.stPush(WEI_RAISED, bytes32(spend_stat.spend_amount + sale_stat.wei_raised));
+
+    // If the sender had not previously contributed, add them as a unique contributor -
+    if (spend_stat.sender_has_contributed == false) {
+      ptr.stPush(CROWDSALE_UNIQUE_CONTRIBUTORS, bytes32(spend_stat.num_contributors + 1));
+      ptr.stPush(keccak256(keccak256(sender), CROWDSALE_UNIQUE_CONTRIBUTORS), bytes32(1));
+    }
+
+    // If the crowdsale is whitelisted, update the sender's minimum and maximum contribution amounts-
+    if (sale_stat.sale_is_whitelisted) {
+      ptr.stPush(keccak256(keccak256(sender), SALE_WHITELIST), 0); // Sender's new minimum contribution amount - 0
+      ptr.stPush(
+        bytes32(32 + uint(keccak256(keccak256(sender), SALE_WHITELIST))),
+        bytes32(spend_stat.spend_amount_remaining)
+      );
+    }
+
+    // Get bytes32[] representation of storage buffer
+    store_data = ptr.getBuffer();
+  }
+
+  /*
+  Given information about a crowdsale, loads information about purchase amounts into SpendInfo
+
+  @param _wei_sent: The amount of wei sent to purchase with
+  @param _sale_stat: A CrowdsaleInfo struct holding various information about the ongoing crowdsale
+  @param _spend_stat: A SpendInfo struct holding information about the sender
+  */
+  function getPurchaseInfo(
+    uint _wei_sent,
+    CrowdsaleInfo memory _sale_stat,
+    SpendInfo memory _spend_stat
+  ) internal pure {
+    // Get amount of wei able to be spent, given the number of tokens remaining -
+    if ((_wei_sent * (10 ** _sale_stat.token_decimals) / _spend_stat.current_rate) > _sale_stat.tokens_remaining) {
+      // The amount that can be purchased is more than the number of tokens remaining:
+      _spend_stat.spend_amount =
+        (_spend_stat.current_rate * _sale_stat.tokens_remaining) / (10 ** _sale_stat.token_decimals);
     } else {
       // All of the wei sent can be used to purchase -
-      spend_info.spend_amount = wei_sent -
-          ((wei_sent * (10 ** sale_stat.token_decimals)) % spend_info.current_rate);
+      _spend_stat.spend_amount =
+        _wei_sent - (_wei_sent * (10 ** _sale_stat.token_decimals)) % _spend_stat.current_rate;
     }
 
     // If the sale is whitelisted, ensure the sender is not going over their spend cap -
-    if (sale_stat.sale_is_whitelisted) {
-      if (spend_info.spend_amount > spend_info.spend_amount_remaining) {
-        spend_info.spend_amount =
-          spend_info.spend_amount_remaining -
-          (spend_info.spend_amount_remaining * (10 ** sale_stat.token_decimals)) % spend_info.current_rate;
+    if (_sale_stat.sale_is_whitelisted) {
+      if (_spend_stat.spend_amount > _spend_stat.spend_amount_remaining) {
+        _spend_stat.spend_amount =
+          _spend_stat.spend_amount_remaining -
+          (_spend_stat.spend_amount_remaining * (10 ** _sale_stat.token_decimals)) % _spend_stat.current_rate;
       }
 
       // Decrease sender's spend amount remaining
-      assert(spend_info.spend_amount_remaining >= spend_info.spend_amount);
-      spend_info.spend_amount_remaining -= spend_info.spend_amount;
+      assert(_spend_stat.spend_amount_remaining >= _spend_stat.spend_amount);
+      _spend_stat.spend_amount_remaining -= _spend_stat.spend_amount;
     }
 
-    // Sanity check
-    assert(spend_info.spend_amount != 0 && spend_info.spend_amount <= wei_sent);
-    spend_info.tokens_purchased =
-      (spend_info.spend_amount * (10 ** sale_stat.token_decimals)) / spend_info.current_rate;
+    // Ensure spend amount is valid -
+    if (_spend_stat.spend_amount == 0 || _spend_stat.spend_amount > _wei_sent)
+      bytes32("InvalidSpendAmount").trigger();
+
+    // Get number of tokens able to be purchased with the amount spent -
+    _spend_stat.tokens_purchased =
+      (_spend_stat.spend_amount * (10 ** _sale_stat.token_decimals)) / _spend_stat.current_rate;
+
+    // Ensure amount of tokens to purchase is not greater than the amount of tokens remaining in the sale -
+    if (_spend_stat.tokens_purchased > _sale_stat.tokens_remaining)
+      bytes32("InvalidPurchaseAmount").trigger();
 
     // Ensure the number of tokens purchased meets the sender's minimum contribution requirement
-    if (spend_info.tokens_purchased < spend_info.minimum_contribution_amount)
-      triggerException(bytes32("InsufficientFunds"));
+    if (_spend_stat.tokens_purchased < _spend_stat.minimum_contribution_amount)
+      bytes32("UnderMinCap").trigger();
+  }
 
-    // Overwrite previous read buffer, and create storage return buffer
-    stOverwrite(ptr);
-    // Push team wallet address and spend_amount to buffer
-    stPush(ptr, bytes32(sale_stat.team_wallet));
-    stPush(ptr, bytes32(spend_info.spend_amount));
-    // Safely add purchased tokens to purchaser's balance, and check for overflow
-    require(spend_info.tokens_purchased + spend_info.spender_token_balance > spend_info.spender_token_balance);
-    stPush(ptr, keccak256(keccak256(sender), TOKEN_BALANCES));
-    stPush(ptr, bytes32(spend_info.spender_token_balance + spend_info.tokens_purchased));
-    // Safely subtract purchased token amount from tokens_remaining
-    require(spend_info.tokens_purchased <= sale_stat.tokens_remaining);
-    stPush(ptr, TOKENS_REMAINING);
-    stPush(ptr, bytes32(sale_stat.tokens_remaining - spend_info.tokens_purchased));
-    // Safely add wei spent to total wei raised, and check for overflow
-    require(spend_info.spend_amount + sale_stat.wei_raised > sale_stat.wei_raised);
-    stPush(ptr, WEI_RAISED);
-    stPush(ptr, bytes32(spend_info.spend_amount + sale_stat.wei_raised));
+  /*
+  Returns general information on the ongoing crowdsale and stores it in a CrowdsaleInfo struct
 
-    // Get bytes32[] representation of storage buffer
-    store_data = getBuffer(ptr);
+  @param _exec_id: The execution id under which the crowdsale is registered
+  @return sale_stat: A struct containing information about the ongoing crowdsale
+  */
+  function getCrowdsaleInfo(bytes32 _exec_id) internal view returns (CrowdsaleInfo memory sale_stat) {
+    // Create 'readMulti' calldata buffer in memory -
+    uint ptr = MemoryBuffers.cdBuff(RD_MULTI);
+    // Push exec id, data read offset, and read size to buffer
+    ptr.cdPush(_exec_id);
+    ptr.cdPush(0x40);
+    ptr.cdPush(bytes32(11));
+    // Push team wallet, wei raised, tokens remaining, token decimals, and crowdsale start time to buffer
+    ptr.cdPush(WALLET);
+    ptr.cdPush(WEI_RAISED);
+    ptr.cdPush(TOKENS_REMAINING);
+    ptr.cdPush(TOKEN_DECIMALS);
+    ptr.cdPush(CROWDSALE_STARTS_AT);
+    // Push crowdsale start rate, end rate, sale duration, and whitelist status to buffer
+    ptr.cdPush(STARTING_SALE_RATE);
+    ptr.cdPush(ENDING_SALE_RATE);
+    ptr.cdPush(CROWDSALE_DURATION);
+    ptr.cdPush(SALE_IS_WHITELISTED);
+    // Push crowdsale initialization and finalization status locations to buffer
+    ptr.cdPush(CROWDSALE_IS_INIT);
+    ptr.cdPush(CROWDSALE_IS_FINALIZED);
+    // Read from storage
+    uint[] memory crowdsale_info = ptr.readMulti().toUintArr();
+    // Ensure valid read size
+    assert(crowdsale_info.length == 11);
+
+    /// Assign members to struct -
+    sale_stat = CrowdsaleInfo({
+      team_wallet: address(crowdsale_info[0]),
+      wei_raised: crowdsale_info[1],
+      tokens_remaining: crowdsale_info[2],
+      token_decimals: crowdsale_info[3],
+      start_time: crowdsale_info[4],
+      start_rate: crowdsale_info[5],
+      end_rate: crowdsale_info[6],
+      sale_duration: crowdsale_info[7],
+      sale_is_whitelisted: crowdsale_info[8] == 0 ? false : true
+    });
+
+    // Ensure valid crowdsale setup -
+    if (
+      sale_stat.team_wallet == address(0)                        // Invalid team wallet address
+      || sale_stat.token_decimals > 18                           // Invalid token decimal amount
+      || sale_stat.start_time == 0                               // Invalid crowdsale start time
+      || sale_stat.end_rate == 0                                 // Invalid crowdsale ending rate
+      || sale_stat.start_rate <= sale_stat.end_rate              // State rate must be larger than end rate
+      || sale_stat.sale_duration == 0                            // Invalid crowdsale duration
+    ) bytes32("InvalidCrowdsaleSetup").trigger();
+
+    // Ensure crowdsale is in a purchasable state -
+    if (now < sale_stat.start_time)
+      bytes32("BeforeStartTime").trigger();
+    if (
+      sale_stat.tokens_remaining == 0                            // No tokens remaining for purchase
+      || now >= sale_stat.start_time + sale_stat.sale_duration   // Crowddsale has already ended
+      || crowdsale_info[9] == 0                                  // Crowdsale is not initialized
+      || crowdsale_info[10] != 0                                 // Crowdsale is already finalized
+    ) bytes32("CrowdsaleFinished").trigger();
+  }
+
+  /*
+  Gets information about the sender, crowdsale whitelist, and contributor count and stores it in a SpendInfo struct
+
+  @param _sender: The original script executor
+  @param _exec_id: The execution id under which the crowdsale is registered
+  @param _sale_is_whitelisted: Whether or not the crowdsale is whitelisted
+  @return spend_stat: A struct holding information about the sender
+  */
+  function getSpendInfo(address _sender, bytes32 _exec_id, bool _sale_is_whitelisted) internal view
+  returns (SpendInfo memory spend_stat) {
+    // Create 'readMulti' calldata buffer in memory -
+    uint ptr = MemoryBuffers.cdBuff(RD_MULTI);
+    // Push exec id, data read offset, and read size to buffer
+    ptr.cdPush(_exec_id);
+    ptr.cdPush(0x40);
+    // If the sale is whitelisted, read size is one more than if it is not
+    if (_sale_is_whitelisted) {
+      ptr.cdPush(bytes32(5));
+    } else {
+      ptr.cdPush(bytes32(4));
+    }
+    // Push sender token balance, sender unique contribution location, and number of unique contributors to buffer
+    ptr.cdPush(keccak256(keccak256(_sender), TOKEN_BALANCES));
+    ptr.cdPush(keccak256(keccak256(_sender), CROWDSALE_UNIQUE_CONTRIBUTORS));
+    ptr.cdPush(CROWDSALE_UNIQUE_CONTRIBUTORS);
+    // If the crowdsale is whitelisted, push whitelist information locations for the sender to the buffer
+    if (_sale_is_whitelisted) {
+      ptr.cdPush(keccak256(keccak256(_sender), SALE_WHITELIST));
+      ptr.cdPush(bytes32(32 + uint(keccak256(keccak256(_sender), SALE_WHITELIST))));
+    } else {
+      // If the sale is not whitelisted, push the sale global minimum purchase amount cap to the buffer
+      ptr.cdPush(CROWDSALE_MINIMUM_CONTRIBUTION);
+    }
+    // Read from storage
+    uint[] memory spend_info = ptr.readMulti().toUintArr();
+    // Ensure valid read size
+    assert(_sale_is_whitelisted ? spend_info.length == 5 : spend_info.length == 4);
+
+    /// Assign members to struct -
+    spend_stat = SpendInfo({
+      spender_token_balance: spend_info[0],
+      spend_amount: 0,
+      tokens_purchased: 0,
+      current_rate: 0,
+      sender_has_contributed: (spend_info[1] == 0 ? false : true),
+      num_contributors: spend_info[2],
+      minimum_contribution_amount: spend_info[3],
+      spend_amount_remaining: (_sale_is_whitelisted ? spend_info[4] : 0)
+    });
+
+    // If the crowdsale is whitelisted and the sender has no remaining spend amount, revert
+    if (_sale_is_whitelisted && spend_stat.spend_amount_remaining == 0)
+      bytes32("SpendAmountExceeded").trigger();
   }
 
   /*
   Gets the current sale rate and places it in _sale_stat.current_rate
 
   @param _sale_stat: A CrowdsaleInfo struct holding various information about the ongoing crowdsale
+  @param _spend_stat: A SpendInfo struct holding information about the sender
   */
-  function getCurrentRate(CrowdsaleInfo memory _sale_stat, SpendInfo memory _spend_info) internal view {
+  function getCurrentRate(CrowdsaleInfo memory _sale_stat, SpendInfo memory _spend_stat) internal view {
     // If the sale has not started, set current rate to 0
     if (now <= _sale_stat.start_time) {
-      _spend_info.current_rate = 0;
+      _spend_stat.current_rate = 0;
       return;
     }
 
@@ -271,7 +353,7 @@ library CrowdsaleBuyTokens {
     uint elapsed = now - _sale_stat.start_time;
     // If the sale has ended, set current rate to 0
     if (elapsed >= _sale_stat.sale_duration) {
-      _spend_info.current_rate = 0;
+      _spend_stat.current_rate = 0;
       return;
     }
 
@@ -280,183 +362,30 @@ library CrowdsaleBuyTokens {
     elapsed *= (10 ** 18);
 
     // Crowdsale is active - calculate current rate, adding decimals for precision
+    assert(_sale_stat.start_rate > _sale_stat.end_rate);
     uint temp_rate = (_sale_stat.start_rate - _sale_stat.end_rate)
                                 * (elapsed / _sale_stat.sale_duration);
 
     temp_rate /= (10**18);
-    assert(temp_rate != 0 && temp_rate >= _sale_stat.start_rate);
 
+    assert(temp_rate <= _sale_stat.start_rate);
     // Current rate is start rate minus temp rate
-    _spend_info.current_rate = _sale_stat.start_rate - temp_rate;
-  }
-
-  /*
-  Gets the current token sale rate and time remaining, given various information
-
-  @param _start_time: The start time of the crowdsale
-  @param _duration: The duration of the crowdsale
-  @param _start_rate: The amount of tokens recieved per wei at the beginning of the sale
-  @param _end_rate: The amount of tokens recieved per wei at the end of the sale
-  @return current_rate: The current rate of tokens/wei
-  @return time_remaining: The amount of time remaining in the crowdsale
-  */
-  function getRateAndTimeRemaining(uint _start_time, uint _duration, uint _start_rate, uint _end_rate) internal view
-  returns (uint current_rate, uint time_remaining) {
-    // If the sale has not started, return 0
-    if (now <= _start_time)
-      return (0, (_duration + _start_time - now));
-
-    uint time_elapsed = now - _start_time;
-    // If the sale has ended, return 0
-    if (time_elapsed >= _duration)
-      return (0, 0);
-
-    // Crowdsale is still active -
-    time_remaining = _duration - time_elapsed;
-    // Calculate current rate, adding decimals for precision -
-    time_elapsed *= 100;
-    current_rate = (_start_rate - _end_rate) * (time_elapsed / _duration);
-    current_rate /= 100; // Remove additional precision decimals
-    current_rate = _start_rate - current_rate;
-  }
-
-  /*
-  Creates a new return data storage buffer at the position given by the pointer. Does not update free memory
-
-  @param _ptr: A pointer to the location where the buffer will be created
-  */
-  function stOverwrite(uint _ptr) internal pure {
-    assembly {
-      // Simple set the initial length - 0
-      mstore(_ptr, 0)
-    }
-  }
-
-  /*
-  Pushes a value to the end of a storage return buffer, and updates the length
-
-  @param _ptr: A pointer to the start of the buffer
-  @param _val: The value to push to the buffer
-  */
-  function stPush(uint _ptr, bytes32 _val) internal pure {
-    assembly {
-      // Get end of buffer - 32 bytes plus the length stored at the pointer
-      let len := add(0x20, mload(_ptr))
-      // Push value to end of buffer (overwrites memory - be careful!)
-      mstore(add(_ptr, len), _val)
-      // Increment buffer length
-      mstore(_ptr, len)
-      // If the free-memory pointer does not point beyond the buffer's current size, update it
-      if lt(mload(0x40), add(add(0x20, _ptr), len)) {
-        mstore(0x40, add(add(0x40, _ptr), len)) // Ensure free memory pointer points to the beginning of a memory slot
-      }
-    }
-  }
-
-  /*
-  Returns the bytes32[] stored at the buffer
-
-  @param _ptr: A pointer to the location in memory where the calldata for the call is stored
-  @return store_data: The return values, which will be stored
-  */
-  function getBuffer(uint _ptr) internal pure returns (bytes32[] memory store_data){
-    assembly {
-      // If the size stored at the pointer is not evenly divislble into 32-byte segments, this was improperly constructed
-      if gt(mod(mload(_ptr), 0x20), 0) { revert (0, 0) }
-      mstore(_ptr, div(mload(_ptr), 0x20))
-      store_data := _ptr
-    }
-  }
-
-  /*
-  Creates a calldata buffer in memory with the given function selector
-
-  @param _selector: The function selector to push to the first location in the buffer
-  @return ptr: The location in memory where the length of the buffer is stored - elements stored consecutively after this location
-  */
-  function cdBuff(bytes4 _selector) internal pure returns (uint ptr) {
-    assembly {
-      // Get buffer location - free memory
-      ptr := mload(0x40)
-      // Place initial length (4 bytes) in buffer
-      mstore(ptr, 0x04)
-      // Place function selector in buffer, after length
-      mstore(add(0x20, ptr), _selector)
-      // Update free-memory pointer - it's important to note that this is not actually free memory, if the pointer is meant to expand
-      mstore(0x40, add(0x40, ptr))
-    }
-  }
-
-  /*
-  Pushes a value to the end of a calldata buffer, and updates the length
-
-  @param _ptr: A pointer to the start of the buffer
-  @param _val: The value to push to the buffer
-  */
-  function cdPush(uint _ptr, bytes32 _val) internal pure {
-    assembly {
-      // Get end of buffer - 32 bytes plus the length stored at the pointer
-      let len := add(0x20, mload(_ptr))
-      // Push value to end of buffer (overwrites memory - be careful!)
-      mstore(add(_ptr, len), _val)
-      // Increment buffer length
-      mstore(_ptr, len)
-      // If the free-memory pointer does not point beyond the buffer's current size, update it
-      if lt(mload(0x40), add(add(0x20, _ptr), len)) {
-        mstore(0x40, add(add(0x2c, _ptr), len)) // Ensure free memory pointer points to the beginning of a memory slot
-      }
-    }
-  }
-
-  /*
-  Executes a 'readMulti' function call, given a pointer to a calldata buffer
-
-  @param _ptr: A pointer to the location in memory where the calldata for the call is stored
-  @return read_values: The values read from storage
-  */
-  function readMulti(uint _ptr) internal view returns (bytes32[] memory read_values) {
-    bool success;
-    assembly {
-      // Minimum length for 'readMulti' - 1 location is 0x84
-      if lt(mload(_ptr), 0x84) { revert (0, 0) }
-      // Read from storage
-      success := staticcall(gas, caller, add(0x20, _ptr), mload(_ptr), 0, 0)
-      // If call succeed, get return information
-      if gt(success, 0) {
-        // Ensure data will not be copied beyond the pointer
-        if gt(sub(returndatasize, 0x20), mload(_ptr)) { revert (0, 0) }
-        // Copy returned data to pointer, overwriting it in the process
-        // Copies returndatasize, but ignores the initial read offset so that the bytes32[] returned in the read is sitting directly at the pointer
-        returndatacopy(_ptr, 0x20, sub(returndatasize, 0x20))
-        // Set return bytes32[] to pointer, which should now have the stored length of the returned array
-        read_values := _ptr
-      }
-    }
-    if (!success)
-      triggerException(bytes32("StorageReadFailed"));
-  }
-
-  /*
-  Reverts state changes, but passes message back to caller
-
-  @param _message: The message to return to the caller
-  */
-  function triggerException(bytes32 _message) internal pure {
-    assembly {
-      mstore(0, _message)
-      revert(0, 0x20)
-    }
+    _spend_stat.current_rate = _sale_stat.start_rate - temp_rate;
   }
 
   // Parses context array and returns execution id, sender address, and sent wei amount
   function parse(bytes memory _context) internal pure returns (bytes32 exec_id, address from, uint wei_sent) {
+    if (_context.length != 96)
+      bytes32("UnknownExecutionContext").trigger();
+
     assembly {
       exec_id := mload(add(0x20, _context))
       from := mload(add(0x40, _context))
       wei_sent := mload(add(0x60, _context))
     }
+
     // Ensure sender and exec id are valid
-    if (from == address(0) || exec_id == bytes32(0))
-      triggerException(bytes32("UnknownContext"));
+    if (from == address(0) || exec_id == 0)
+      bytes32("UnknownExecutionContext").trigger();
   }
 }

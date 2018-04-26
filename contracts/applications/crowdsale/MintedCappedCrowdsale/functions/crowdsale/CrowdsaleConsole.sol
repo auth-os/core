@@ -79,7 +79,7 @@ library CrowdsaleConsole {
   bytes4 internal constant RD_MULTI = bytes4(keccak256("readMulti(bytes32,bytes32[])"));
 
   // Modifier - will only allow access to a crowdsale's admin address
-  // Additionally, crowdasle must not be initialized
+  // Additionally, crowdsale must not be initialized
   modifier onlyAdminAndNotInit(bytes memory _context) {
     // Get sender and exec id for this instance
     address sender;

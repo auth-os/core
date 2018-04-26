@@ -607,8 +607,8 @@ library InitCrowdsale {
   @param _exec_id: The application execution id under which storage for this instance is located
   @param _tier_index: The index of the tier about which the whitelist information will be pulled
   @param _buyer: The address of the user whose whitelist status will be returned
-  @return minimum_contribution: The minimum ammount of wei this address must sent with each purchase
-  @return max_spend_remaining: The maximum amount of wei able to be spent
+  @return minimum_contribution: The minimum ammount of tokens the buyer must purchase during this tier
+  @return max_spend_remaining: The maximum amount of wei able to be spent by the buyer during this tier
   */
   function getWhitelistStatus(address _storage, bytes32 _exec_id, uint _tier_index, address _buyer) public view
   returns (uint minimum_contribution, uint max_spend_remaining) {

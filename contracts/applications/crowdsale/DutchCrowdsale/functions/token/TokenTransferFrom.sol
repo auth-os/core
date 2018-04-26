@@ -1,6 +1,13 @@
-pragma solidity ^0.4.21;
+pragma solidity ^0.4.23;
+
+import "../../../../libraries/MemoryBuffers.sol";
+import "../../../../libraries/ArrayUtils.sol";
 
 library TokenTransferFrom {
+
+  using MemoryBuffers for uint;
+  using ArrayUtils for bytes32[];
+  using Exceptions for bytes32;
 
   /// CROWDSALE STORAGE ///
 
@@ -25,12 +32,6 @@ library TokenTransferFrom {
   // readMulti(bytes32 exec_id, bytes32[] locations)
   bytes4 internal constant RD_MULTI = bytes4(keccak256("readMulti(bytes32,bytes32[])"));
 
-  /// EXCEPTION MESSAGES ///
-
-  bytes32 public constant ERR_UNKNOWN_CONTEXT = bytes32("UnknownContext"); // Malformed '_context' array
-  bytes32 public constant ERR_INSUFFICIENT_PERMISSIONS = bytes32("InsufficientPermissions"); // Action not allowed
-  bytes32 public constant ERR_READ_FAILED = bytes32("StorageReadFailed"); // Read from storage address failed
-
   /*
   Transfers tokens from an owner's balance to a recipient, provided the sender has suffcient allowance
 
@@ -46,9 +47,8 @@ library TokenTransferFrom {
   function transferFrom(address _from, address _to, uint _amt, bytes memory _context) public view
   returns (bytes32[] memory store_data) {
     // Ensure valid inputs
-    require(_to != address(0) && _amt != 0 && _from != address(0));
-    if (_context.length != 96)
-      triggerException(ERR_UNKNOWN_CONTEXT);
+    if (_to == address(0) || _from == address(0))
+      bytes32("InvalidSenderOrRecipient").trigger();
 
     address sender;
     bytes32 exec_id;
@@ -56,31 +56,31 @@ library TokenTransferFrom {
     (exec_id, sender, ) = parse(_context);
 
     // Create 'readMulti' calldata buffer in memory
-    uint ptr = cdBuff(RD_MULTI);
+    uint ptr = MemoryBuffers.cdBuff(RD_MULTI);
     // Place exec id, data read offset, and read size to calldata
-    cdPush(ptr, exec_id);
-    cdPush(ptr, 0x40);
-    cdPush(ptr, 5);
+    ptr.cdPush(exec_id);
+    ptr.cdPush(0x40);
+    ptr.cdPush(bytes32(5));
     // Place owner and recipient balance locations, and sender allowance location in calldata buffer
-    cdPush(ptr, keccak256(keccak256(_from), TOKEN_BALANCES));
-    cdPush(ptr, keccak256(keccak256(_to), TOKEN_BALANCES));
-    cdPush(ptr, keccak256(keccak256(sender), keccak256(keccak256(_from), TOKEN_ALLOWANCES)));
+    ptr.cdPush(keccak256(keccak256(_from), TOKEN_BALANCES));
+    ptr.cdPush(keccak256(keccak256(_to), TOKEN_BALANCES));
+    ptr.cdPush(keccak256(keccak256(sender), keccak256(keccak256(_from), TOKEN_ALLOWANCES)));
     // Place crowdsale finalization status and owner transfer agent status storage locations in calldata buffer
-    cdPush(ptr, CROWDSALE_IS_FINALIZED);
-    cdPush(ptr, keccak256(keccak256(_from), TOKEN_TRANSFER_AGENTS));
+    ptr.cdPush(CROWDSALE_IS_FINALIZED);
+    ptr.cdPush(keccak256(keccak256(_from), TOKEN_TRANSFER_AGENTS));
     // Read from storage
-    bytes32[] memory read_values = readMulti(ptr);
+    uint[] memory read_values = ptr.readMulti().toUintArr();
     // Ensure length of returned data is correct
     assert(read_values.length == 5);
 
     // If the crowdsale is not finalized, and the token owner is not a transfer agent, throw exception
-    if (read_values[3] == bytes32(0) && read_values[4] == bytes32(0))
-      triggerException(ERR_INSUFFICIENT_PERMISSIONS);
+    if (read_values[3] == 0 && read_values[4] == 0)
+      bytes32("TransfersLocked").trigger();
 
     // Read returned balances and allowance -
-    uint owner_bal = uint(read_values[0]);
-    uint recipient_bal = uint(read_values[1]);
-    uint sender_allowance = uint(read_values[2]);
+    uint owner_bal = read_values[0];
+    uint recipient_bal = read_values[1];
+    uint sender_allowance = read_values[2];
 
     // Ensure owner has sufficient balance to send, and recipient balance does not overflow
     // Additionally, ensure sender has sufficient allowance
@@ -93,161 +93,31 @@ library TokenTransferFrom {
     sender_allowance -= _amt;
 
     // Overwrite previous buffer, and create storage return buffer
-    stOverwrite(ptr);
-    // Place payment destination and amount in buffer (0, 0)
-    stPush(ptr, 0);
-    stPush(ptr, 0);
+    ptr.stOverwrite(0, 0);
     // Place owner balance location and updated balance in buffer
-    stPush(ptr, keccak256(keccak256(_from), TOKEN_BALANCES));
-    stPush(ptr, bytes32(owner_bal));
+    ptr.stPush(keccak256(keccak256(_from), TOKEN_BALANCES), bytes32(owner_bal));
     // Place recipient balance location and updated balance in buffer
-    stPush(ptr, keccak256(keccak256(_to), TOKEN_BALANCES));
-    stPush(ptr, bytes32(recipient_bal));
+    ptr.stPush(keccak256(keccak256(_to), TOKEN_BALANCES), bytes32(recipient_bal));
     // Place sender allowance location and updated allowance in buffer
-    stPush(ptr, keccak256(keccak256(sender), keccak256(keccak256(_from), TOKEN_ALLOWANCES)));
-    stPush(ptr, bytes32(sender_allowance));
+    ptr.stPush(keccak256(keccak256(sender), keccak256(keccak256(_from), TOKEN_ALLOWANCES)), bytes32(sender_allowance));
 
     // Get bytes32[] representation of storage buffer
-    store_data = getBuffer(ptr);
-  }
-
-  /*
-  Creates a new return data storage buffer at the position given by the pointer. Does not update free memory
-
-  @param _ptr: A pointer to the location where the buffer will be created
-  */
-  function stOverwrite(uint _ptr) internal pure {
-    assembly {
-      // Simple set the initial length - 0
-      mstore(_ptr, 0)
-    }
-  }
-
-  /*
-  Pushes a value to the end of a storage return buffer, and updates the length
-
-  @param _ptr: A pointer to the start of the buffer
-  @param _val: The value to push to the buffer
-  */
-  function stPush(uint _ptr, bytes32 _val) internal pure {
-    assembly {
-      // Get end of buffer - 32 bytes plus the length stored at the pointer
-      let len := add(0x20, mload(_ptr))
-      // Push value to end of buffer (overwrites memory - be careful!)
-      mstore(add(_ptr, len), _val)
-      // Increment buffer length
-      mstore(_ptr, len)
-      // If the free-memory pointer does not point beyond the buffer's current size, update it
-      if lt(mload(0x40), add(add(0x20, _ptr), len)) {
-        mstore(0x40, add(add(0x40, _ptr), len)) // Ensure free memory pointer points to the beginning of a memory slot
-      }
-    }
-  }
-
-  /*
-  Returns the bytes32[] stored at the buffer
-
-  @param _ptr: A pointer to the location in memory where the calldata for the call is stored
-  @return store_data: The return values, which will be stored
-  */
-  function getBuffer(uint _ptr) internal pure returns (bytes32[] memory store_data){
-    assembly {
-      // If the size stored at the pointer is not evenly divislble into 32-byte segments, this was improperly constructed
-      if gt(mod(mload(_ptr), 0x20), 0) { revert (0, 0) }
-      mstore(_ptr, div(mload(_ptr), 0x20))
-      store_data := _ptr
-    }
-  }
-
-  /*
-  Creates a calldata buffer in memory with the given function selector
-
-  @param _selector: The function selector to push to the first location in the buffer
-  @return ptr: The location in memory where the length of the buffer is stored - elements stored consecutively after this location
-  */
-  function cdBuff(bytes4 _selector) internal pure returns (uint ptr) {
-    assembly {
-      // Get buffer location - free memory
-      ptr := mload(0x40)
-      // Place initial length (4 bytes) in buffer
-      mstore(ptr, 0x04)
-      // Place function selector in buffer, after length
-      mstore(add(0x20, ptr), _selector)
-      // Update free-memory pointer - it's important to note that this is not actually free memory, if the pointer is meant to expand
-      mstore(0x40, add(0x40, ptr))
-    }
-  }
-
-  /*
-  Pushes a value to the end of a calldata buffer, and updates the length
-
-  @param _ptr: A pointer to the start of the buffer
-  @param _val: The value to push to the buffer
-  */
-  function cdPush(uint _ptr, bytes32 _val) internal pure {
-    assembly {
-      // Get end of buffer - 32 bytes plus the length stored at the pointer
-      let len := add(0x20, mload(_ptr))
-      // Push value to end of buffer (overwrites memory - be careful!)
-      mstore(add(_ptr, len), _val)
-      // Increment buffer length
-      mstore(_ptr, len)
-      // If the free-memory pointer does not point beyond the buffer's current size, update it
-      if lt(mload(0x40), add(add(0x20, _ptr), len)) {
-        mstore(0x40, add(add(0x2c, _ptr), len)) // Ensure free memory pointer points to the beginning of a memory slot
-      }
-    }
-  }
-
-  /*
-  Executes a 'readMulti' function call, given a pointer to a calldata buffer
-
-  @param _ptr: A pointer to the location in memory where the calldata for the call is stored
-  @return read_values: The values read from storage
-  */
-  function readMulti(uint _ptr) internal view returns (bytes32[] memory read_values) {
-    bool success;
-    assembly {
-      // Minimum length for 'readMulti' - 1 location is 0x84
-      if lt(mload(_ptr), 0x84) { revert (0, 0) }
-      // Read from storage
-      success := staticcall(gas, caller, add(0x20, _ptr), mload(_ptr), 0, 0)
-      // If call succeed, get return information
-      if gt(success, 0) {
-        // Ensure data will not be copied beyond the pointer
-        if gt(sub(returndatasize, 0x20), mload(_ptr)) { revert (0, 0) }
-        // Copy returned data to pointer, overwriting it in the process
-        // Copies returndatasize, but ignores the initial read offset so that the bytes32[] returned in the read is sitting directly at the pointer
-        returndatacopy(_ptr, 0x20, sub(returndatasize, 0x20))
-        // Set return bytes32[] to pointer, which should now have the stored length of the returned array
-        read_values := _ptr
-      }
-    }
-    if (!success)
-      triggerException(ERR_READ_FAILED);
-  }
-
-  /*
-  Reverts state changes, but passes message back to caller
-
-  @param _message: The message to return to the caller
-  */
-  function triggerException(bytes32 _message) internal pure {
-    assembly {
-      mstore(0, _message)
-      revert(0, 0x20)
-    }
+    store_data = ptr.getBuffer();
   }
 
   // Parses context array and returns execution id, sender address, and sent wei amount
   function parse(bytes memory _context) internal pure returns (bytes32 exec_id, address from, uint wei_sent) {
+    if (_context.length != 96)
+      bytes32("UnknownExecutionContext").trigger();
+
     assembly {
       exec_id := mload(add(0x20, _context))
       from := mload(add(0x40, _context))
       wei_sent := mload(add(0x60, _context))
     }
+
     // Ensure sender and exec id are valid
-    if (from == address(0) || exec_id == bytes32(0))
-      triggerException(ERR_UNKNOWN_CONTEXT);
+    if (from == address(0) || exec_id == 0)
+      bytes32("UnknownExecutionContext").trigger();
   }
 }
