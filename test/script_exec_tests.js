@@ -16,8 +16,8 @@ contract('ScriptExec', function(accounts) {
 
     let initRegistry
     let initRegistryCalldata
-    let registryExecId
     let scriptExec
+    let registryExecId
 
     let execAdmin = accounts[0]
     let provider = utils.randomBytes(32)
@@ -32,32 +32,25 @@ contract('ScriptExec', function(accounts) {
 
         initRegistry = await InitRegistry.new().should.be.fulfilled
         initRegistry.should.not.eq(null)
-        initRegistryCalldata = '0xe1c7392a' // bytes4(keccak256("init()"));
 
         scriptExec = await ScriptExec.new(updater, storage.address, provider, { gas: 4700000, from: execAdmin }).should.be.fulfilled
         scriptExec.should.not.eq(null)
 
-        // events = await registry.initAndFinalize(updater, false, initRegistry.address, initRegistryCalldata, 
-        //     [appConsole.address, implementationConsole.address, versionConsole.address]).should.be.fulfilled.then((tx) => {
-        //         return tx.logs
-        //     })
-        // registryExecId = events[0].args.execution_id
-        // registryExecId.should.not.eq(null)
-
-        // scriptExec = await ScriptExec.new(updater, registry.address, registryExecId, provider, { gas: 4700000, from: execAdmin }).should.be.fulfilled
-        // scriptExec.should.not.eq(null)
-
-        initAndFinalizeCalldata = await storage.initAndFinalize.request(updater, false, initRegistry.address, initRegistryCalldata, 
+        registryInitAndFinalizeCalldata = await storage.initAndFinalize.request(updater, false, initRegistry.address, '0xe1c7392a', // bytes4(keccak256("init()"));
             [appConsole.address, implementationConsole.address, versionConsole.address]).params[0].data
 
-        registryExecId = await scriptExec.initRegistryWithCalldata(initAndFinalizeCalldata).should.be.fulfilled.then((tx) => {
+        registryExecId = await scriptExec.initRegistryWithCalldata(registryInitAndFinalizeCalldata).should.be.fulfilled.then((tx) => {
             return tx.receipt.logs[0].topics[1]
         })
-        // registryExecId = await scriptExec.initRegistry(initRegistry.address, [appConsole.address, implementationConsole.address, versionConsole.address], { gas: 5000000, from: execAdmin }).should.be.fulfilled.then((tx) => {
-        //     console.log(tx)
-        //     return tx.receipt.logs[0].topics[1]
-        // })
-        registryExecId.should.not.eq(null)
+
+    })
+
+    describe('#initRegistryWithCalldata', async() => {
+        context('when the RegistryStorage#initAndFinalize calldata is well-formed', async () => {
+            it('should result the deployment of a properly-configured registry-enabled script exec contract', async () => {
+                registryExecId.should.not.eq(null)
+            })
+        })
     })
 
     describe('initialization', async () => {
@@ -269,6 +262,11 @@ contract('ScriptExec', function(accounts) {
             await scriptExec.exec(appConsole.address, calldata).should.be.fulfilled  // registerApp
         })
 
+        // TODO: cover proper event emission for the following events:
+        // ApplicationInitialized(execution_id: <indexed>, init_address: <indexed>, script_exec: 0x, updater: 0x)
+        // ApplicationFinalization(execution_id: <indexed>, init_address: <indexed>)
+        // ApplicationExecution(execution_id: <indexed>, script_target: <indexed>)
+
         describe('#initAppInstance', async () => {
             context('when the app has been initialized properly via registry contract', async () => {
                 let appEvents
@@ -289,7 +287,7 @@ contract('ScriptExec', function(accounts) {
                     })
 
                     it('should emit an AppInstanceCreated event', async () => {
-                        appEvents[0].event.shoud.be.eq('AppInstanceCreated')
+                        appEvents[0].event.should.be.eq('AppInstanceCreated')
                     })
 
                     it('should associate the initialized application instance with its creator', async () => {
@@ -301,6 +299,7 @@ contract('ScriptExec', function(accounts) {
                         appExecId.should.not.eq(null)
                     })
 
+                    // FIXME-- this test is failing for the right reasons... the event is emitting 0x storage_addr
                     it('should associate the initialized application instance with its designated storage contract', async () => {
                         appStorage.should.not.eq(null)
                         appStorage.should.be.eq(storage.address)

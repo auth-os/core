@@ -17,14 +17,6 @@ contract('AbstractStorage', function (accounts) {
         appInitCalldata = '0xe1c7392a' // bytes4(keccak256("init()"));
     })
 
-    describe('#exec', async () => {
-
-    })
-
-    describe('#initAppInstance', async () => {
-
-    })
-
     describe('#initAndFinalize', async () => {
         context('when the given calldata is valid for the app init function', async () => {
             let execId
@@ -104,40 +96,26 @@ contract('AbstractStorage', function (accounts) {
         })
     })
 
-    describe('#changeScriptExec', async () => {
+    // The following methods are covered or will be covereed by way of tests which exercise the registry:
+    // describe('#changeScriptExec', async () => {})
+    // describe('#changeInitAddr', async () => {})
 
-    })
-
-    describe('#changeInitAddr', async () => {
-
-    })
+    /// The following methods will soon be covered below :
 
     describe('#pauseAppInstance', async () => {
-
+        // TODO: add test coverage
     })
 
     describe('#unpauseAppInstance', async () => {
-
+        // TODO: add test coverage
     })
 
     describe('#addAllowed', async () => {
-
+        // TODO: add test coverage
     })
 
     describe('#removeAllowed', async () => {
-
-    })
-
-    describe('#getExecAllowed', async () => {
-
-    })
-
-    describe('#read', async () => {
-
-    })
-
-    describe('#readMulti', async () => {
-
+        // TODO: add test coverage
     })
 
     describe('#withdraw', async () => {
