@@ -1,7 +1,7 @@
 pragma solidity ^0.4.23;
 
-import "../../../../libraries/MemoryBuffers.sol";
-import "../../../../libraries/ArrayUtils.sol";
+import "../../../../../lib/MemoryBuffers.sol";
+import "../../../../../lib/ArrayUtils.sol";
 
 library TokenTransferFrom {
 

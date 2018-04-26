@@ -1,7 +1,7 @@
 pragma solidity ^0.4.23;
 
-import "../../../../libraries/ReadFromBuffers.sol";
-import "../../../../libraries/ArrayUtils.sol";
+import "../../../../../lib/ReadFromBuffers.sol";
+import "../../../../../lib/ArrayUtils.sol";
 
 library InitCrowdsale {
 
