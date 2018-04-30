@@ -133,6 +133,7 @@ contract AbstractStorage {
     }
     // Emit event
     emit ApplicationExecution(_exec_id, _target);
+
     // If execution reaches this point, call should have succeeded -
     assert(success);
   }
