@@ -16,7 +16,7 @@ contract RegistryStorage is AbstractStorage {
   @return bool 'is_payable': Whether the application has payable functionality
   @return address 'app_storage_addr': The storage address to be used with the application
   @return bytes32 'latest_version': The name of the latest stable version of the application
-  @return address 'app_init_addr': The address containint the application's initialization function, as well as its getters
+  @return address 'app_init_addr': The address containing the application's initialization function, as well as its getters
   @return address[] 'allowed': An array of addresses allowed to access app storage through the app storage address and script exec contract
   */
   function getAppInitInfo(bytes32 _registry_exec_id, bytes32 _app_provider, bytes32 _app_name) public view

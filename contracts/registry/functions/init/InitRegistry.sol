@@ -142,14 +142,14 @@ library InitRegistry {
 
   @param _storage: The address where the registry's storage is located
   @param _exec_id: The execution id associated with the registry
-  @param _provider: The provider's address
+  @param _provider: The provider
   @return provider: The hash id associated with this provider
   @return registered_apps: A list of the names of all applications registered by this provider
   */
-  function getProviderInfoFromAddress(address _storage, bytes32 _exec_id, address _provider) public view
+  function getProviderInfoFromAddress(address _storage, bytes32 _exec_id, bytes32 _provider) public view
   returns (bytes32 provider, bytes32[] memory registered_apps) {
     // Ensure valid input
-    require(_storage != address(0) && _exec_id != bytes32(0) && _provider != address(0));
+    require(_storage != address(0) && _exec_id != bytes32(0) && _provider != bytes32(0));
     // Get provider id from provider address
     provider = keccak256(_provider);
 

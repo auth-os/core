@@ -74,10 +74,10 @@ library ImplementationConsole {
     require(_app != bytes32(0) && _version != bytes32(0));
     require(_function_sigs.length == _function_addrs.length && _function_sigs.length > 0);
 
-    address provider;
     bytes32 exec_id;
+    bytes32 provider;
 
-    // Parse context array and get sender address and execution id
+    // Parse context array and get provider and execution id
     (exec_id, provider, ) = parse(_context);
 
     // Get app base storage location -
@@ -189,10 +189,10 @@ library ImplementationConsole {
     require(_app != bytes32(0) && _version != bytes32(0));
     require(_function_sig != bytes4(0) && _function_description.length > 0);
 
-    address provider;
     bytes32 exec_id;
+    bytes32 provider;
 
-    // Parse context array and get sender address and execution id
+    // Parse context array and get execution id and provider
     (exec_id, provider, ) = parse(_context);
 
     // Get app base storage location -
@@ -403,15 +403,15 @@ library ImplementationConsole {
   }
 
 
-  // Parses context array and returns execution id, sender address, and sent wei amount
-  function parse(bytes memory _context) internal pure returns (bytes32 exec_id, address from, uint wei_sent) {
+  // Parses context array and returns execution id, provider, and sent wei amount
+  function parse(bytes memory _context) internal pure returns (bytes32 exec_id, bytes32 provider, uint wei_sent) {
     assembly {
       exec_id := mload(add(0x20, _context))
-      from := mload(add(0x40, _context))
+      provider := mload(add(0x40, _context))
       wei_sent := mload(add(0x60, _context))
     }
     // Ensure sender and exec id are valid
-    if (from == address(0) || exec_id == bytes32(0))
+    if (provider == bytes32(0) || exec_id == bytes32(0))
       triggerException(bytes32("UnknownContext"));
   }
 }

@@ -79,10 +79,10 @@ library VersionConsole {
     require(_context.length == 96);
     require(_app != bytes32(0) && _ver_name != bytes32(0) && _ver_desc.length > 0);
 
-    address provider;
     bytes32 exec_id;
+    bytes32 provider;
 
-    // Parse context array and get sender address and execution id
+    // Parse context array and get execution id and provider
     (exec_id, provider, ) = parse(_context);
 
     // Place app storage location in calldata
@@ -169,10 +169,10 @@ library VersionConsole {
     require(_app != bytes32(0) && _ver_name != bytes32(0));
     require(_ver_init_address != address(0) && _init_sig != bytes4(0) && _init_description.length > 0);
 
-    address provider;
     bytes32 exec_id;
+    bytes32 provider;
 
-    // Parse context array and get sender address and execution id
+    // Parse context array and get execution id and provider
     (exec_id, provider, ) = parse(_context);
 
     /// Ensure application and version are registered, and that the version is not already finalized -
@@ -384,15 +384,15 @@ library VersionConsole {
   }
 
 
-  // Parses context array and returns execution id, sender address, and sent wei amount
-  function parse(bytes memory _context) internal pure returns (bytes32 exec_id, address from, uint wei_sent) {
+  // Parses context array and returns execution id, provider, and sent wei amount
+  function parse(bytes memory _context) internal pure returns (bytes32 exec_id, bytes32 provider, uint wei_sent) {
     assembly {
       exec_id := mload(add(0x20, _context))
-      from := mload(add(0x40, _context))
+      provider := mload(add(0x40, _context))
       wei_sent := mload(add(0x60, _context))
     }
-    // Ensure sender and exec id are valid
-    if (from == address(0) || exec_id == bytes32(0))
+    // Ensure exec id and provider are valid
+    if (provider == bytes32(0) || exec_id == bytes32(0))
       triggerException(bytes32("UnknownContext"));
   }
 }

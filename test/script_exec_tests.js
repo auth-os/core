@@ -20,11 +20,11 @@ contract('ScriptExec', function(accounts) {
     let registryExecId
 
     let execAdmin = accounts[0]
-    let provider = utils.randomBytes(32)
+    let provider = '0x000000000000000000000000' + execAdmin.substring(2)
     let updater = accounts[Math.ceil(accounts.length / 2)]
 
     beforeEach(async () => {
-        storage = await RegistryStorage.new({ gas: 3050000 }).should.be.fulfilled
+        storage = await RegistryStorage.new().should.be.fulfilled
 
         appConsole = await AppConsole.new().should.be.fulfilled
         implementationConsole = await ImplementationConsole.new().should.be.fulfilled
@@ -33,7 +33,7 @@ contract('ScriptExec', function(accounts) {
         initRegistry = await InitRegistry.new().should.be.fulfilled
         initRegistry.should.not.eq(null)
 
-        scriptExec = await ScriptExec.new(updater, storage.address, provider, { gas: 4700000, from: execAdmin }).should.be.fulfilled
+        scriptExec = await ScriptExec.new(updater, storage.address, provider, { from: execAdmin }).should.be.fulfilled
         scriptExec.should.not.eq(null)
 
         registryInitAndFinalizeCalldata = await storage.initAndFinalize.request(updater, false, initRegistry.address, '0xe1c7392a', // bytes4(keccak256("init()"));
@@ -42,7 +42,6 @@ contract('ScriptExec', function(accounts) {
         registryExecId = await scriptExec.initRegistryWithCalldata(registryInitAndFinalizeCalldata).should.be.fulfilled.then((tx) => {
             return tx.receipt.logs[0].topics[1]
         })
-
     })
 
     describe('#initRegistryWithCalldata', async() => {
@@ -79,15 +78,15 @@ contract('ScriptExec', function(accounts) {
                 defaultExecId.should.eq(registryExecId)
             })
 
-            it('should set the given default provider id on the script exec contract', async() => {
-                let defaultProviderId = await scriptExec.default_provider()
-                defaultProviderId.should.eq(web3.toHex(provider))
+            it('should set the given default provider on the script exec contract', async() => {
+                let defaultProvider = await scriptExec.default_provider()
+                defaultProvider.should.eq(provider)
             })
         })
 
         context('when the script exec contract is initialized with "zero-state" params', async () => {
             beforeEach(async () => {
-                scriptExec = await ScriptExec.new(utils.ADDRESS_0x, utils.ADDRESS_0x, 0, { gas: 4700000, from: execAdmin }).should.be.fulfilled
+                scriptExec = await ScriptExec.new(utils.ADDRESS_0x, utils.ADDRESS_0x, 0, { from: execAdmin }).should.be.fulfilled
             })
 
             it('should have initialized the script exec contract', async() => {
@@ -114,9 +113,9 @@ contract('ScriptExec', function(accounts) {
                 defaultExecId.should.eq(utils.BYTES32_EMPTY)
             })
 
-            it('should not set a default provider id on the script exec contract', async() => {
-                let defaultProviderId = await scriptExec.default_provider()
-                defaultProviderId.should.eq(utils.BYTES32_EMPTY)
+            it('should not set a default provider on the script exec contract', async() => {
+                let defaultProvider = await scriptExec.default_provider()
+                defaultProvider.should.eq(utils.BYTES32_EMPTY)
             })
         })
     })
@@ -126,7 +125,7 @@ contract('ScriptExec', function(accounts) {
             let newStorage
 
             beforeEach(async () => {
-                newStorage = await RegistryStorage.new({ gas: 3050000 }).should.be.fulfilled
+                newStorage = await RegistryStorage.new().should.be.fulfilled
             })
 
             context('when invoked by the script exec admin', async () => {
@@ -197,8 +196,7 @@ contract('ScriptExec', function(accounts) {
         })
     
         describe('#changeProvider', async () => {
-            let newProvider = utils.randomBytes(32)
-            let newProviderHex = web3.toHex(newProvider)
+            let newProvider = web3.toHex(utils.randomBytes(32))
 
             context('when invoked by the script exec admin', async () => {
                 beforeEach(async () => {
@@ -207,7 +205,7 @@ contract('ScriptExec', function(accounts) {
     
                 it('should change the default provider on the script exec contract', async () => {
                     let defaultProvider = await scriptExec.default_provider()
-                    defaultProvider.should.eq(newProviderHex)
+                    defaultProvider.should.eq(newProvider)
                 })
             })
     
@@ -246,20 +244,23 @@ contract('ScriptExec', function(accounts) {
     describe('application context', async () => {
         let appName = 'Mock App Instance @' + new Date().getTime()
         let appDescription = 'Mock App Description @' + new Date().getTime()
+        let appInit
         let appFuncLib
+        let _context
 
         beforeEach(async () => {
             appInit = await ApplicationMockInit.new().should.be.fulfilled
             appInit.should.not.eq(null)
-            appInitCalldata =  // bytes4(keccak256("init()"));
 
             appFuncLib = await ApplicationMockFuncLib.new().should.be.fulfilled
-            appAllowed = [appFuncLib.address]
+            appFuncLib.should.not.eq(null)
 
-            context = await scriptExec.mockContext.call(registryExecId, execAdmin, 0)
-            calldata = await scriptExec.mockRegisterAppCallData.call(appName, storage.address, web3.toHex(appDescription), context)
+            _context = await scriptExec.mockContext.call(registryExecId, provider, 0)
 
-            await scriptExec.exec(appConsole.address, calldata).should.be.fulfilled  // registerApp
+            registerAppCalldata = await appConsole.registerApp.request(appName, storage.address, appDescription, _context).params[0].data
+            await scriptExec.exec(appConsole.address, registerAppCalldata).should.be.fulfilled.then((tx) => {
+
+            })
         })
 
         // TODO: cover proper event emission for the following events:
@@ -269,52 +270,83 @@ contract('ScriptExec', function(accounts) {
 
         describe('#initAppInstance', async () => {
             context('when the app has been initialized properly via registry contract', async () => {
-                let appEvents
-                let appCreator
-                let appExecId
-                let appStorage
-                let _appName
-
-                context('when the given calldata is valid for the app init function', async () => {
-                    beforeEach(async () => {
-                        appEvents = await scriptExec.initAppInstance(appName, false, '0xe1c7392a', { from: accounts[accounts.length - 1] }).should.be.fulfilled.then((tx) => {
-                            return tx.logs
-                        })
-                        appCreator = appEvents[0].args.creator
-                        appExecId = appEvents[0].args.exec_id
-                        appStorage = appEvents[0].args.storage_addr
-                        _appName = appEvents[0].args.app_name
-                    })
-
-                    it('should emit an AppInstanceCreated event', async () => {
-                        appEvents[0].event.should.be.eq('AppInstanceCreated')
-                    })
-
-                    it('should associate the initialized application instance with its creator', async () => {
-                        appCreator.should.not.eq(null)
-                        appCreator.should.be.eq(accounts[accounts.length - 1])
-                    })
-
-                    it('should assign an exec id to the initialized application instance', async () => {
-                        appExecId.should.not.eq(null)
-                    })
-
-                    // FIXME-- this test is failing for the right reasons... the event is emitting 0x storage_addr
-                    it('should associate the initialized application instance with its designated storage contract', async () => {
-                        appStorage.should.not.eq(null)
-                        appStorage.should.be.eq(storage.address)
-                    })
-
-                    it('should associate the initialized application instance with the assigned app name', async () => {
-                        _appName.should.not.eq(null)
-                        _appName.should.be.eq(web3.toHex(appName))
+                context ('when no app versions have been finalized', async () => {
+                    it('should revert the tx', async () => {
+                        await scriptExec.initAppInstance(appName, false, '0xe1c7392a', { from: execAdmin }).should.be.rejectedWith(exports.EVM_ERR_REVERT)
                     })
                 })
 
-                context('when the given calldata is invalid for the app init function', async () => {
-                    it('should revert the tx', async () => {
-                        let invalidCalldata = '' // should be, at a minimum, bytes4(keccak256("init()")) for default application initializer
-                        await scriptExec.initAppInstance(appName, false, invalidCalldata).should.be.rejectedWith(exports.EVM_ERR_REVERT)
+                context('when one or more app versions have been finalized', async () => {
+                    let appEvents
+                    let appCreator
+                    let appExecId
+                    let appStorage
+                    let versionName
+                    let _appName
+
+                    beforeEach(async () => {
+                        addVersionCalldata = await versionConsole.registerVersion.request(appName, '0.0.1', storage.address, 'Alpha release', _context).params[0].data
+                        await scriptExec.exec(versionConsole.address, addVersionCalldata).should.be.fulfilled.then((tx) => {
+
+                        })
+
+                        addFunctionsCalldata = await implementationConsole.addFunctions.request(appName, '0.0.1', ['0x0f0558ba'], [appFuncLib.address], _context).params[0].data
+                        await scriptExec.exec(implementationConsole.address, addFunctionsCalldata).should.be.fulfilled.then((tx) => {
+
+                        })
+
+                        finalizeVersionCalldata = await versionConsole.finalizeVersion.request(appName, '0.0.1', appInit.address, '0xe1c7392a', 'Initializer', _context).params[0].data
+                        await scriptExec.exec(versionConsole.address, finalizeVersionCalldata).should.be.fulfilled.then((tx) => {
+                            
+                        })
+                    })
+
+                    context('when the given calldata is valid for the app init function', async () => {
+                        beforeEach(async () => {
+                            appEvents = await scriptExec.initAppInstance(appName, false, '0xe1c7392a', { from: accounts[accounts.length - 1] }).should.be.fulfilled.then((tx) => {
+                                return tx.logs
+                            })
+                            appCreator = appEvents[0].args.creator
+                            appExecId = appEvents[0].args.exec_id
+                            appStorage = appEvents[0].args.storage_addr
+                            versionName = appEvents[0].args.version_name
+                            _appName = appEvents[0].args.app_name
+                        })
+
+                        it('should emit an AppInstanceCreated event', async () => {
+                            appEvents[0].event.should.be.eq('AppInstanceCreated')
+                        })
+
+                        it('should associate the initialized application instance with its creator', async () => {
+                            appCreator.should.not.eq(null)
+                            appCreator.should.be.eq(accounts[accounts.length - 1])
+                        })
+
+                        it('should assign an exec id to the initialized application instance', async () => {
+                            appExecId.should.not.eq(null)
+                        })
+
+                        it('should associate the initialized application instance with its designated storage contract', async () => {
+                            appStorage.should.not.eq(null)
+                            appStorage.should.be.eq(storage.address)
+                        })
+
+                        it('should associate the initialized application instance with the assigned app name', async () => {
+                            _appName.should.not.eq(null)
+                            _appName.should.be.eq(web3.toHex(appName))
+                        })
+    
+                        it('should associate the initialized application instance with the latest finalized app version', async () => {
+                            versionName.should.not.eq(null)
+                            versionName.should.be.eq(web3.toHex('1.0.0'))
+                        })
+                    })
+
+                    context('when the given calldata is invalid for the app init function', async () => {
+                        it('should revert the tx', async () => {
+                            let invalidCalldata = '' // should be, at a minimum, bytes4(keccak256("init()")) for default application initializer
+                            await scriptExec.initAppInstance(appName, false, invalidCalldata).should.be.rejectedWith(exports.EVM_ERR_REVERT)
+                        })
                     })
                 })
             })

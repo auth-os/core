@@ -122,13 +122,13 @@ contract ScriptExec {
   @return returned_data: Data returned from app storage
   */
   function exec(address _target, bytes _app_calldata) public payable returns (bool failed, bytes returned_data) {
-    address sender;
     bytes32 exec_id;
+    bytes32 exec_as;
     uint wei_sent;
-    // Ensure execution id and sender make up the calldata's first 64 bytes, after the function selector
+    // Ensure execution id and provider make up the calldata's first 64 bytes, after the function selector
     // Ensure the next 32 bytes is equal to msg.value
-    (exec_id, sender, wei_sent) = parse(_app_calldata);
-    require(sender == msg.sender && wei_sent == msg.value);
+    (exec_id, exec_as, wei_sent) = parse(_app_calldata);
+    require(exec_as == bytes32(msg.sender) && wei_sent == msg.value);
     // Call target with calldata
     if (msg.value > 0)
       require(default_storage.call.value(msg.value)(APP_EXEC, _target, exec_id, uint(96), uint(_app_calldata.length), _app_calldata));
@@ -218,6 +218,9 @@ contract ScriptExec {
       ver_name := mload(add(0x40, ptr))
       let app_init_addr := mload(add(0x60, ptr))
       let num_addrs := mload(add(0xa0, ptr))
+
+      if iszero(app_storage) { revert (0, 0) }
+      if iszero(ver_name) { revert (0, 0) }
 
       // Move pointer to free memory
       ptr := add(ptr, returndatasize)
@@ -338,10 +341,10 @@ contract ScriptExec {
   /// HELPERS ///
 
   // Parses payable app calldata and returns app exec id, sender address, and wei sent
-  function parse(bytes _app_calldata) internal pure returns (bytes32 exec_id, address from, uint wei_sent) {
+  function parse(bytes _app_calldata) internal pure returns (bytes32 exec_id, bytes32 exec_as, uint wei_sent) {
     assembly {
       exec_id := mload(sub(add(_app_calldata, mload(_app_calldata)), 0x40))
-      from := mload(sub(add(_app_calldata, mload(_app_calldata)), 0x20))
+      exec_as := mload(sub(add(_app_calldata, mload(_app_calldata)), 0x20))
       wei_sent := mload(add(_app_calldata, mload(_app_calldata)))
     }
   }
