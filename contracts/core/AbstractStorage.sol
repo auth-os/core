@@ -121,9 +121,8 @@ contract AbstractStorage {
       // Return unspent wei to sender
       address(msg.sender).transfer(msg.value - amount_paid);
 
+      ret_data = new bytes(64);
       assembly {
-        ret_data := add(0x20, msize)
-        mstore(ret_data, 0x40) // Set return size
         // Add amount paid and payment destination address to return data
         mstore(add(0x20, ret_data), amount_paid)
         mstore(add(0x40, ret_data), paid_to)
