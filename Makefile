@@ -1,7 +1,7 @@
 .PHONY: abi clean compile flat flat_os flat_apps test coverage
 
 abi: clean compile
-	node ./abi.js
+	node ./.abi.js
 
 clean:
 	rm -rf build/
