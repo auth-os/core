@@ -54,7 +54,7 @@ MintedCappedCrowdsale: (Referencing auth-os/applications/TokenWizard/MintedCappe
 1. InitCrowdsale: https://ropsten.etherscan.io/address/0xbd9383c930974cca9ab8629e77557ab336ab5dd7#code
 2. CrowdsaleConsole: https://ropsten.etherscan.io/address/0xbe293d2bbcbf3e75a3012f8fdbf5107a229caae1#code
 3. TokenConsole: https://ropsten.etherscan.io/address/0x04c6131102b67dde3d94791b5313dd77aede9606#code
-4. CrowdsaleBuyTokens: https://ropsten.etherscan.io/address/0xa92b3cb3c886014ba0a9f25338653adbfd2350a7#code
+4. CrowdsaleBuyTokens: https://ropsten.etherscan.io/address/0x7b34e238c7d2a66dfcbecc711a9e44dbfdfefd9a#code
 5. TokenTransfer: https://ropsten.etherscan.io/address/0xd45f633c8cd3d1ab83df5027ec951a6cc5836afd#code
 6. TokenTransferFrom: https://ropsten.etherscan.io/address/0x652f3b589ee2dcbe5c3970918106d33fc32da33b#code
 7. TokenApprove: https://ropsten.etherscan.io/address/0xe6dd7740afa6950b725896d1217ff1537c0c2bc5#code
@@ -63,7 +63,7 @@ DutchCrowdsale: (Referencing auth-os/applications/TokenWizard/DutchCrowdsale)
 1. InitCrowdsale: https://ropsten.etherscan.io/address/0x643b8728945d113b371fb0cd8a9cf49e5d588c37#code
 2. CrowdsaleConsole: https://ropsten.etherscan.io/address/0xf17099c4b2cb496eb1280de20a54e786f29be92f#code
 3. TokenConsole: https://ropsten.etherscan.io/address/0xe8456cc64c0f1c2752e1c6637cd245ef393b9415#code
-4. CrowdsaleBuyTokens: https://ropsten.etherscan.io/address/0xae60be91395f880e5dd52f3bda424da46337e9fa#code
+4. CrowdsaleBuyTokens: https://ropsten.etherscan.io/address/0xab2b79fed4adadb155116099e03381f26a5c892f#code
 5. TokenTransfer: https://ropsten.etherscan.io/address/0xeaa043430329200c7e9419d69b71e08527d86097#code
 6. TokenTransferFrom: https://ropsten.etherscan.io/address/0xe034e42bc559842969a477909c450602c9818acb#code
 7. TokenApprove: https://ropsten.etherscan.io/address/0x52a3bb96e72d127e845a79fdf59514cd7a4d8b58#code
