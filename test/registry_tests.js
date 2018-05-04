@@ -2154,6 +2154,171 @@ contract('Script Registry', function(accounts) {
 
     context('when the provider finalizes a version with functions', async () => {
 
+      let finalizeCalldata
+      let finalizeEvent
+
+      let addFunctionsOneCalldata
+      let addFunctionsOneEvent
+
+      let addFunctionsThreeCalldata
+      let addFunctionsThreeEvent
+
+      beforeEach(async () => {
+        let registerVersionCalldata = await registryUtil.registerVersion(
+          appName, versionName, storage.address, versionDesc, executionContext
+        ).should.be.fulfilled
+        registerVersionCalldata.should.not.eq('0x')
+
+        let events = await storage.exec(
+          versionConsole.address, registryExecId, registerVersionCalldata,
+          { from: exec }
+        ).then((tx) => {
+          return tx.logs
+        })
+        events.should.not.eq(null)
+        events.length.should.be.eq(1)
+        events[0].event.should.be.eq('ApplicationExecution')
+
+        let addFunctionsOneCalldata = await registryUtil.addFunctions(
+          appName, versionName, mockLibOneSelArray, mockLibOneArray, executionContext
+        ).should.be.fulfilled
+        addFunctionsOneCalldata.should.not.eq('0x')
+
+        let addFunctionsThreeCalldata = await registryUtil.addFunctions(
+          appName, versionName, threeSelectorArray, mockLibThreeArray, executionContext
+        ).should.be.fulfilled
+        addFunctionsThreeCalldata.should.not.eq('0x')
+
+        events = await storage.exec(
+          implConsole.address, registryExecId, addFunctionsOneCalldata,
+          { from: exec }
+        ).then((tx) => {
+          return tx.logs
+        })
+        events.should.not.eq(null)
+        events.length.should.be.eq(1)
+        addFunctionsOneEvent = events[0]
+
+        events = await storage.exec(
+          implConsole.address, registryExecId, addFunctionsThreeCalldata,
+          { from: exec }
+        ).then((tx) => {
+          return tx.logs
+        })
+        events.should.not.eq(null)
+        events.length.should.be.eq(1)
+        addFunctionsThreeEvent = events[0]
+
+        finalizeCalldata = await registryUtil.finalizeVersion(
+          appName, versionName, mockAppInit.address, mockAppInitSig, mockAppInitDesc, executionContext
+        ).should.be.fulfilled
+        finalizeCalldata.should.not.eq('0x')
+
+        events = await storage.exec(
+          versionConsole.address, registryExecId, finalizeCalldata,
+          { from: exec }
+        ).then((tx) => {
+          return tx.logs
+        })
+        events.should.not.eq(null)
+        events.length.should.be.eq(1)
+        finalizeEvent = events[0]
+      })
+
+      it('should emit 3 ApplicationExecution events', async () => {
+        addFunctionsOneEvent.event.should.be.eq('ApplicationExecution')
+        addFunctionsThreeEvent.event.should.be.eq('ApplicationExecution')
+        finalizeEvent.event.should.be.eq('ApplicationExecution')
+      })
+
+      it('should store the correct values for getAppLatestInfo', async () => {
+        let appLatest = await initRegistry.getAppLatestInfo(
+          storage.address, registryExecId, providerID, appName
+        ).should.be.fulfilled
+        appLatest.should.not.eq(null)
+        appLatest.length.should.be.eq(4)
+
+        appLatest[0].should.be.eq(storage.address)
+        hexStrEquals(appLatest[1], versionName).should.be.eq(true)
+        appLatest[2].should.be.eq(mockAppInit.address)
+        appLatest[3].length.should.be.eq(3)
+
+        appLatest[3][0].should.be.eq(mockLibOneArray[0])
+        appLatest[3][1].should.be.eq(mockLibOneArray[1])
+        appLatest[3][2].should.be.eq(mockLibThreeArray[0])
+      })
+
+      it('should store the correct version info', async () => {
+        let versionInfo = await initRegistry.getVersionInfo(
+          storage.address, registryExecId, providerID, appName, versionName
+        ).should.be.fulfilled
+        versionInfo.should.not.eq(null)
+        versionInfo.length.should.be.eq(4)
+
+        versionInfo[0].should.be.eq(true)
+        versionInfo[1].toNumber().should.be.eq(3)
+        versionInfo[2].should.be.eq(storage.address)
+        hexStrEquals(versionInfo[3], versionDesc)
+      })
+
+      it('should store the correct initialization info', async () => {
+        let initInfo = await initRegistry.getVersionInitInfo(
+          storage.address, registryExecId, providerID, appName, versionName
+        ).should.be.fulfilled
+        initInfo.should.not.eq(null)
+        initInfo.length.should.be.eq(3)
+
+        initInfo[0].should.be.eq(mockAppInit.address)
+        initInfo[1].should.be.eq(mockAppInitSig)
+        hexStrEquals(initInfo[2], mockAppInitDesc)
+      })
+
+      it('should store the correct version implementation details', async () => {
+        let  implInfo = await initRegistry.getVersionImplementation(
+          storage.address, registryExecId, providerID, appName, versionName
+        ).should.be.fulfilled
+        implInfo.should.not.eq(null)
+        implInfo.length.should.be.eq(2)
+
+        implInfo[0].length.should.be.eq(3)
+        implInfo[1].length.should.be.eq(3)
+
+        implInfo[0][0].should.be.eq(mockLibOneSelArray[0])
+        implInfo[0][1].should.be.eq(mockLibOneSelArray[1])
+        implInfo[0][2].should.be.eq(threeSelectorArray[0])
+        implInfo[1][0].should.be.eq(mockLibOneArray[0])
+        implInfo[1][1].should.be.eq(mockLibOneArray[1])
+        implInfo[1][2].should.be.eq(mockLibThreeArray[0])
+      })
+
+      it('should store the correct implementation details for each function', async () => {
+        let implDetails = await initRegistry.getImplementationInfo(
+          storage.address, registryExecId, providerID, appName, versionName, mockLibOneSelArray[0]
+        ).should.be.fulfilled
+        implDetails.should.not.eq(null)
+        implDetails.length.should.be.eq(2)
+
+        implDetails[0].should.be.eq(mockLibOneArray[0])
+        implDetails[1].should.be.eq('0x')
+
+        implDetails = await initRegistry.getImplementationInfo(
+          storage.address, registryExecId, providerID, appName, versionName, mockLibOneSelArray[1]
+        ).should.be.fulfilled
+        implDetails.should.not.eq(null)
+        implDetails.length.should.be.eq(2)
+
+        implDetails[0].should.be.eq(mockLibOneArray[1])
+        implDetails[1].should.be.eq('0x')
+
+        implDetails = await initRegistry.getImplementationInfo(
+          storage.address, registryExecId, providerID, appName, versionName, threeSelectorArray[0]
+        ).should.be.fulfilled
+        implDetails.should.not.eq(null)
+        implDetails.length.should.be.eq(2)
+
+        implDetails[0].should.be.eq(mockLibThreeArray[0])
+        implDetails[1].should.be.eq('0x')
+      })
     })
   })
 })
