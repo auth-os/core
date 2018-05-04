@@ -1725,7 +1725,435 @@ contract('Script Registry', function(accounts) {
 
   })
 
-  // contract('ImplementationConsole', async () => {
-  //
-  // })
+  describe('#ImplementationConsole', async () => {
+
+    let providerID
+    let executionContext
+
+    let appName = 'Application'
+    let appDesc = 'An application that will have many versions'
+
+    let versionName = 'v0.0.1'
+    let versionDesc = 'The initial version of an application'
+
+    let registerAppCalldata
+    let registerVersionCalldata
+    let addFunctionsCalldata
+    let finalizeVersionCalldata
+
+    let registerVersionEvent
+    let addFunctionsEvent
+    let finalizeVersionEvent
+
+    let mockLibOneArray
+    let mockLibOneSelArray
+
+    let mockLibTwoArray
+    let twoSelectorArray
+
+    let mockLibThreeArray
+    let threeSelectorArray
+
+    beforeEach(async () => {
+      providerID = await testUtils.getAppProviderHash(providerOne).should.be.fulfilled
+      web3.toDecimal(providerID).should.not.eq(0)
+
+      executionContext = await testUtils.getContextFromAddr(
+        registryExecId, providerOne, 0
+      ).should.be.fulfilled
+      executionContext.should.not.eq('0x')
+
+      mockLibOneArray = [mockAppLibOne.address, mockAppLibOne.address]
+      let mockLibSelOne = await mockAppLibOne.funcOneAppOne().should.be.fulfilled
+      web3.toDecimal(mockLibSelOne).should.not.eq(0)
+      let mockLibSelTwo = await mockAppLibOne.funcTwoAppOne().should.be.fulfilled
+      web3.toDecimal(mockLibSelTwo).should.not.eq(0)
+
+      mockLibOneSelArray = [mockLibSelOne, mockLibSelTwo]
+
+      mockLibTwoArray = []
+      twoSelectorArray = []
+
+      mockLibThreeArray = [mockAppLibThree.address]
+      let mockLibSelThree = await mockAppLibThree.funcOneAppThree().should.be.fulfilled
+      web3.toDecimal(mockLibSelThree).should.not.eq(0)
+      threeSelectorArray = [mockLibSelThree]
+
+      registerAppCalldata = await registryUtil.registerApp(
+        appName, storage.address, appDesc, executionContext
+      ).should.be.fulfilled
+      registerAppCalldata.should.not.eq('0x')
+
+      let events = await storage.exec(
+        appConsole.address, registryExecId, registerAppCalldata,
+        { from: exec }
+      ).then((tx) => {
+        return tx.logs
+      })
+      events.should.not.eq(null)
+      events.length.should.be.eq(1)
+      events[0].event.should.be.eq('ApplicationExecution')
+    })
+
+    context('when the provider tries to add functions to a version (valid parameters)', async () => {
+
+      beforeEach(async () => {
+        registerVersionCalldata = await registryUtil.registerVersion(
+          appName, versionName, storage.address, versionDesc, executionContext
+        ).should.be.fulfilled
+        registerVersionCalldata.should.not.eq('0x')
+
+        let events = await storage.exec(
+          versionConsole.address, registryExecId, registerVersionCalldata,
+          { from: exec }
+        ).then((tx) => {
+          return tx.logs
+        })
+        events.should.not.eq(null)
+        events.length.should.be.eq(1)
+        registerVersionEvent = events[0]
+      })
+
+      context('but the application doesn\'t exist', async () => {
+
+        let unregisteredApp = 'UnregisteredApp'
+
+        beforeEach(async () => {
+          registerVersionCalldata = await registryUtil.registerVersion(
+            unregisteredApp, versionName, storage.address, versionDesc, executionContext
+          ).should.be.fulfilled
+          registerVersionCalldata.should.not.eq('0x')
+
+          let events = await storage.exec(
+            versionConsole.address, registryExecId, registerVersionCalldata,
+            { from: exec }
+          ).then((tx) => {
+            return tx.logs
+          })
+          events.should.not.eq(null)
+          events.length.should.be.eq(1)
+          registerVersionEvent = events[0]
+
+          addFunctionsCalldata = await registryUtil.addFunctions(
+            unregisteredApp, versionName, mockLibOneSelArray, mockLibOneArray, executionContext
+          ).should.be.fulfilled
+          addFunctionsCalldata.should.not.eq('0x')
+
+          events = await storage.exec(
+            implConsole.address, registryExecId, addFunctionsCalldata,
+            { from: exec }
+          ).then((tx) => {
+            return tx.logs
+          })
+          events.should.not.eq(null)
+          events.length.should.be.eq(1)
+          addFunctionsEvent = events[0]
+        })
+
+        it('should revert version registration with an ApplicationException event', async () => {
+          registerVersionEvent.event.should.be.eq('ApplicationException')
+          hexStrEquals(registerVersionEvent.args['message'], 'InsufficientPermissions').should.be.eq(true)
+        })
+
+        it('should revert adding functions with an ApplicationException event', async () => {
+          addFunctionsEvent.event.should.be.eq('ApplicationException')
+          hexStrEquals(addFunctionsEvent.args['message'], 'InsufficientPermissions').should.be.eq(true)
+        })
+      })
+
+      context('and the application exists', async () => {
+
+        context('but the version doesn\'t exist', async () => {
+
+          let unregisteredVersion = 'UnregisteredVer'
+
+          beforeEach(async () => {
+            addFunctionsCalldata = await registryUtil.addFunctions(
+              appName, unregisteredVersion, mockLibOneSelArray, mockLibOneArray, executionContext
+            ).should.be.fulfilled
+            addFunctionsCalldata.should.not.eq('0x')
+
+            let events = await storage.exec(
+              implConsole.address, registryExecId, addFunctionsCalldata,
+              { from: exec }
+            ).then((tx) => {
+              return tx.logs
+            })
+            events.should.not.eq(null)
+            events.length.should.be.eq(1)
+            addFunctionsEvent = events[0]
+          })
+
+          it('should revert adding functions with an ApplicationException event', async () => {
+            addFunctionsEvent.event.should.be.eq('ApplicationException')
+            hexStrEquals(addFunctionsEvent.args['message'], 'InsufficientPermissions').should.be.eq(true)
+          })
+        })
+
+        context('and the version exists', async () => {
+
+          context('but the version is already finalized', async () => {
+
+            beforeEach(async () => {
+              finalizeVersionCalldata = await registryUtil.finalizeVersion(
+                appName, versionName, mockAppInit.address, mockAppInitSig, mockAppInitDesc, executionContext
+              ).should.be.fulfilled
+              finalizeVersionCalldata.should.not.eq('0x')
+
+              let events = await storage.exec(
+                versionConsole.address, registryExecId, finalizeVersionCalldata,
+                { from: exec }
+              ).then((tx) => {
+                return tx.logs
+              })
+              events.should.not.eq(null)
+              events.length.should.be.eq(1)
+              events[0].event.should.be.eq('ApplicationExecution')
+
+              addFunctionsCalldata = await registryUtil.addFunctions(
+                appName, versionName, mockLibOneSelArray, mockLibOneArray, executionContext
+              ).should.be.fulfilled
+              addFunctionsCalldata.should.not.eq('0x')
+
+              events = await storage.exec(
+                implConsole.address, registryExecId, addFunctionsCalldata,
+                { from: exec }
+              ).then((tx) => {
+                return tx.logs
+              })
+              events.should.not.eq(null)
+              events.length.should.be.eq(1)
+              addFunctionsEvent = events[0]
+            })
+
+            it('should revert adding functions with an ApplicationException event', async () => {
+              addFunctionsEvent.event.should.be.eq('ApplicationException')
+              hexStrEquals(addFunctionsEvent.args['message'], 'InsufficientPermissions').should.be.eq(true)
+            })
+          })
+
+          context('and the version is not finalized', async () => {
+
+            beforeEach(async () => {
+              addFunctionsCalldata = await registryUtil.addFunctions(
+                appName, versionName, mockLibOneSelArray, mockLibOneArray, executionContext
+              ).should.be.fulfilled
+              addFunctionsCalldata.should.not.eq('0x')
+
+              let events = await storage.exec(
+                implConsole.address, registryExecId, addFunctionsCalldata,
+                { from: exec }
+              ).then((tx) => {
+                return tx.logs
+              })
+              events.should.not.eq(null)
+              events.length.should.be.eq(1)
+              addFunctionsEvent = events[0]
+            })
+
+            it('should emit an ApplicationExecution event', async () => {
+              addFunctionsEvent.event.should.be.eq('ApplicationExecution')
+            })
+
+            it('should have default getAppLatestInfo', async () => {
+              let appLatest = await initRegistry.getAppLatestInfo(
+                storage.address, registryExecId, providerID, appName
+              ).should.be.fulfilled
+              appLatest.should.not.eq(null)
+              appLatest.length.should.be.eq(4)
+
+              web3.toDecimal(appLatest[0]).should.be.eq(0)
+              web3.toDecimal(appLatest[1]).should.be.eq(0)
+              web3.toDecimal(appLatest[2]).should.be.eq(0)
+              appLatest[3].length.should.be.eq(0)
+            })
+
+            it('should have default getVersionInitInfo', async () => {
+              let appInit = await initRegistry.getVersionInitInfo(
+                storage.address, registryExecId, providerID, appName, versionName
+              ).should.be.fulfilled
+              appInit.should.not.eq(null)
+              appInit.length.should.be.eq(3)
+
+              web3.toDecimal(appInit[0]).should.be.eq(0)
+              web3.toDecimal(appInit[1]).should.be.eq(0)
+              appInit[2].should.be.eq('0x')
+            })
+
+            it('should have valid version info', async () => {
+              let versionInfo = await initRegistry.getVersionInfo(
+                storage.address, registryExecId, providerID, appName, versionName
+              ).should.be.fulfilled
+              versionInfo.should.not.eq(null)
+              versionInfo.length.should.be.eq(4)
+
+              versionInfo[0].should.be.eq(false)
+              versionInfo[1].toNumber().should.be.eq(2)
+              versionInfo[2].should.be.eq(storage.address)
+              hexStrEquals(versionInfo[3], versionDesc).should.be.eq(true)
+            })
+
+            it('should have valid version implementation info', async () => {
+              let implInfo = await initRegistry.getVersionImplementation(
+                storage.address, registryExecId, providerID, appName, versionName
+              ).should.be.fulfilled
+              implInfo.should.not.eq(null)
+              implInfo.length.should.be.eq(2)
+
+              implInfo[0].length.should.be.eq(2)
+              implInfo[1].length.should.be.eq(2)
+
+              implInfo[0][0].should.be.eq(mockLibOneSelArray[0])
+              implInfo[0][1].should.be.eq(mockLibOneSelArray[1])
+              implInfo[1][0].should.be.eq(mockLibOneArray[0])
+              implInfo[1][1].should.be.eq(mockLibOneArray[1])
+            })
+
+            it('should have valid implementation details for each function', async () => {
+              let implDetails = await initRegistry.getImplementationInfo(
+                storage.address, registryExecId, providerID, appName, versionName, mockLibOneSelArray[0]
+              ).should.be.fulfilled
+              implDetails.should.not.eq(null)
+              implDetails.length.should.be.eq(2)
+
+              implDetails[0].should.be.eq(mockLibOneArray[0])
+              implDetails[1].should.be.eq('0x')
+            })
+          })
+        })
+      })
+    })
+
+    context('when the provider tries to add functions with an invalid parameter', async () => {
+
+      let invalidCalldata
+      let execInvalidEvent
+
+      beforeEach(async () => {
+        registerVersionCalldata = await registryUtil.registerVersion(
+          appName, versionName, storage.address, versionDesc, executionContext
+        ).should.be.fulfilled
+        registerVersionCalldata.should.not.eq('0x')
+
+        let events = await storage.exec(
+          versionConsole.address, registryExecId, registerVersionCalldata,
+          { from: exec }
+        ).then((tx) => {
+          return tx.logs
+        })
+        events.should.not.eq(null)
+        events.length.should.be.eq(1)
+        events[0].event.should.be.eq('ApplicationExecution')
+      })
+
+      context('such as the app name', async () => {
+        let invalidAppName = ''
+
+        beforeEach(async () => {
+          invalidCalldata = await registryUtil.addFunctions(
+            invalidAppName, versionName, mockLibOneSelArray, mockLibOneArray, executionContext
+          ).should.be.fulfilled
+          addFunctionsCalldata.should.not.eq('0x')
+
+          let events = await storage.exec(
+            implConsole.address, registryExecId, invalidCalldata,
+            { from: exec }
+          ).then((tx) => {
+            return tx.logs
+          })
+          events.should.not.eq(null)
+          events.length.should.be.eq(1)
+          execInvalidEvent = events[0]
+        })
+
+        it('should revert and emit an ApplicationException event', async () => {
+          execInvalidEvent.event.should.be.eq('ApplicationException')
+          hexStrEquals(execInvalidEvent.args['message'], 'DefaultException').should.be.eq(true)
+        })
+      })
+
+      context('such as the version name', async () => {
+        let invalidVersionName = ''
+
+        beforeEach(async () => {
+          invalidCalldata = await registryUtil.addFunctions(
+            appName, invalidVersionName, mockLibOneSelArray, mockLibOneArray, executionContext
+          ).should.be.fulfilled
+          addFunctionsCalldata.should.not.eq('0x')
+
+          let events = await storage.exec(
+            implConsole.address, registryExecId, invalidCalldata,
+            { from: exec }
+          ).then((tx) => {
+            return tx.logs
+          })
+          events.should.not.eq(null)
+          events.length.should.be.eq(1)
+          execInvalidEvent = events[0]
+        })
+
+        it('should revert and emit an ApplicationException event', async () => {
+          execInvalidEvent.event.should.be.eq('ApplicationException')
+          hexStrEquals(execInvalidEvent.args['message'], 'DefaultException').should.be.eq(true)
+        })
+      })
+
+      context('such as the function signature array length', async () => {
+        let invalidSignatureArray = ['0xaabbccdd']
+
+        beforeEach(async () => {
+          invalidCalldata = await registryUtil.addFunctions(
+            appName, versionName, invalidSignatureArray, mockLibOneArray, executionContext
+          ).should.be.fulfilled
+          addFunctionsCalldata.should.not.eq('0x')
+
+          let events = await storage.exec(
+            implConsole.address, registryExecId, invalidCalldata,
+            { from: exec }
+          ).then((tx) => {
+            return tx.logs
+          })
+          events.should.not.eq(null)
+          events.length.should.be.eq(1)
+          execInvalidEvent = events[0]
+        })
+
+        it('should revert and emit an ApplicationException event', async () => {
+          execInvalidEvent.event.should.be.eq('ApplicationException')
+          hexStrEquals(execInvalidEvent.args['message'], 'DefaultException').should.be.eq(true)
+        })
+      })
+
+      context('such as the function address array length', async () => {
+        let invalidAddressArray = []
+
+        beforeEach(async () => {
+          invalidCalldata = await registryUtil.addFunctions(
+            appName, versionName, mockLibOneSelArray, invalidAddressArray, executionContext
+          ).should.be.fulfilled
+          addFunctionsCalldata.should.not.eq('0x')
+
+          let events = await storage.exec(
+            implConsole.address, registryExecId, invalidCalldata,
+            { from: exec }
+          ).then((tx) => {
+            return tx.logs
+          })
+          events.should.not.eq(null)
+          events.length.should.be.eq(1)
+          execInvalidEvent = events[0]
+        })
+
+        it('should revert and emit an ApplicationException event', async () => {
+          execInvalidEvent.event.should.be.eq('ApplicationException')
+          hexStrEquals(execInvalidEvent.args['message'], 'DefaultException').should.be.eq(true)
+        })
+      })
+
+    })
+
+    context('when the provider finalizes a version with functions', async () => {
+
+    })
+  })
 })

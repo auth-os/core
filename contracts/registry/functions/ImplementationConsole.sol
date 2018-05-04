@@ -115,7 +115,7 @@ library ImplementationConsole {
     }
     // Version function selector and address lists should always be equal
     assert(read_values[3] == read_values[4]);
-    // Get version fucntion and address list lengths
+    // Get version function and address list lengths
     uint list_lengths = uint(read_values[3]);
 
     /// App and version are registered, and version has not been finalized - store function information

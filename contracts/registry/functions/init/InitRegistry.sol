@@ -572,6 +572,9 @@ library InitRegistry {
     if (v_helper.desc_size % 32 != 0)
       v_helper.desc_size_norm++;
 
+    if (v_helper.desc_size_norm == 0)
+      return;
+
     // Create new readMulti calldata buffer, overwriting the previous buffer
     cdOverwrite(ptr, RD_MULTI);
     // Push exec id, data read offset, and read size to buffer
