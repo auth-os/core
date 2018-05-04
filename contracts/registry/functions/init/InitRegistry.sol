@@ -629,6 +629,10 @@ library InitRegistry {
     uint list_length = uint(read_values[0]);
     assert(list_length == uint(read_values[1]));
 
+    // If the version has not implemented functions, return
+    if (list_length == 0)
+      return;
+
     // Create new 'readMulti' calldata buffer, overwriting the previous buffer
     cdOverwrite(ptr, RD_MULTI);
     // Push exec id, data read offset, and read size to calldata buffer

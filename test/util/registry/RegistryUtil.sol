@@ -10,7 +10,7 @@ contract RegistryUtil {
     return msg.data;
   }
 
-  function finalizeVersion(bytes32, bytes32, address, bytes4, bytes) public pure returns (bytes memory) {
+  function finalizeVersion(bytes32, bytes32, address, bytes4, bytes, bytes) public pure returns (bytes memory) {
     return msg.data;
   }
 
