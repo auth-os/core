@@ -130,10 +130,8 @@ contract ScriptExec {
     (exec_id, exec_as, wei_sent) = parse(_app_calldata);
     require(exec_as == bytes32(msg.sender) && wei_sent == msg.value);
     // Call target with calldata
-    if (msg.value > 0)
-      require(default_storage.call.value(msg.value)(APP_EXEC, _target, exec_id, uint(96), uint(_app_calldata.length), _app_calldata));
-    else
-      require(default_storage.call(APP_EXEC, _target, exec_id, uint(96), uint(_app_calldata.length), _app_calldata));
+    bytes memory calldata = abi.encodeWithSelector(APP_EXEC, _target, exec_id, _app_calldata);
+    require(default_storage.call.value(msg.value)(calldata));
 
     // Get returned data
     assembly {
