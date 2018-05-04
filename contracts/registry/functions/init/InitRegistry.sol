@@ -121,6 +121,10 @@ library InitRegistry {
     // Read single value from storage, and place return in buffer
     uint app_count = uint(readSingleFrom(ptr, _storage));
 
+    // If the provider has not registered any applications, return an empty array
+    if (app_count == 0)
+      return registered_apps;
+
     // Overwrite previous read buffer with readMulti buffer
     cdOverwrite(ptr, RD_MULTI);
     // Place exec id, data read offset, and read size in calldata buffer
@@ -146,12 +150,12 @@ library InitRegistry {
   @return provider: The hash id associated with this provider
   @return registered_apps: A list of the names of all applications registered by this provider
   */
-  function getProviderInfoFromAddress(address _storage, bytes32 _exec_id, bytes32 _provider) public view
+  function getProviderInfoFromAddress(address _storage, bytes32 _exec_id, address _provider) public view
   returns (bytes32 provider, bytes32[] memory registered_apps) {
     // Ensure valid input
-    require(_storage != address(0) && _exec_id != bytes32(0) && _provider != bytes32(0));
+    require(_storage != address(0) && _exec_id != bytes32(0) && bytes32(_provider) != bytes32(0));
     // Get provider id from provider address
-    provider = keccak256(_provider);
+    provider = keccak256(bytes32(_provider));
 
     // Create 'read' calldata buffer in memory
     uint ptr = cdBuff(RD_SING);
@@ -161,6 +165,10 @@ library InitRegistry {
     cdPush(ptr, keccak256(PROVIDER_APP_LIST, keccak256(provider, PROVIDERS)));
     // Read single value from storage, and place return in buffer
     uint app_count = uint(readSingleFrom(ptr, _storage));
+
+    // If the provider has not registered any applications, return an empty array
+    if (app_count == 0)
+      return (provider, registered_apps);
 
     // Overwrite previous read buffer with readMulti buffer
     cdOverwrite(ptr, RD_MULTI);
@@ -266,6 +274,10 @@ library InitRegistry {
     cdPush(ptr, keccak256(APP_VERSIONS_LIST, temp));
     // Read from storage and place return in buffer
     app_version_count = uint(readSingleFrom(ptr, _storage));
+
+    // If an application has no registered versions, return an empty array
+    if (app_version_count == 0)
+      return (app_version_count, version_list);
 
     // Overwrite previous buffer with readMulti calldata buffer
     cdOverwrite(ptr, RD_MULTI);
@@ -389,6 +401,10 @@ library InitRegistry {
     }
 
     /// Otherwise - get version allowed addresses
+
+    // If the version has no allowed addresses, return
+    if (app_helper.list_length == 0)
+      return;
 
     // Overwrite previous buffers with 'readMulti' buffer
     cdOverwrite(ptr, RD_MULTI);
