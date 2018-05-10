@@ -5,11 +5,14 @@ let InitRegistry = artifacts.require('./InitRegistry')
 let AppConsole = artifacts.require('./AppConsole')
 let ImplementationConsole = artifacts.require('./ImplementationConsole')
 let VersionConsole = artifacts.require('./VersionConsole')
-let ScriptExec = artifacts.require('./mock/ScriptExecMock')
+let RegistryExec = artifacts.require('./mock/RegistryExecMock')
 let TestUtils = artifacts.require('./util/TestUtils')
+let MockAppLibOne = artifacts.require('./mock/MockAppOne')
+let MockAppLibTwo = artifacts.require('./mock/MockAppTwo')
+let MockAppLibThree = artifacts.require('./mock/MockAppThree')
 let utils = require('./support/utils.js')
 
-contract('ScriptExec', function(accounts) {
+contract('RegistryExec', function(accounts) {
     let storage
     let appConsole
     let implementationConsole
@@ -39,7 +42,7 @@ contract('ScriptExec', function(accounts) {
         initRegistry = await InitRegistry.new().should.be.fulfilled
         initRegistry.should.not.eq(null)
 
-        scriptExec = await ScriptExec.new(updater, storage.address, provider, { from: execAdmin }).should.be.fulfilled
+        scriptExec = await RegistryExec.new(updater, storage.address, provider, { from: execAdmin }).should.be.fulfilled
         scriptExec.should.not.eq(null)
 
         registryExecId = await scriptExec.initRegistry(initRegistry.address, appConsole.address, versionConsole.address, implementationConsole.address, { from: execAdmin }).should.be.fulfilled.then((tx) => {
@@ -90,7 +93,7 @@ contract('ScriptExec', function(accounts) {
 
         context('when the script exec contract is initialized with "zero-state" params', async () => {
             beforeEach(async () => {
-                scriptExec = await ScriptExec.new(utils.ADDRESS_0x, utils.ADDRESS_0x, 0, { from: execAdmin }).should.be.fulfilled
+                scriptExec = await RegistryExec.new(utils.ADDRESS_0x, utils.ADDRESS_0x, 0, { from: execAdmin }).should.be.fulfilled
             })
 
             it('should have initialized the script exec contract', async() => {
@@ -259,7 +262,10 @@ contract('ScriptExec', function(accounts) {
             appFuncLib = await ApplicationMockFuncLib.new().should.be.fulfilled
             appFuncLib.should.not.eq(null)
 
-            _context = await scriptExec.mockContext.call(registryExecId, provider, 0)
+            appFuncLib2 = await MockAppLibOne.new().should.be.fulfilled
+            appFuncLib2.should.not.eq(null)
+
+            _context = await testUtils.getContextFromAddr.call(registryExecId, execAdmin, 0)
             _context.should.not.eq(null)
 
             appName = 'Mock App Instance @' + new Date().getTime()
@@ -303,13 +309,6 @@ contract('ScriptExec', function(accounts) {
                         calldata = tx.receipt.logs[tx.receipt.logs.length - 1].data
                         calldata.should.be.eq(registerVersionCalldata)
                     })
-                    
-                    await scriptExec.registerVersion(appName, '0.0.1', storage.address, 'Alpha release').should.be.fulfilled.then((tx) => {
-                        registerVersionCalldata = versionConsole.registerVersion.request(appName, '0.0.1', storage.address, 'Alpha release', _context).params[0].data
-                        registerVersionCalldata = storage.exec.request(versionConsole.address, registryExecId, registerVersionCalldata).params[0].data
-                        calldata = tx.receipt.logs[tx.receipt.logs.length - 1].data
-                        calldata.should.be.eq(registerVersionCalldata)
-                    })
 
                     await scriptExec.addFunctions(appName, '0.0.1', ['0x0f0558ba'], [appFuncLib.address]).should.be.fulfilled.then((tx) => {
                         addFunctionsCalldata = implementationConsole.addFunctions.request(appName, '0.0.1', ['0x0f0558ba'], [appFuncLib.address], _context).params[0].data
@@ -334,14 +333,33 @@ contract('ScriptExec', function(accounts) {
                         calldata.should.be.eq(registerVersionCalldata)
                     })
 
+                    // add plurality of functions to version
+                    await scriptExec.addFunctions(appName, '0.0.2', ['0x0f0558ba', '0xe1c7392a'], [appFuncLib.address, appFuncLib2.address]).should.be.fulfilled.then((tx) => {
+                        addFunctionsCalldata = implementationConsole.addFunctions.request(appName, '0.0.2', ['0x0f0558ba',  '0xe1c7392a'], [appFuncLib.address, appFuncLib2.address], _context).params[0].data
+                        addFunctionsCalldata = storage.exec.request(implementationConsole.address, registryExecId, addFunctionsCalldata).params[0].data
+                        calldata = tx.receipt.logs[tx.receipt.logs.length - 1].data
+                        calldata.should.be.eq(addFunctionsCalldata)
+                    })
+
                     // finalize version with lengthy init calldata and description
-                    lengthyInitSig = utils.randomBytes(500)
                     lengthyInitDesc = utils.randomBytes(32*256)
-                    await scriptExec.finalizeVersion(appName, '0.0.2', appInit.address, lengthyInitSig, lengthyInitDesc).should.be.fulfilled.then((tx) => {
-                        finalizeVersionCalldata = versionConsole.finalizeVersion.request(appName, '0.0.2', appInit.address, lengthyInitSig, lengthyInitDesc, _context).params[0].data
+                    await scriptExec.finalizeVersion(appName, '0.0.2', appInit.address, '0xe1c7392a', lengthyInitDesc).should.be.fulfilled.then((tx) => {
+                        finalizeVersionCalldata = versionConsole.finalizeVersion.request(appName, '0.0.2', appInit.address, '0xe1c7392a', lengthyInitDesc, _context).params[0].data
                         finalizeVersionCalldata = storage.exec.request(versionConsole.address, registryExecId, finalizeVersionCalldata).params[0].data
                         calldata = tx.receipt.logs[tx.receipt.logs.length - 1].data
                         calldata.should.be.eq(finalizeVersionCalldata)
+                    })
+                })
+
+                describe('#getAppLatestInfo', async () => {
+                    it('should return the latest finalized version of the requested application', async () => {
+                        providerInfo = await initRegistry.getProviderInfoFromAddress(storage.address, registryExecId, execAdmin).should.be.fulfilled
+                        providerInfo.should.not.eq(null)
+                        providerInfo[1].length.should.be.eq(2)
+
+                        appInfo = await initRegistry.getAppLatestInfo(storage.address, registryExecId, provider, appName).should.be.fulfilled
+                        appInfo.should.not.eq(null)
+                        appInfo[appInfo.length - 1].length.should.be.eq(2)
                     })
                 })
 
@@ -383,7 +401,7 @@ contract('ScriptExec', function(accounts) {
 
                     it('should associate the initialized application instance with the latest finalized app version', async () => {
                         versionName.should.not.eq(null)
-                        versionName.should.be.eq('0.0.1')
+                        versionName.should.be.eq('0.0.2')
                     })
                 })
 
