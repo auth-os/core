@@ -318,10 +318,10 @@ contract('RegistryExec', function(accounts) {
                     })
 
                     await scriptExec.finalizeVersion(appName, '0.0.1', appInit.address, '0xe1c7392a', 'Initializer').should.be.fulfilled.then((tx) => {
-                        finalizeVersionCalldata = versionConsole.finalizeVersion.request(appName, '0.0.1', appInit.address, '0xe1c7392a', 'Initializer', _context).params[0].data
-                        finalizeVersionCalldata = storage.exec.request(versionConsole.address, registryExecId, finalizeVersionCalldata).params[0].data
-                        calldata = tx.receipt.logs[tx.receipt.logs.length - 1].data
-                        calldata.should.be.eq(finalizeVersionCalldata)
+                        // finalizeVersionCalldata = versionConsole.finalizeVersion.request(appName, '0.0.1', appInit.address, '0xe1c7392a', 'Initializer', _context).params[0].data
+                        // finalizeVersionCalldata = storage.exec.request(versionConsole.address, registryExecId, finalizeVersionCalldata).params[0].data
+                        // calldata = tx.receipt.logs[tx.receipt.logs.length - 1].data
+                        // calldata.should.be.eq(finalizeVersionCalldata)
                     })
 
                     // setup version with lengthy description
@@ -344,10 +344,10 @@ contract('RegistryExec', function(accounts) {
                     // finalize version with lengthy init calldata and description
                     lengthyInitDesc = utils.randomBytes(32*256)
                     await scriptExec.finalizeVersion(appName, '0.0.2', appInit.address, '0xe1c7392a', lengthyInitDesc).should.be.fulfilled.then((tx) => {
-                        finalizeVersionCalldata = versionConsole.finalizeVersion.request(appName, '0.0.2', appInit.address, '0xe1c7392a', lengthyInitDesc, _context).params[0].data
-                        finalizeVersionCalldata = storage.exec.request(versionConsole.address, registryExecId, finalizeVersionCalldata).params[0].data
-                        calldata = tx.receipt.logs[tx.receipt.logs.length - 1].data
-                        calldata.should.be.eq(finalizeVersionCalldata)
+                        // finalizeVersionCalldata = versionConsole.finalizeVersion.request(appName, '0.0.2', appInit.address, '0xe1c7392a', lengthyInitDesc, _context).params[0].data
+                        // finalizeVersionCalldata = storage.exec.request(versionConsole.address, registryExecId, finalizeVersionCalldata).params[0].data
+                        // calldata = tx.receipt.logs[tx.receipt.logs.length - 1].data
+                        // calldata.should.be.eq(finalizeVersionCalldata)
                     })
                 })
 
