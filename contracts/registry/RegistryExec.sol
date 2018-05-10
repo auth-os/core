@@ -36,6 +36,10 @@ contract RegistryExec is ScriptExec {
   // Map of execution ids to registry metadata
   mapping (bytes32 => Registry) public registries;
 
+  constructor(address _update_source, address _registry_storage, bytes32 _app_provider) 
+    ScriptExec(_update_source, _registry_storage, _app_provider) public 
+  {}
+
   /// REGISTRY BOOTSTRAP ///
 
   function initRegistry(address _init, address _app_console, address _version_console, address _impl_console) public onlyAdmin() returns (bytes32 exec_id) {

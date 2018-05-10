@@ -6,7 +6,7 @@ import "../../contracts/registry/RegistryExec.sol";
 contract RegistryExecMock is RegistryExec {
 
     constructor(address _update_source, address _registry_storage, bytes32 _app_provider) 
-        ScriptExec(_update_source, _registry_storage, _app_provider) public 
+        RegistryExec(_update_source, _registry_storage, _app_provider) public 
     {}
 
     function mockContext(bytes32 _exec_id, bytes32 _provider, uint _val) public pure returns (bytes _ptr) {
