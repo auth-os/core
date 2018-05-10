@@ -206,8 +206,8 @@ contract RegistryExec is ScriptExec {
     }
   }
 
-  function finalizeVersion(bytes32 _app_name, bytes32 _version_name, address _app_init, bytes memory _app_init_sel, bytes memory _app_init_desc) public onlyAdmin() {
-    require(_app_name != bytes32(0) && _version_name != bytes32(0) && _app_init != address(0) && _app_init_sel.length == 4);
+  function finalizeVersion(bytes32 _app_name, bytes32 _version_name, address _app_init, bytes4 _app_init_sel, bytes memory _app_init_desc) public onlyAdmin() {
+    require(_app_name != bytes32(0) && _version_name != bytes32(0) && _app_init != address(0));
     require(default_storage != address(0) && default_registry_exec_id != bytes32(0) && default_provider != bytes32(0));
 
     bytes4 _registry_exec_sel = APP_EXEC;
@@ -221,23 +221,18 @@ contract RegistryExec is ScriptExec {
     bytes memory _ctx = buildContext(default_registry_exec_id, bytes32(msg.sender), 0);
 
     assembly {
-      let _normalized_calldata_len := mload(_app_init_sel)
-      if gt(mod(_normalized_calldata_len, 0x20), 0) {
-        _normalized_calldata_len := sub(add(_normalized_calldata_len, 0x20), mod(_normalized_calldata_len, 0x20))
-      }
-
       let _normalized_desc_len := mload(_app_init_desc)
       if gt(mod(_normalized_desc_len, 0x20), 0) {
         _normalized_desc_len := sub(add(_normalized_desc_len, 0x20), mod(_normalized_desc_len, 0x20))
       }
 
-      let _ptr_length := sub(add(add(add(0x128, add(0x20, _normalized_calldata_len)), add(0x20, _normalized_desc_len)), 0x80), 0x04)
+      let _ptr_length := sub(add(add(0x168, add(0x20, _normalized_desc_len)), 0x80), 0x04)
       let _ptr := mload(0x40)
       mstore(_ptr, _registry_exec_sel)
       mstore(add(0x04, _ptr), _version_console)
       mstore(add(0x24, _ptr), _registry_exec_id)
       mstore(add(0x44, _ptr), 0x60) // data read offset
-      mstore(add(0x64, _ptr), add(0x144, add(_normalized_desc_len, _normalized_calldata_len)))
+      mstore(add(0x64, _ptr), add(0x164, _normalized_desc_len))
 
       mstore(add(0x84, _ptr), _finalize_version_sel)  // finalizeVersion()
       mstore(add(0x88, _ptr), _app_name)              // app name
@@ -245,28 +240,24 @@ contract RegistryExec is ScriptExec {
       mstore(add(0xc8, _ptr), _app_init)              // app initializer
 
       // add _app_init_calldata to calldata
-      mstore(add(0xe8, _ptr), mload(_app_init_sel))
-      let _offset := 0x0
-      for { } lt(_offset, _normalized_calldata_len) { _offset := add(0x20, _offset) } {
-        mstore(add(0xe8, add(_offset, _ptr)), mload(add(0x20, add(_offset, _app_init_sel))))
-      }
+      mstore(add(0xe8, _ptr), _app_init_sel)
 
       // setup data read offsets...
-      mstore(add(0xe8, add(_normalized_calldata_len, _ptr)), 0xc0)
-      mstore(add(0x108, add(_normalized_calldata_len, _ptr)), add(0xe0, _normalized_desc_len))
+      mstore(add(0x108, _ptr), 0xc0)
+      mstore(add(0x128, _ptr), add(0xe0, _normalized_desc_len))
 
       // add _app_init_desc to calldata
-      mstore(add(0x128, add(_normalized_calldata_len, _ptr)), mload(_app_init_desc))
-      _offset := 0x0
+      mstore(add(0x148, _ptr), mload(_app_init_desc))
+      let _offset := 0x0
       for { } lt(_offset, _normalized_desc_len) { _offset := add(0x20, _offset) } {
-        mstore(add(add(0x148, add(_normalized_calldata_len, _ptr)), _offset), mload(add(0x20, add(_offset, _app_init_desc))))
+        mstore(add(add(0x168, _ptr), _offset), mload(add(0x20, add(_offset, _app_init_desc))))
       }
 
       // add _ctx to calldata
-      mstore(add(add(0x148, add(_normalized_calldata_len, _ptr)), _offset), 0x60)
-      mstore(add(0x20, add(add(0x148, add(_normalized_calldata_len, _ptr)), _offset)), mload(add(0x20, _ctx)))
-      mstore(add(0x40, add(add(0x148, add(_normalized_calldata_len, _ptr)), _offset)), mload(add(0x40, _ctx)))
-      mstore(add(0x60, add(add(0x148, add(_normalized_calldata_len, _ptr)), _offset)), mload(add(0x60, _ctx)))
+      mstore(add(add(0x168, _ptr), _offset), 0x60)
+      mstore(add(0x20, add(add(0x168, _ptr), _offset)), mload(add(0x20, _ctx)))
+      mstore(add(0x40, add(add(0x168, _ptr), _offset)), mload(add(0x40, _ctx)))
+      mstore(add(0x60, add(add(0x168, _ptr), _offset)), mload(add(0x60, _ctx)))
 
       let _ret := call(gas, _registry_storage, 0, _ptr, _ptr_length, 0x0, 0x0)
       if iszero(_ret) { revert (0, 0) }
