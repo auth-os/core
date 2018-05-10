@@ -139,8 +139,6 @@ contract RegistryExec is ScriptExec {
 
       let _ret := call(gas, _registry_storage, 0, _ptr, _ptr_length, 0x0, 0x0)
       if iszero(_ret) { revert (0, 0) }
-
-      log0(_ptr, _ptr_length)
     }
   }
 
@@ -201,8 +199,6 @@ contract RegistryExec is ScriptExec {
 
       let _ret := call(gas, _registry_storage, 0, _ptr, _ptr_length, 0x0, 0x0)
       if iszero(_ret) { revert (0, 0) }
-
-      log0(_ptr, _ptr_length)
     }
   }
 
@@ -270,8 +266,6 @@ contract RegistryExec is ScriptExec {
 
       let _ret := call(gas, _registry_storage, 0, _ptr, _ptr_length, 0x0, 0x0)
       if iszero(_ret) { revert (0, 0) }
-
-      log0(_ptr, _ptr_length)
     }
   }
 
@@ -329,8 +323,6 @@ contract RegistryExec is ScriptExec {
 
       let _ret := call(gas, _registry_storage, 0, _ptr, _ptr_length, 0x0, 0x0)
       if iszero(_ret) { revert (0, 0) }
-
-      log0(_ptr, _ptr_length)
     }
   }
 
