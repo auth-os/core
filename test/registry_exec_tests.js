@@ -1,4 +1,5 @@
 let ApplicationMockInit = artifacts.require('./mock/application/functions/init/ApplicationMockInit')
+let ApplicationMockNonDefaultInit = artifacts.require('./mock/ApplicationMockNonDefaultInit')
 let ApplicationMockFuncLib = artifacts.require('./mock/application/functions/ApplicationMockFuncLib')
 let RegistryStorage = artifacts.require('./mock/RegistryStorageMock')
 let InitRegistry = artifacts.require('./InitRegistry')
@@ -286,6 +287,7 @@ contract('RegistryExec', function(accounts) {
                 let appStorage
                 let versionName
                 let _appName
+                let _appInit
 
                 beforeEach(async () => {
                     await scriptExec.registerApp(appName, appDescription).should.be.fulfilled.should.be.fulfilled.then((tx) => {
@@ -364,44 +366,94 @@ contract('RegistryExec', function(accounts) {
                 })
 
                 context('when the given calldata is valid for the app init function', async () => {
-                    beforeEach(async () => {
-                        appEvents = await scriptExec.initAppInstance(appName, false, '0xe1c7392a', { from: execAdmin }).should.be.fulfilled.then((tx) => {
-                            return tx.logs
+                    context('when the init function is the default, zero-argument initializer', async () => {
+                        beforeEach(async () => {
+                            appEvents = await scriptExec.initAppInstance(appName, false, '0xe1c7392a', { from: execAdmin }).should.be.fulfilled.then((tx) => {
+                                return tx.logs
+                            })
+    
+                            appCreator = appEvents[0].args.creator
+                            appExecId = appEvents[0].args.exec_id
+                            appStorage = appEvents[0].args.storage_addr
+                            versionName = web3.toUtf8(appEvents[0].args.version_name)
+                            _appName = appEvents[0].args.app_name
                         })
-
-                        appCreator = appEvents[0].args.creator
-                        appExecId = appEvents[0].args.exec_id
-                        appStorage = appEvents[0].args.storage_addr
-                        versionName = web3.toUtf8(appEvents[0].args.version_name)
-                        _appName = appEvents[0].args.app_name
+    
+                        it('should emit an AppInstanceCreated event', async () => {
+                            appEvents[0].event.should.be.eq('AppInstanceCreated')
+                        })
+    
+                        it('should associate the initialized application instance with its creator', async () => {
+                            appCreator.should.not.eq(null)
+                            appCreator.should.be.eq(execAdmin)
+                        })
+    
+                        it('should assign an exec id to the initialized application instance', async () => {
+                            appExecId.should.not.eq(null)
+                        })
+    
+                        it('should associate the initialized application instance with its designated storage contract', async () => {
+                            appStorage.should.not.eq(null)
+                            appStorage.should.be.eq(storage.address)
+                        })
+    
+                        it('should associate the initialized application instance with the assigned app name', async () => {
+                            _appName.should.not.eq(null)
+                            _appName.should.be.eq(web3.toHex(appName))
+                        })
+    
+                        it('should associate the initialized application instance with the latest finalized app version', async () => {
+                            versionName.should.not.eq(null)
+                            versionName.should.be.eq('0.0.2')
+                        })
                     })
 
-                    it('should emit an AppInstanceCreated event', async () => {
-                        appEvents[0].event.should.be.eq('AppInstanceCreated')
-                    })
+                    context('when the init function accepts parameters', async () => {
+                        beforeEach(async () => {
+                            let _appInit = await ApplicationMockNonDefaultInit.new().should.be.fulfilled;
+                            let _init_sel = await _appInit.initSel.call().should.be.fulfilled
+                            await scriptExec.registerVersion(appName, '0.0.3', storage.address, 'non-default initializer').should.be.fulfilled
+                            await scriptExec.finalizeVersion(appName, '0.0.3', _appInit.address, _init_sel, 'non-default initializer').should.be.fulfilled
 
-                    it('should associate the initialized application instance with its creator', async () => {
-                        appCreator.should.not.eq(null)
-                        appCreator.should.be.eq(execAdmin)
-                    })
-
-                    it('should assign an exec id to the initialized application instance', async () => {
-                        appExecId.should.not.eq(null)
-                    })
-
-                    it('should associate the initialized application instance with its designated storage contract', async () => {
-                        appStorage.should.not.eq(null)
-                        appStorage.should.be.eq(storage.address)
-                    })
-
-                    it('should associate the initialized application instance with the assigned app name', async () => {
-                        _appName.should.not.eq(null)
-                        _appName.should.be.eq(web3.toHex(appName))
-                    })
-
-                    it('should associate the initialized application instance with the latest finalized app version', async () => {
-                        versionName.should.not.eq(null)
-                        versionName.should.be.eq('0.0.2')
+                            _init_calldata = _appInit.init.request('my init arg').params[0].data
+                            appEvents = await scriptExec.initAppInstance(appName, false, _init_calldata, { from: execAdmin }).should.be.fulfilled.then((tx) => {
+                                return tx.logs
+                            })
+    
+                            appCreator = appEvents[0].args.creator
+                            appExecId = appEvents[0].args.exec_id
+                            appStorage = appEvents[0].args.storage_addr
+                            versionName = web3.toUtf8(appEvents[0].args.version_name)
+                            _appName = appEvents[0].args.app_name
+                        })
+    
+                        it('should emit an AppInstanceCreated event', async () => {
+                            appEvents[0].event.should.be.eq('AppInstanceCreated')
+                        })
+    
+                        it('should associate the initialized application instance with its creator', async () => {
+                            appCreator.should.not.eq(null)
+                            appCreator.should.be.eq(execAdmin)
+                        })
+    
+                        it('should assign an exec id to the initialized application instance', async () => {
+                            appExecId.should.not.eq(null)
+                        })
+    
+                        it('should associate the initialized application instance with its designated storage contract', async () => {
+                            appStorage.should.not.eq(null)
+                            appStorage.should.be.eq(storage.address)
+                        })
+    
+                        it('should associate the initialized application instance with the assigned app name', async () => {
+                            _appName.should.not.eq(null)
+                            _appName.should.be.eq(web3.toHex(appName))
+                        })
+    
+                        it('should associate the initialized application instance with the latest finalized app version', async () => {
+                            versionName.should.not.eq(null)
+                            versionName.should.be.eq('0.0.3')
+                        })
                     })
                 })
 
