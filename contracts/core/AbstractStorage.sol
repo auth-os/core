@@ -352,9 +352,6 @@ contract AbstractStorage {
   @param _execution_id: The execution id specified by the sender
   */
   function handleException(address _application, bytes32 _execution_id) internal {
-    // If ether was sent, send it back with returnToSender
-    if (msg.value > 0)
-      address(msg.sender).transfer(msg.value);
     bytes32 message;
     assembly {
       // If returned data exists, get first 32 bytes of message
@@ -366,6 +363,9 @@ contract AbstractStorage {
     if (message == bytes32(0))
       message = bytes32("DefaultException");
     emit ApplicationException(_application, _execution_id, message);
+    // If ether was sent, send it back with returnToSender
+    if (msg.value > 0)
+      address(msg.sender).transfer(msg.value);
   }
 
   /*
