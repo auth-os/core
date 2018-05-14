@@ -77,11 +77,15 @@ contract ScriptExec {
   }
 
   // Constructor - gives the sender administrative permissions and sets default registry and update sources
-  constructor(address _update_source, address _registry_storage, bytes32 _app_provider_id) public {
-    exec_admin = msg.sender;
+  constructor(address _exec_admin, address _update_source, address _registry_storage, bytes32 _app_provider_id) public {
+    exec_admin = _exec_admin;
     default_updater = _update_source;
     default_storage = _registry_storage;
     default_provider = _app_provider_id;
+
+    if (exec_admin == address(0)) {
+      exec_admin = msg.sender;
+    }
   }
 
   // Payable function - for abstract storage refunds
