@@ -60,13 +60,13 @@ MintedCappedCrowdsale: (Referencing auth-os/applications/TokenWizard/MintedCappe
 7. TokenApprove: https://ropsten.etherscan.io/address/0xbb3d0d9c0630e7d7b81d30758b2d940ede81ab93#code
 
 DutchCrowdsale: (Referencing auth-os/applications/TokenWizard/DutchCrowdsale)
-1. InitCrowdsale: https://ropsten.etherscan.io/address/0x643b8728945d113b371fb0cd8a9cf49e5d588c37#code
-2. CrowdsaleConsole: https://ropsten.etherscan.io/address/0xf17099c4b2cb496eb1280de20a54e786f29be92f#code
-3. TokenConsole: https://ropsten.etherscan.io/address/0xe8456cc64c0f1c2752e1c6637cd245ef393b9415#code
-4. CrowdsaleBuyTokens: https://ropsten.etherscan.io/address/0xab2b79fed4adadb155116099e03381f26a5c892f#code
-5. TokenTransfer: https://ropsten.etherscan.io/address/0xeaa043430329200c7e9419d69b71e08527d86097#code
-6. TokenTransferFrom: https://ropsten.etherscan.io/address/0xe034e42bc559842969a477909c450602c9818acb#code
-7. TokenApprove: https://ropsten.etherscan.io/address/0x52a3bb96e72d127e845a79fdf59514cd7a4d8b58#code
+1. InitCrowdsale: https://ropsten.etherscan.io/address/0xbe9c4888a51761f6c5a7d3803106edab7c96196e#code
+2. CrowdsaleConsole: https://ropsten.etherscan.io/address/0xb469710858cf3330d8d4ce8886bda2db24c46e20#code
+3. TokenConsole: https://ropsten.etherscan.io/address/0xdd434cc4ae76beedc71c232fb399cacf262eed63#code
+4. CrowdsaleBuyTokens: https://ropsten.etherscan.io/address/0x8519215210f8ac2c034eb6afc6a6766db4f97a6a#code
+5. TokenTransfer: https://ropsten.etherscan.io/address/0x2cb3897e1b7eff0dec33365d0f5c864004bec326#code
+6. TokenTransferFrom: https://ropsten.etherscan.io/address/0xefe7acdd5e28a9fc35854bdc7c91a2d2c419f5b0#code
+7. TokenApprove: https://ropsten.etherscan.io/address/0x95971b6ff4a5a076c6b74a2b53ec8a3db96f91d5#code
 
 The 'default' variables in ScriptExec.sol can be examined for information on the registry's execution id, as well as the storage address of the registry. 
 
