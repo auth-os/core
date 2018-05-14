@@ -43,21 +43,21 @@ Upon initialization of the application, the application can be used by calling t
 Several of these contracts have been deployed to Ropsten, to allow for open testing. Below is a list of the verified contracts being used:
 
 Core:
-1. RegistryStorage: https://ropsten.etherscan.io/address/0x8d1084b586cb4b298bea5550ad020c9de7fc48c5#code
-2. ScriptExec: https://ropsten.etherscan.io/address/0x7fc8ce5865bf0cac653e315f03beeef77d536075#code
-3. InitRegistry: https://ropsten.etherscan.io/address/0x6a5d8c9d83cdf7f54a520613f7824009e213e79c#code
-4. AppConsole: https://ropsten.etherscan.io/address/0xa85167ed6ab82dda05225f8044965b12f8d419c8#code
-5. VersionConsole: https://ropsten.etherscan.io/address/0x0b3fd3d9552c981518cd4fe20f72a1619e70d887#code
-6. ImplementationConsole: https://ropsten.etherscan.io/address/0x96dcfdda9e522c7921e4026f6a57fc407b6518ed#code
+1. RegistryStorage: https://ropsten.etherscan.io/address/0xb1d914e7c55f16c2bacac11af6b3e011aee38caf#code
+2. ScriptExec: https://ropsten.etherscan.io/address/0x41e37c2d17cf8aa00ae22827ecd10dd017ae52b4#code
+3. InitRegistry: https://ropsten.etherscan.io/address/0xbc25d8c026ef18ca00bfa328a2c03c54af3c3e95#code
+4. AppConsole: https://ropsten.etherscan.io/address/0x9ca096ea086e6c27d3b69d1f8ba4278502815fa1#code
+5. VersionConsole: https://ropsten.etherscan.io/address/0xa609f05557d458727c90603adad436041915a0ca#code
+6. ImplementationConsole: https://ropsten.etherscan.io/address/0x80a136184e1d65b0d975cc874a48e746eae041b7#code
 
 MintedCappedCrowdsale: (Referencing auth-os/applications/TokenWizard/MintedCappedCrowdsale)
-1. InitCrowdsale: https://ropsten.etherscan.io/address/0xbd9383c930974cca9ab8629e77557ab336ab5dd7#code
-2. CrowdsaleConsole: https://ropsten.etherscan.io/address/0xbe293d2bbcbf3e75a3012f8fdbf5107a229caae1#code
-3. TokenConsole: https://ropsten.etherscan.io/address/0x04c6131102b67dde3d94791b5313dd77aede9606#code
-4. CrowdsaleBuyTokens: https://ropsten.etherscan.io/address/0x7b34e238c7d2a66dfcbecc711a9e44dbfdfefd9a#code
-5. TokenTransfer: https://ropsten.etherscan.io/address/0xd45f633c8cd3d1ab83df5027ec951a6cc5836afd#code
-6. TokenTransferFrom: https://ropsten.etherscan.io/address/0x652f3b589ee2dcbe5c3970918106d33fc32da33b#code
-7. TokenApprove: https://ropsten.etherscan.io/address/0xe6dd7740afa6950b725896d1217ff1537c0c2bc5#code
+1. InitCrowdsale: https://ropsten.etherscan.io/address/0x4feec2b6944e510eef031d96330cb70f9051c440#code
+2. CrowdsaleConsole: https://ropsten.etherscan.io/address/0xf8d0a48ce98bbee75e7568b3ada3efa1b6324c9c#code
+3. TokenConsole: https://ropsten.etherscan.io/address/0x1271b0587e1216579f4fd0fc088ff5cdb4f904ef#code
+4. CrowdsaleBuyTokens: https://ropsten.etherscan.io/address/0xec424a2a841a6c77d270fd91bd885ccb06392be5#code
+5. TokenTransfer: https://ropsten.etherscan.io/address/0x415f6e76616a4d7c24d59f1c70687a381d48d022#code
+6. TokenTransferFrom: https://ropsten.etherscan.io/address/0xc96f0b7508a35bea00a9edfc6ecf11ee31693a67#code
+7. TokenApprove: https://ropsten.etherscan.io/address/0xbb3d0d9c0630e7d7b81d30758b2d940ede81ab93#code
 
 DutchCrowdsale: (Referencing auth-os/applications/TokenWizard/DutchCrowdsale)
 1. InitCrowdsale: https://ropsten.etherscan.io/address/0x643b8728945d113b371fb0cd8a9cf49e5d588c37#code
