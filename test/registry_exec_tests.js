@@ -65,22 +65,22 @@ contract('RegistryExec', function(accounts) {
             it('should have initialized the script exec contract', async() => {
                 scriptExec.should.not.eq(null)
             })
-    
+
             it('should set the admin on the script exec contract to the creator', async() => {
                 let execAdmin = await scriptExec.exec_admin()
                 execAdmin.should.eq(execAdmin)
             })
-    
+
             it('should set the given default registry storage contract on the script exec contract', async() => {
                 let defaultStorage = await scriptExec.default_storage()
                 defaultStorage.should.eq(storage.address)
             })
-    
+
             it('should set the given default updater on the script exec contract', async() => {
                 let defaultUpdater = await scriptExec.default_updater()
                 defaultUpdater.should.eq(updater)
             })
-    
+
             it('should set the given default registry exec id on the script exec contract', async() => {
                 let defaultExecId = await scriptExec.default_registry_exec_id()
                 defaultExecId.should.eq(registryExecId)
@@ -100,22 +100,22 @@ contract('RegistryExec', function(accounts) {
             it('should have initialized the script exec contract', async() => {
                 scriptExec.should.not.eq(null)
             })
-    
+
             it('should set the admin on the script exec contract to the creator', async() => {
                 let execAdmin = await scriptExec.exec_admin()
                 execAdmin.should.eq(execAdmin)
             })
-    
+
             it('should not set a default registry storage contract on the script exec contract', async() => {
                 let defaultStorage = await scriptExec.default_storage()
                 defaultStorage.should.eq(utils.ADDRESS_0x)
             })
-    
+
             it('should not set a default updater on the script exec contract', async() => {
                 let defaultUpdater = await scriptExec.default_updater()
                 defaultUpdater.should.eq(utils.ADDRESS_0x)
             })
-    
+
             it('should not set a default registry exec id on the script exec contract', async() => {
                 let defaultExecId = await scriptExec.default_registry_exec_id()
                 defaultExecId.should.eq(utils.BYTES32_EMPTY)
@@ -158,12 +158,12 @@ contract('RegistryExec', function(accounts) {
 
         describe('#changeUpdater', async () => {
             let newUpdater = accounts[accounts.length - 1]
-    
+
             context('when invoked by the script exec admin', async () => {
                 beforeEach(async () => {
                     await scriptExec.changeUpdater(newUpdater, { from: execAdmin }).should.be.fulfilled
                 })
-    
+
                 it('should change the default updater address on the script exec contract', async () => {
                     let defaultUpdater = await scriptExec.default_updater()
                     defaultUpdater.should.not.eq(utils.ADDRESS_0x)
@@ -202,7 +202,7 @@ contract('RegistryExec', function(accounts) {
                 })
             })
         })
-    
+
         describe('#changeProvider', async () => {
             let newProvider = web3.toHex(utils.randomBytes(32))
 
@@ -210,13 +210,13 @@ contract('RegistryExec', function(accounts) {
                 beforeEach(async () => {
                     await scriptExec.changeProvider(newProvider, { from: execAdmin }).should.be.fulfilled
                 })
-    
+
                 it('should change the default provider on the script exec contract', async () => {
                     let defaultProvider = await scriptExec.default_provider()
                     defaultProvider.should.eq(newProvider)
                 })
             })
-    
+
             context('when invoked by someone other than the script exec admin', async () => {
                 it('should revert the tx', async () => {
                     let unauthorized = accounts[accounts.length - 1]
@@ -224,21 +224,21 @@ contract('RegistryExec', function(accounts) {
                 })
             })
         })
-    
+
         describe('#changeRegistryExecId', async () => {
             let newRegistryExecId = web3.toHex(utils.randomBytes(32))
-    
+
             context('when invoked by the script exec admin', async () => {
                 beforeEach(async () => {
                     await scriptExec.changeRegistryExecId(newRegistryExecId, { from: execAdmin }).should.be.fulfilled
                 })
-    
+
                 it('should change the default registry exec id on the script exec contract', async () => {
                     let defaultRegistryExecId = await scriptExec.default_registry_exec_id()
                     defaultRegistryExecId.should.eq(newRegistryExecId)
                 })
             })
-    
+
             context('when invoked by someone other than the script exec admin', async () => {
                 it('should revert the tx', async () => {
                     let unauthorized = accounts[accounts.length - 1]
@@ -274,7 +274,7 @@ contract('RegistryExec', function(accounts) {
         })
 
         describe('#initAppInstance', async () => {
-            context ('when no app versions have been finalized', async () => {                    
+            context ('when no app versions have been finalized', async () => {
                 it('should reject the tx', async () => {
                     await scriptExec.initAppInstance(appName, false, '0xe1c7392a', { from: execAdmin }).should.be.rejectedWith(exports.EVM_ERR_REVERT)
                 })
@@ -283,7 +283,7 @@ contract('RegistryExec', function(accounts) {
             context('when one or more app versions have been finalized', async () => {
                 let appEvents
                 let appCreator
-                
+
                 let appStorage
                 let versionName
                 let _appName
@@ -371,37 +371,37 @@ contract('RegistryExec', function(accounts) {
                             appEvents = await scriptExec.initAppInstance(appName, false, '0xe1c7392a', { from: execAdmin }).should.be.fulfilled.then((tx) => {
                                 return tx.logs
                             })
-    
+
                             appCreator = appEvents[0].args.creator
                             appExecId = appEvents[0].args.exec_id
                             appStorage = appEvents[0].args.storage_addr
                             versionName = web3.toUtf8(appEvents[0].args.version_name)
                             _appName = appEvents[0].args.app_name
                         })
-    
+
                         it('should emit an AppInstanceCreated event', async () => {
                             appEvents[0].event.should.be.eq('AppInstanceCreated')
                         })
-    
+
                         it('should associate the initialized application instance with its creator', async () => {
                             appCreator.should.not.eq(null)
                             appCreator.should.be.eq(execAdmin)
                         })
-    
+
                         it('should assign an exec id to the initialized application instance', async () => {
                             appExecId.should.not.eq(null)
                         })
-    
+
                         it('should associate the initialized application instance with its designated storage contract', async () => {
                             appStorage.should.not.eq(null)
                             appStorage.should.be.eq(storage.address)
                         })
-    
+
                         it('should associate the initialized application instance with the assigned app name', async () => {
                             _appName.should.not.eq(null)
                             _appName.should.be.eq(web3.toHex(appName))
                         })
-    
+
                         it('should associate the initialized application instance with the latest finalized app version', async () => {
                             versionName.should.not.eq(null)
                             versionName.should.be.eq('0.0.2')
@@ -419,37 +419,37 @@ contract('RegistryExec', function(accounts) {
                             appEvents = await scriptExec.initAppInstance(appName, false, _init_calldata, { from: execAdmin }).should.be.fulfilled.then((tx) => {
                                 return tx.logs
                             })
-    
+
                             appCreator = appEvents[0].args.creator
                             appExecId = appEvents[0].args.exec_id
                             appStorage = appEvents[0].args.storage_addr
                             versionName = web3.toUtf8(appEvents[0].args.version_name)
                             _appName = appEvents[0].args.app_name
                         })
-    
+
                         it('should emit an AppInstanceCreated event', async () => {
                             appEvents[0].event.should.be.eq('AppInstanceCreated')
                         })
-    
+
                         it('should associate the initialized application instance with its creator', async () => {
                             appCreator.should.not.eq(null)
                             appCreator.should.be.eq(execAdmin)
                         })
-    
+
                         it('should assign an exec id to the initialized application instance', async () => {
                             appExecId.should.not.eq(null)
                         })
-    
+
                         it('should associate the initialized application instance with its designated storage contract', async () => {
                             appStorage.should.not.eq(null)
                             appStorage.should.be.eq(storage.address)
                         })
-    
+
                         it('should associate the initialized application instance with the assigned app name', async () => {
                             _appName.should.not.eq(null)
                             _appName.should.be.eq(web3.toHex(appName))
                         })
-    
+
                         it('should associate the initialized application instance with the latest finalized app version', async () => {
                             versionName.should.not.eq(null)
                             versionName.should.be.eq('0.0.3')
@@ -478,7 +478,7 @@ contract('RegistryExec', function(accounts) {
                         allowed.should.not.eq(null)
                     })
                 })
-    
+
                 context('when the given given registry exec id does not exist', async () => {
                     it('should return an empty array', async () => {
                         allowed = await scriptExec.getAppAllowed(utils.randomBytes(32))

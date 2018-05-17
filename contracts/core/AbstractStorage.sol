@@ -112,7 +112,7 @@ contract AbstractStorage {
       assert(amount_paid <= msg.value);
 
       // Forward payment to destination address, if it exists -
-      if (amount_paid > 0) {
+      if (amount_paid > 0 && paid_to != address(0)) {
         address(paid_to).transfer(amount_paid);
         // Emit payment event
         emit DeliveredPayment(_exec_id, paid_to, amount_paid);
