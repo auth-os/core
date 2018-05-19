@@ -1,6 +1,14 @@
 pragma solidity ^0.4.23;
 
+import "../../lib/Pointers.sol";
+import "../../lib/LibEvents.sol";
+import "../../lib/LibStorage.sol";
+
 library ImplementationConsole {
+
+  using Pointers for *;
+  using LibEvents for uint;
+  using LibStorage for uint;
 
   /// PROVIDER STORAGE ///
 
@@ -32,20 +40,6 @@ library ImplementationConsole {
   // [PROVIDERS][provider_id][APPS][app_hash][VERSIONS][ver_name][VER_FUNCTION_ADDRESSES] = address[] function_addresses
   bytes32 internal constant VER_FUNCTION_ADDRESSES = keccak256("ver_function_addrs");
 
-  /// FUNCTION STORAGE ///
-
-  // Function namespace - function information is mapped here
-  // [PROVIDERS][provider_id][APPS][app_hash][VERSIONS][ver_hash][FUNCTIONS][func_signature]
-  bytes32 internal constant FUNCTIONS = keccak256("functions");
-
-  // Storage location of a function's implementing address
-  // [PROVIDERS][provider_id][APPS][app_hash][VERSIONS][ver_hash][FUNCTIONS][func_signature][FUNC_IMPL_ADDR] = address implementation
-  bytes32 internal constant FUNC_IMPL_ADDR = keccak256("function_impl_addr");
-
-  // Storage location of a function's description
-  // [PROVIDERS][provider_id][APPS][app_hash][VERSIONS][ver_hash][FUNCTIONS][func_signature][FUNC_DESC] = bytes description
-  bytes32 internal constant FUNC_DESC = keccak256("func_desc");
-
   /// FUNCTION SELECTORS ///
 
   // Function selector for storage 'readMulti'
@@ -65,10 +59,10 @@ library ImplementationConsole {
     1. Application execution id
     2. Original script sender (address, padded to 32 bytes)
     3. Wei amount sent with transaction to storage
-  @return store_data: A formatted storage request - first 64 bytes designate a forwarding address (and amount) for any wei sent
+  @return bytes: A formatted bytes array that will be parsed by storage to emit events, forward payment, and store data
   */
   function addFunctions(bytes32 _app, bytes32 _version, bytes4[] memory _function_sigs, address[] memory _function_addrs, bytes memory _context) public view
-  returns (bytes32[] memory store_data) {
+  returns (bytes memory) {
     // Ensure input is correctly formatted
     require(_context.length == 96);
     require(_app != bytes32(0) && _version != bytes32(0));
@@ -120,206 +114,35 @@ library ImplementationConsole {
 
     /// App and version are registered, and version has not been finalized - store function information
 
-    // Overwrite previous read buffer with storage buffer
-    stOverwrite(ptr);
-    // Push payment destination and value to buffer (0, 0)
-    stPush(ptr, 0);
-    stPush(ptr, 0);
-    // Push new version list lengths to storage buffer
-    stPush(ptr, keccak256(VER_FUNCTION_LIST, temp));
-    stPush(ptr, bytes32(list_lengths + _function_sigs.length));
-    stPush(ptr, keccak256(VER_FUNCTION_ADDRESSES, temp));
-    stPush(ptr, bytes32(list_lengths + _function_sigs.length));
+    // Get pointer to free memory
+    ptr = ptr.clear();
+
+    // Set up STORES action requests -
+    ptr.stores();
+    // Push each storage location and value to the STORES request buffer:
+
+    // Store new version list lengths
+    ptr.store(
+      list_lengths + _function_sigs.length
+    ).at(keccak256(VER_FUNCTION_LIST, temp));
+    ptr.store(
+      list_lengths + _function_sigs.length
+    ).at(keccak256(VER_FUNCTION_ADDRESSES, temp));
+
     // Loop through functions and addresses and push each to the end of their respective lists
     for (uint i = list_lengths; i < _function_sigs.length + list_lengths; i++) {
-      // Place the end of the version function list in the storage buffer
-      stPush(ptr, bytes32(32 + (i * 32) + uint(keccak256(VER_FUNCTION_LIST, temp))));
-      // Place function signature in storage buffer
-      stPush(ptr, bytes32(_function_sigs[i - list_lengths]));
-      // Place end of the version address list in storage buffer
-      stPush(ptr, bytes32(32 + (i * 32) + uint(keccak256(VER_FUNCTION_ADDRESSES, temp))));
-      // Place function implementing address in buffer
-      stPush(ptr, bytes32(_function_addrs[i - list_lengths]));
-
-      // Push function information to buffer -
-
-      // Hash function signature and function storage seed, and push to buffer
-      stPush(
-        ptr,
-        keccak256(
-          keccak256(_function_sigs[i - list_lengths]),
-          keccak256(FUNCTIONS, temp)
-        )
-      );
-      //Place function signature in buffer
-      stPush(ptr, bytes32(_function_sigs[i - list_lengths]));
-      // Hash function signature storage, and function implementation address storage seed, and place in buffer
-      stPush(
-        ptr,
-        keccak256(
-          FUNC_IMPL_ADDR,
-          keccak256(keccak256(_function_sigs[i - list_lengths]), keccak256(FUNCTIONS, temp))
-        )
-      );
-      // Place function address in storage buffer
-      stPush(ptr, bytes32(_function_addrs[i - list_lengths]));
+      // Push function selector to the end of the version function list
+      ptr.store(
+        _function_sigs[i - list_lengths]
+      ).at(bytes32(32 + (i * 32) + uint(keccak256(VER_FUNCTION_LIST, temp))));
+      // Push function implementing address to the end of the version address list
+      ptr.store(
+        _function_addrs[i - list_lengths]
+      ).at(bytes32(32 + (i * 32) + uint(keccak256(VER_FUNCTION_ADDRESSES, temp))));
     }
 
-    // Get bytes32[] representation of storage buffer
-    store_data = getBuffer(ptr);
-  }
-
-  /*
-  Adds a description to an added function
-
-  @param _app: The name of the application under which the version is registered
-  @param _version: The name of the version to add functions to
-  @param _function_sig: The function signature to which the description will be added
-  @param _function_description: The bytes of a function's description
-  @param _context: The execution context for this application - a 96-byte array containing (in order):
-    1. Application execution id
-    2. Original script sender (address, padded to 32 bytes)
-    3. Wei amount sent with transaction to storage
-  @return store_data: A formatted storage request - first 64 bytes designate a forwarding address (and amount) for any wei sent
-  */
-  function describeFunction(bytes32 _app, bytes32 _version, bytes4 _function_sig, bytes memory _function_description, bytes memory _context) public view
-  returns (bytes32[] memory store_data) {
-    // Ensure input is correctly formatted
-    require(_context.length == 96);
-    require(_app != bytes32(0) && _version != bytes32(0));
-    require(_function_sig != bytes4(0) && _function_description.length > 0);
-
-    bytes32 exec_id;
-    bytes32 provider;
-
-    // Parse context array and get execution id and provider
-    (exec_id, provider, ) = parse(_context);
-
-    // Get app base storage location -
-    bytes32 temp = keccak256(keccak256(provider), PROVIDERS);
-    temp = keccak256(keccak256(_app), keccak256(APPS, temp));
-
-    /// Ensure application and version are registered, and version is not finalized
-    /// Additionally, ensure function exists -
-
-    // Create 'readMulti' calldata buffer in memory
-    uint ptr = cdBuff(RD_MULTI);
-    // Place exec id, data read offset, and read size to calldata
-    cdPush(ptr, exec_id);
-    cdPush(ptr, 0x40);
-    cdPush(ptr, 4);
-    // Push app base storage, version base storage, and version finalization status storage locations to buffer
-    cdPush(ptr, temp);
-    // Get version base storage -
-    temp = keccak256(keccak256(_version), keccak256(VERSIONS, temp));
-    cdPush(ptr, temp);
-    cdPush(ptr, keccak256(VER_IS_FINALIZED, temp));
-    // Get function base storage location
-    temp = keccak256(keccak256(_function_sig), keccak256(FUNCTIONS, temp));
-    // Push function base storage location in calldata buffer
-    cdPush(ptr, temp);
-
-    // Read from storage and store return in buffer
-    bytes32[] memory read_values = readMulti(ptr);
-    // Check returned values
-    if (
-      read_values[0] == bytes32(0) // Application does not exist
-      || read_values[1] == bytes32(0) // Version does not exist
-      || read_values[2] != bytes32(0) // Version is already finalized
-      || read_values[3] == bytes32(0) // Function does not exist
-    ) {
-      triggerException(bytes32("InsufficientPermissions"));
-    }
-
-    /// App and version are registered, and version has not been finalized - store function description
-
-    // Overwrite previous read buffer with storage buffer
-    stOverwrite(ptr);
-    // Push payment destination and value (0, 0) to buffer
-    stPush(ptr, 0);
-    stPush(ptr, 0);
-    // Add description bytes to storage buffer
-    stPushBytes(ptr, keccak256(FUNC_DESC, temp), _function_description);
-
-    // Get bytes32[] representation of storage buffer
-    store_data = getBuffer(ptr);
-  }
-
-  /*
-  Creates a new return data storage buffer at the position given by the pointer. Does not update free memory
-
-  @param _ptr: A pointer to the location where the buffer will be created
-  */
-  function stOverwrite(uint _ptr) internal pure {
-    assembly {
-      // Simple set the initial length - 0
-      mstore(_ptr, 0)
-    }
-  }
-
-  /*
-  Pushes a value to the end of a storage return buffer, and updates the length
-
-  @param _ptr: A pointer to the start of the buffer
-  @param _val: The value to push to the buffer
-  */
-  function stPush(uint _ptr, bytes32 _val) internal pure {
-    assembly {
-      // Get end of buffer - 32 bytes plus the length stored at the pointer
-      let len := add(0x20, mload(_ptr))
-      // Push value to end of buffer (overwrites memory - be careful!)
-      mstore(add(_ptr, len), _val)
-      // Increment buffer length
-      mstore(_ptr, len)
-      // If the free-memory pointer does not point beyond the buffer's current size, update it
-      if lt(mload(0x40), add(add(0x20, _ptr), len)) {
-        mstore(0x40, add(add(0x40, _ptr), len)) // Ensure free memory pointer points to the beginning of a memory slot
-      }
-    }
-  }
-
-  /*
-  Pushes a bytes array to the storage buffer, including its length. Uses the given base location to get the storage locations for each
-  index in the array
-
-  @param _ptr: A pointer to the start of the buffer
-  @param _base_location: The storage location of the length of the array
-  @param _arr: The bytes array to push
-  */
-  function stPushBytes(uint _ptr, bytes32 _base_location, bytes memory _arr) internal pure {
-    assembly {
-      // Get end of buffer - 32 bytes plus the length stored at the pointer
-      let len := add(0x20, mload(_ptr))
-      // Loop over bytes array, and push each value to storage buffer, while incrementing the current storage location
-      let offset := 0x00
-      for { } lt(offset, add(0x20, mload(_arr))) { offset := add(0x20, offset) } {
-        // Push incremented location to buffer
-        mstore(add(add(len, mul(2, offset)), _ptr), add(offset, _base_location))
-        // Push bytes array chunk to buffer
-        mstore(add(add(add(0x20, len), mul(2, offset)), _ptr), mload(add(offset, _arr)))
-      }
-      // Increment buffer length
-      mstore(_ptr, add(mul(2, offset), mload(_ptr)))
-      // If the free-memory pointer does not point beyond the buffer's current size, update it
-      if lt(mload(0x40), add(add(0x20, _ptr), mload(_ptr))) {
-        mstore(0x40, add(add(0x40, _ptr), mload(_ptr))) // Ensure free memory pointer points to the beginning of a memory slot
-      }
-    }
-  }
-
-  /*
-  Returns the bytes32[] stored at the buffer
-
-  @param _ptr: A pointer to the location in memory where the calldata for the call is stored
-  @return store_data: The return values, which will be stored
-  */
-  function getBuffer(uint _ptr) internal pure returns (bytes32[] memory store_data){
-    assembly {
-      // If the size stored at the pointer is not evenly divislble into 32-byte segments, this was improperly constructed
-      if gt(mod(mload(_ptr), 0x20), 0) { revert (0, 0) }
-      mstore(_ptr, div(mload(_ptr), 0x20))
-      store_data := _ptr
-    }
+    // Return formatted action requests to storage
+    return ptr.getBuffer();
   }
 
   /*

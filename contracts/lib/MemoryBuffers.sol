@@ -116,79 +116,14 @@ library MemoryBuffers {
   /// STORAGE BUFFERS ///
 
   /*
-  Creates a buffer for return data storage. Buffer pointer stores the lngth of the buffer
-
-  @param _spend_destination: The destination to which _wei_amount will be forwarded
-  @param _wei_amount: The amount of wei to send to the destination
-  @return ptr: The location in memory where the length of the buffer is stored - elements stored consecutively after this location
-  */
-  function stBuff(address _spend_destination, uint _wei_amount) internal pure returns (uint ptr) {
-    assembly {
-      // Get buffer location - free memory
-      ptr := mload(0x40)
-      // Store initial buffer length
-      mstore(ptr, 0x40)
-      // Push spend destination and wei amount to buffer
-      mstore(add(0x20, ptr), _spend_destination)
-      mstore(add(0x40, ptr), _wei_amount)
-      // Update free-memory pointer to point beyond the buffer
-      mstore(0x40, add(0x60, ptr))
-    }
-  }
-
-  /*
-  Creates a new return data storage buffer at the position given by the pointer. Does not update free memory
-
-  @param _ptr: A pointer to the location where the buffer will be created
-  @param _spend_destination: The destination to which _wei_amount will be forwarded
-  @param _wei_amount: The amount of wei to send to the destination
-  */
-  function stOverwrite(uint _ptr, address _spend_destination, uint _wei_amount) internal pure {
-    assembly {
-      // Set initial length
-      mstore(_ptr, 0x40)
-      // Push spend destination and wei amount to buffer
-      mstore(add(0x20, _ptr), _spend_destination)
-      mstore(add(0x40, _ptr), _wei_amount)
-      // Update free-memory pointer to point beyond the buffer
-      mstore(0x40, msize)
-    }
-  }
-
-  /*
-  Pushes a storage location and value to the end of the storage buffer, and updates the buffer length
-
-  @param _ptr: A pointer to the start of the buffer
-  @param _location: The location to which the value will be written
-  @param _val: The value to push to the buffer
-  */
-  function stPush(uint _ptr, bytes32 _location, bytes32 _val) internal pure {
-    assembly {
-      // Get end of buffer - 32 bytes plus the length stored at the pointer
-      let len := add(0x20, mload(_ptr))
-      // Push location and value to end of buffer
-      mstore(add(_ptr, len), _location)
-      len := add(0x20, len)
-      mstore(add(_ptr, len), _val)
-      // Increment buffer length
-      mstore(_ptr, len)
-      // If the free-memory pointer does not point beyond the buffer's current size, update it
-      if lt(mload(0x40), add(add(0x20, _ptr), len)) {
-        mstore(0x40, add(add(0x40, _ptr), len)) // Ensure free memory pointer points to the beginning of a memory slot
-      }
-    }
-  }
-
-  /*
-  Returns the bytes32[] stored at the buffer
+  Returns the bytes stored at the buffer
 
   @param _ptr: A pointer to the location in memory where the calldata for the call is stored
   @return store_data: The return values, which will be stored
   */
-  function getBuffer(uint _ptr) internal pure returns (bytes32[] memory store_data) {
+  function getBuffer(uint _ptr) internal pure returns (bytes memory store_data) {
     assembly {
       // If the size stored at the pointer is not evenly divislble into 32-byte segments, this was improperly constructed
-      if gt(mod(mload(_ptr), 0x20), 0) { revert (0, 0) }
       mstore(_ptr, div(mload(_ptr), 0x20))
       store_data := _ptr
     }

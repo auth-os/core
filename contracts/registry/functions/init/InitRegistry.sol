@@ -68,28 +68,9 @@ library InitRegistry {
   // [PROVIDERS][provider_id][APPS][app_hash][VERSIONS][ver_name][VER_INIT_DESC] = bytes description
   bytes32 internal constant VER_INIT_DESC = keccak256("ver_init_desc");
 
-  /// FUNCTION STORAGE ///
-
-  // Function namespace - function information is mapped here
-  // [PROVIDERS][provider_id][APPS][app_hash][VERSIONS][ver_hash][FUNCTIONS][func_signature]
-  bytes32 internal constant FUNCTIONS = keccak256("functions");
-
-  // Storage location of a function's implementing address
-  // [PROVIDERS][provider_id][APPS][app_hash][VERSIONS][ver_hash][FUNCTIONS][func_signature][FUNC_IMPL_ADDR] = address implementation
-  bytes32 internal constant FUNC_IMPL_ADDR = keccak256("function_impl_addr");
-
-  // Storage location of a function's description
-  // [PROVIDERS][provider_id][APPS][app_hash][VERSIONS][ver_hash][FUNCTIONS][func_signature][FUNC_DESC] = bytes description
-  bytes32 internal constant FUNC_DESC = keccak256("func_desc");
-
   /// FUNCTION SELECTORS ///
 
-  // Function selector for storage "read"
-  // read(bytes32 _exec_id, bytes32 _location) view returns (bytes32 data_read);
   bytes4 internal constant RD_SING = bytes4(keccak256("read(bytes32,bytes32)"));
-
-  // Function selector for storage "readMulti"
-  // readMulti(bytes32 _exec_id, bytes32[] _locations) view returns (bytes32[] data_read)
   bytes4 internal constant RD_MULTI = bytes4(keccak256("readMulti(bytes32,bytes32[])"));
 
   /// SCRIPT REGISTRY INIT ///
@@ -663,79 +644,6 @@ library InitRegistry {
 
     // Read from storage, and store return in buffer
     function_locations = readMultiAddressFrom(ptr, _storage);
-  }
-
-  /*
-  Returns information on an implemented function for a version
-
-  @param _storage: The address where the registry's storage is located
-  @param _exec_id: The execution id associated with the registry
-  @param _provider: The provider id under which the application was registered
-  @param _app: The name of the application registered
-  @param _version: The name of the version registered
-  @param _impl_signature: The 4-byte function selector about which information will be returned
-  @return impl_location: The address which implements the given function
-  @return impl_description: The bytes of the function's description
-  */
-  function getImplementationInfo(address _storage, bytes32 _exec_id, bytes32 _provider, bytes32 _app, bytes32 _version, bytes4 _impl_signature) public view
-  returns (address impl_location, bytes memory impl_description) {
-    // Ensure valid input
-    require(_storage != address(0) && _exec_id != bytes32(0));
-    require(_provider != bytes32(0) && _app != bytes32(0) && _version != bytes32(0) && _impl_signature != bytes4(0));
-
-    // Create struct in memory to hold values
-    StackVarHelper memory impl_helper = StackVarHelper({
-      temp: keccak256(_provider, PROVIDERS),
-      desc_size: 1,
-      desc_size_norm: 1
-    });
-    // Get function base storage location
-    impl_helper.temp = keccak256(APPS, impl_helper.temp);
-    impl_helper.temp = keccak256(keccak256(_app), impl_helper.temp);
-    impl_helper.temp = keccak256(VERSIONS, impl_helper.temp);
-    impl_helper.temp = keccak256(keccak256(_version), impl_helper.temp);
-    impl_helper.temp = keccak256(FUNCTIONS, impl_helper.temp);
-    impl_helper.temp = keccak256(keccak256(_impl_signature), impl_helper.temp);
-
-    // Create 'readMulti' calldata buffer in memory
-    uint ptr = cdBuff(RD_MULTI);
-    // Push exec id, data read offset, and read size to calldata buffer
-    cdPush(ptr, _exec_id);
-    cdPush(ptr, 0x40);
-    cdPush(ptr, 2);
-    // Push function base and description size storage locations in buffer
-    cdPush(ptr, keccak256(FUNC_IMPL_ADDR, impl_helper.temp));
-    cdPush(ptr, keccak256(FUNC_DESC, impl_helper.temp));
-    // Read from storage and store return in buffer
-    bytes32[] memory read_values = readMultiFrom(ptr, _storage);
-
-    // Get returned values -
-    impl_location = address(read_values[0]);
-    impl_helper.desc_size = uint(read_values[1]);
-
-    // Normalize description size to 32-byte chunks for next readMulti
-    impl_helper.desc_size_norm = impl_helper.desc_size / 32;
-    if (impl_helper.desc_size % 32 != 0)
-      impl_helper.desc_size_norm++;
-
-    // If the function has no description, return
-    if (impl_helper.desc_size_norm == 0)
-      return (impl_location, impl_description);
-
-    // Create new readMulti calldata buffer, overwriting the previous buffer
-    cdOverwrite(ptr, RD_MULTI);
-    // Push exec id, data read offset, and read size to buffer
-    cdPush(ptr, _exec_id);
-    cdPush(ptr, 0x40);
-    cdPush(ptr, bytes32(impl_helper.desc_size_norm));
-    // Get version init description base storage location
-    impl_helper.temp = keccak256(FUNC_DESC, impl_helper.temp);
-    // Loop over description size and add storage locations to readMulti buffer
-    for (uint i = 1; i <= impl_helper.desc_size_norm; i++)
-      cdPush(ptr, bytes32((32 * i) + uint(impl_helper.temp)));
-
-    // Read from storage, and store return in buffer
-    impl_description = readMultiBytesFrom(ptr, impl_helper.desc_size, _storage);
   }
 
   /*

@@ -1,6 +1,14 @@
 pragma solidity ^0.4.23;
 
+import "../../lib/Pointers.sol";
+import "../../lib/LibEvents.sol";
+import "../../lib/LibStorage.sol";
+
 library AppConsole {
+
+  using Pointers for *;
+  using LibEvents for uint;
+  using LibStorage for uint;
 
   /// PROVIDER STORAGE ///
 
@@ -26,10 +34,13 @@ library AppConsole {
   // [PROVIDERS][provider_id][APPS][app_name][APP_STORAGE_IMPL] = address app_default_storage_addr
   bytes32 internal constant APP_STORAGE_IMPL = keccak256("app_storage_impl");
 
+  /// EVENT TOPICS ///
+
+  // event AppRegistered(bytes32 indexed execution_id, bytes32 indexed provider_id, bytes32 app_name);
+  bytes32 internal constant APP_REGISTERED = keccak256("AppRegistered(bytes32,bytes32,bytes32)");
+
   /// FUNCTION SELECTORS ///
 
-  // Function selector for storage 'readMulti'
-  // readMulti(bytes32 exec_id, bytes32[] locations)
   bytes4 internal constant RD_MULTI = bytes4(keccak256("readMulti(bytes32,bytes32[])"));
 
   /// FUNCTIONS ///
@@ -39,15 +50,15 @@ library AppConsole {
 
   @param _app_name: The name of the application to be registered
   @param _app_storage: The storage address this application will use
-  @param _app_desc: The description of the application
+  @param _app_desc: The description of the application (recommended: GitHub link)
   @param _context: The execution context for this application - a 96-byte array containing (in order):
     1. Application execution id
     2. Original script sender (address, padded to 32 bytes)
     3. Wei amount sent with transaction to storage
-  @return store_data: A formatted storage request - first 64 bytes designate a forwarding address (and amount) for any wei sent
+  @return bytes: A formatted bytes array that will be parsed by storage to emit events, forward payment, and store data
   */
   function registerApp(bytes32 _app_name, address _app_storage, bytes _app_desc, bytes memory _context) public view
-  returns (bytes32[] memory store_data) {
+  returns (bytes memory) {
     // Ensure input is correctly formatted
     require(_context.length == 96);
     require(_app_name != bytes32(0) && _app_desc.length > 0 && _app_storage != address(0));
@@ -81,115 +92,44 @@ library AppConsole {
 
     /// Application is unregistered - register application -
 
-    // Overwrite previous buffer with storage buffer
-    stOverwrite(ptr);
-    // Place payment amount and destination (0, 0) in buffer
-    stPush(ptr, 0);
-    stPush(ptr, 0);
-    // Place app name in app storage location
-    // Get app storage location
+    // Get pointer to free memory
+    ptr = ptr.clear();
+
+    // Set up STORES action requests -
+    ptr.stores();
+    // Push each storage location and value to the STORES request buffer:
+
+    // Store app name in app base storage location
     temp = keccak256(keccak256(_app_name), keccak256(APPS, temp));
-    stPush(ptr, temp);
-    stPush(ptr, _app_name);
-    // Place app storage address in app default storage address location
-    stPush(ptr, keccak256(APP_STORAGE_IMPL, temp));
-    stPush(ptr, bytes32(_app_storage));
+    ptr.store(_app_name).at(temp);
+
+    // Store app default storage address in APP_STORAGE_IMPL location
+    ptr.store(_app_storage).at(keccak256(APP_STORAGE_IMPL, temp));
+
     // Increment provider app list length
-    // Get provider app list storage location
     temp = keccak256(keccak256(provider), PROVIDERS);
     temp = keccak256(PROVIDER_APP_LIST, temp);
-    stPush(ptr, temp);
-    stPush(ptr, bytes32(1 + num_apps));
+    ptr.store(1 + num_apps).at(temp);
+
     // Push app name to the end of the provider's app list
-    // Get end of list -
-    stPush(ptr, bytes32(32 + 32 * num_apps + uint(temp)));
-    stPush(ptr, _app_name);
-    // Push description to storage buffer
-    // Get app description storage location
+    ptr.store(_app_name).at(bytes32(32 + 32 * num_apps + uint(temp)));
+
+    // Push description bytes to APP_DESC storage location
     temp = keccak256(keccak256(provider), PROVIDERS);
     temp = keccak256(keccak256(_app_name), keccak256(APPS, temp));
     temp = keccak256(APP_DESC, temp);
-    stPushBytes(ptr, temp, _app_desc);
+    ptr.storeBytesAt(_app_desc, temp);
 
-    // Get bytes32[] representation of storage buffer
-    store_data = getBuffer(ptr);
-  }
+    // Set up EMITS action requests -
+    ptr.emits();
 
-  /*
-  Creates a new return data storage buffer at the position given by the pointer. Does not update free memory
+    // Add APP_REGISTERED event topics and data (app name)
+    ptr.topics(
+      [APP_REGISTERED, exec_id, keccak256(provider)]
+    ).data(_app_name);
 
-  @param _ptr: A pointer to the location where the buffer will be created
-  */
-  function stOverwrite(uint _ptr) internal pure {
-    assembly {
-      // Simple set the initial length - 0
-      mstore(_ptr, 0)
-    }
-  }
-
-  /*
-  Pushes a value to the end of a storage return buffer, and updates the length
-
-  @param _ptr: A pointer to the start of the buffer
-  @param _val: The value to push to the buffer
-  */
-  function stPush(uint _ptr, bytes32 _val) internal pure {
-    assembly {
-      // Get end of buffer - 32 bytes plus the length stored at the pointer
-      let len := add(0x20, mload(_ptr))
-      // Push value to end of buffer (overwrites memory - be careful!)
-      mstore(add(_ptr, len), _val)
-      // Increment buffer length
-      mstore(_ptr, len)
-      // If the free-memory pointer does not point beyond the buffer's current size, update it
-      if lt(mload(0x40), add(add(0x20, _ptr), len)) {
-        mstore(0x40, add(add(0x40, _ptr), len)) // Ensure free memory pointer points to the beginning of a memory slot
-      }
-    }
-  }
-
-  /*
-  Pushes a bytes array to the storage buffer, including its length. Uses the given base location to get the storage locations for each
-  index in the array
-
-  @param _ptr: A pointer to the start of the buffer
-  @param _base_location: The storage location of the length of the array
-  @param _arr: The bytes array to push
-  */
-  function stPushBytes(uint _ptr, bytes32 _base_location, bytes _arr) internal pure {
-    assembly {
-      // Get end of buffer - 32 bytes plus the length stored at the pointer
-      let len := add(0x20, mload(_ptr))
-      // Loop over bytes array, and push each value to storage buffer, while incrementing the current storage location
-      let offset := 0x00
-      for { } lt(offset, add(0x20, mload(_arr))) { offset := add(0x20, offset) } {
-        // Push incremented location to buffer
-        mstore(add(add(len, mul(2, offset)), _ptr), add(offset, _base_location))
-        // Push bytes array chunk to buffer
-        mstore(add(add(add(0x20, len), mul(2, offset)), _ptr), mload(add(offset, _arr)))
-      }
-      // Increment buffer length
-      mstore(_ptr, add(mul(2, offset), mload(_ptr)))
-      // If the free-memory pointer does not point beyond the buffer's current size, update it
-      if lt(mload(0x40), add(add(0x20, _ptr), mload(_ptr))) {
-        mstore(0x40, add(add(0x40, _ptr), mload(_ptr))) // Ensure free memory pointer points to the beginning of a memory slot
-      }
-    }
-  }
-
-  /*
-  Returns the bytes32[] stored at the buffer
-
-  @param _ptr: A pointer to the location in memory where the calldata for the call is stored
-  @return store_data: The return values, which will be stored
-  */
-  function getBuffer(uint _ptr) internal pure returns (bytes32[] memory store_data){
-    assembly {
-      // If the size stored at the pointer is not evenly divislble into 32-byte segments, this was improperly constructed
-      if gt(mod(mload(_ptr), 0x20), 0) { revert (0, 0) }
-      mstore(_ptr, div(mload(_ptr), 0x20))
-      store_data := _ptr
-    }
+    // Return formatted action requests to storage
+    return ptr.getBuffer();
   }
 
   /*

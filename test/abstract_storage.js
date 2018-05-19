@@ -106,1566 +106,1566 @@ contract('AbstractStorage', function (accounts) {
     bal.should.be.eq(0)
   })
 
-  // describe('#exec - payable', async () => {
-  //
-  //   let executionID
-  //
-  //   beforeEach(async () => {
-  //     // Transfer funds from payDest to exec
-  //     sendBalanceTo(payDest, exec)
-  //     let bal = await getBalance(viewBalance, payDest)
-  //     bal.should.be.eq(0)
-  //
-  //     let events = await storage.initAndFinalize(
-  //       updater, true, appInit.address, initCalldata, allowedAddrs,
-  //       { from: exec }
-  //     ).should.be.fulfilled.then((tx) => {
-  //       return tx.logs
-  //     })
-  //     events.should.not.eq(null)
-  //     events.length.should.be.eq(2)
-  //     events[0].event.should.be.eq('ApplicationInitialized')
-  //     events[1].event.should.be.eq('ApplicationFinalization')
-  //     executionID = events[0].args['execution_id']
-  //     web3.toDecimal(executionID).should.not.eq(0)
-  //   })
-  //
-  //   describe('invalid inputs or invalid state', async () => {
-  //
-  //     context('calldata is too short', async () => {
-  //
-  //       let invalidCalldata = '0xabcd'
-  //
-  //       it('should throw', async () => {
-  //         await storage.exec(
-  //           allowedAddrs[0], executionID, invalidCalldata,
-  //           { from: exec }
-  //         ).should.not.be.fulfilled
-  //       })
-  //     })
-  //
-  //     context('target address is 0', async () => {
-  //
-  //       let invalidAddr = zeroAddress()
-  //
-  //       it('should throw', async () => {
-  //         await storage.exec(
-  //           invalidAddr, executionID, stdAppCalldata[0],
-  //           { from: exec }
-  //         ).should.not.be.fulfilled
-  //       })
-  //     })
-  //
-  //     context('exec id is 0', async () => {
-  //
-  //       let invalidExecID = web3.toHex(0)
-  //
-  //       it('should throw', async () => {
-  //         await storage.exec(
-  //           allowedAddrs[0], invalidExecID, stdAppCalldata[0],
-  //           { from: exec }
-  //         ).should.not.be.fulfilled
-  //       })
-  //     })
-  //
-  //     context('sender is not script exec for the passed in execution id', async () => {
-  //
-  //       let invalidExec = otherAddr
-  //
-  //       it('should throw', async () => {
-  //         await storage.exec(
-  //           stdApp.address, executionID, stdAppCalldata[0],
-  //           { from: invalidExec }
-  //         ).should.not.be.fulfilled
-  //       })
-  //     })
-  //
-  //     context('script target not in exec id allowed list', async () => {
-  //
-  //       let invalidTarget = otherAddr
-  //
-  //       it('should throw', async () => {
-  //         await storage.exec(
-  //           invalidTarget, executionID, stdAppCalldata[0],
-  //           { from: exec }
-  //         ).should.not.be.fulfilled
-  //       })
-  //     })
-  //
-  //     context('app is paused', async () => {
-  //
-  //       beforeEach(async () => {
-  //         await storage.pauseAppInstance(executionID, { from: updater }).should.be.fulfilled
-  //         let appInfo = await storage.app_info.call(executionID)
-  //         appInfo[0].should.be.eq(true)
-  //       })
-  //
-  //       it('should throw', async () => {
-  //         await storage.exec(
-  //           stdApp.address, executionID, stdAppCalldata[0],
-  //           { from: exec }
-  //         ).should.not.be.fulfilled
-  //       })
-  //     })
-  //   })
-  //
-  //   describe('target application reverts (RevertApp tests)', async () => {
-  //
-  //     let revertEvents
-  //     let revertReturn
-  //
-  //     context('function did not exist', async () => {
-  //
-  //       let invalidCalldata
-  //
-  //       beforeEach(async () => {
-  //         invalidCalldata = await appMockUtil.rev0.call()
-  //         invalidCalldata.should.not.eq('0x')
-  //
-  //         revertReturn = await storage.exec.call(
-  //           revertApp.address, executionID, invalidCalldata,
-  //           { from: exec }
-  //         ).should.be.fulfilled
-  //
-  //         revertEvents = await storage.exec(
-  //           revertApp.address, executionID, invalidCalldata,
-  //           { from: exec }
-  //         ).should.be.fulfilled.then((tx) => {
-  //           return tx.logs
-  //         })
-  //       })
-  //
-  //       describe('returned data', async () => {
-  //
-  //         it('should return a tuple with 3 fields', async () => {
-  //           revertReturn.length.should.be.eq(3)
-  //         })
-  //
-  //         it('should return blank data', async () => {
-  //           revertReturn[0].should.be.eq(false)
-  //           revertReturn[1].toNumber().should.be.eq(0)
-  //           revertReturn[2].should.be.eq('0x')
-  //         })
-  //       })
-  //
-  //       describe('revert events', async () => {
-  //
-  //         it('should emit a single ApplicationException event', async () => {
-  //           revertEvents.length.should.be.eq(1)
-  //           revertEvents[0].event.should.be.eq('ApplicationException')
-  //         })
-  //
-  //         it('should match the used execution id', async () => {
-  //           let emittedExecId = revertEvents[0].args['execution_id']
-  //           emittedExecId.should.be.eq(executionID)
-  //         })
-  //
-  //         it('should match the targeted app address', async () => {
-  //           let emittedAddr = revertEvents[0].args['application_address']
-  //           emittedAddr.should.be.eq(revertApp.address)
-  //         })
-  //
-  //         it('should emit a message matching \'DefaultException\'', async () => {
-  //           let emittedMessage = revertEvents[0].args['message']
-  //           hexStrEquals(emittedMessage, 'DefaultException').should.be.eq(true,
-  //             "emitted:" + web3.toAscii(emittedMessage)
-  //           )
-  //         })
-  //       })
-  //     })
-  //
-  //     context('reverts with no message', async () => {
-  //
-  //       beforeEach(async () => {
-  //         let revertCalldata = await appMockUtil.rev1.call()
-  //         revertCalldata.should.not.eq('0x')
-  //
-  //         revertReturn = await storage.exec.call(
-  //           revertApp.address, executionID, revertCalldata,
-  //           { from: exec }
-  //         ).should.be.fulfilled
-  //
-  //         revertEvents = await storage.exec(
-  //           revertApp.address, executionID, revertCalldata,
-  //           { from: exec }
-  //         ).should.be.fulfilled.then((tx) => {
-  //           return tx.logs
-  //         })
-  //       })
-  //
-  //       describe('returned data', async () => {
-  //
-  //         it('should return a tuple with 3 fields', async () => {
-  //           revertReturn.length.should.be.eq(3)
-  //         })
-  //
-  //         it('should return blank data', async () => {
-  //           revertReturn[0].should.be.eq(false)
-  //           revertReturn[1].toNumber().should.be.eq(0)
-  //           revertReturn[2].should.be.eq('0x')
-  //         })
-  //       })
-  //
-  //       describe('revert events', async () => {
-  //
-  //         it('should emit a single ApplicationException event', async () => {
-  //           revertEvents.length.should.be.eq(1)
-  //           revertEvents[0].event.should.be.eq('ApplicationException')
-  //         })
-  //
-  //         it('should match the used execution id', async () => {
-  //           let emittedExecId = revertEvents[0].args['execution_id']
-  //           emittedExecId.should.be.eq(executionID)
-  //         })
-  //
-  //         it('should match the targeted app address', async () => {
-  //           let emittedAddr = revertEvents[0].args['application_address']
-  //           emittedAddr.should.be.eq(revertApp.address)
-  //         })
-  //
-  //         it('should emit a message matching \'DefaultException\'', async () => {
-  //           let emittedMessage = revertEvents[0].args['message']
-  //           hexStrEquals(emittedMessage, 'DefaultException').should.be.eq(true,
-  //             "emitted:" + web3.toAscii(emittedMessage)
-  //           )
-  //         })
-  //       })
-  //     })
-  //
-  //     context('reverts with message', async () => {
-  //
-  //       beforeEach(async () => {
-  //         let revertCalldata = await appMockUtil.rev2.call(revertMessage)
-  //         revertCalldata.should.not.eq('0x')
-  //
-  //         revertReturn = await storage.exec.call(
-  //           revertApp.address, executionID, revertCalldata,
-  //           { from: exec }
-  //         ).should.be.fulfilled
-  //
-  //         revertEvents = await storage.exec(
-  //           revertApp.address, executionID, revertCalldata,
-  //           { from: exec }
-  //         ).should.be.fulfilled.then((tx) => {
-  //           return tx.logs
-  //         })
-  //       })
-  //
-  //       describe('returned data', async () => {
-  //
-  //         it('should return a tuple with 3 fields', async () => {
-  //           revertReturn.length.should.be.eq(3)
-  //         })
-  //
-  //         it('should return blank data', async () => {
-  //           revertReturn[0].should.be.eq(false)
-  //           revertReturn[1].toNumber().should.be.eq(0)
-  //           revertReturn[2].should.be.eq('0x')
-  //         })
-  //       })
-  //
-  //       describe('revert events', async () => {
-  //
-  //         it('should emit a single ApplicationException event', async () => {
-  //           revertEvents.length.should.be.eq(1)
-  //           revertEvents[0].event.should.be.eq('ApplicationException')
-  //         })
-  //
-  //         it('should match the used execution id', async () => {
-  //           let emittedExecId = revertEvents[0].args['execution_id']
-  //           emittedExecId.should.be.eq(executionID)
-  //         })
-  //
-  //         it('should match the targeted app address', async () => {
-  //           let emittedAddr = revertEvents[0].args['application_address']
-  //           emittedAddr.should.be.eq(revertApp.address)
-  //         })
-  //
-  //         it('should emit the correct message', async () => {
-  //           let emittedMessage = revertEvents[0].args['message']
-  //           hexStrEquals(emittedMessage, revertMessage).should.be.eq(true,
-  //             "emitted:" + web3.toAscii(emittedMessage)
-  //           )
-  //         })
-  //       })
-  //     })
-  //   })
-  //
-  //   describe('target application returns malformed data', async () => {
-  //
-  //     let target
-  //     let calldata
-  //
-  //     context('target is InvalidApp', async () => {
-  //
-  //       beforeEach(async () => {
-  //         target = invalidApp.address
-  //       })
-  //
-  //       describe('app attempts to pay storage contract', async () => {
-  //
-  //         beforeEach(async () => {
-  //           calldata = await appMockUtil.inv1.call(payAmt)
-  //           calldata.should.not.eq('0x')
-  //         })
-  //
-  //         it('should throw', async () => {
-  //           await storage.exec.call(
-  //             target, executionID, calldata,
-  //             { from: exec, value: payAmt }
-  //           ).should.not.be.fulfilled
-  //         })
-  //       })
-  //
-  //       describe('app pays no one and stores no data', async () => {
-  //
-  //         beforeEach(async () => {
-  //           calldata = await appMockUtil.inv2.call()
-  //           calldata.should.not.eq('0x')
-  //         })
-  //
-  //         it('should throw', async () => {
-  //           await storage.exec.call(
-  //             target, executionID, calldata,
-  //             { from: exec }
-  //           ).should.not.be.fulfilled
-  //         })
-  //       })
-  //
-  //       describe('app storage request has odd length', async () => {
-  //
-  //         beforeEach(async () => {
-  //           calldata = await appMockUtil.inv3.call()
-  //           calldata.should.not.eq('0x')
-  //         })
-  //
-  //         it('should throw', async () => {
-  //           await storage.exec.call(
-  //             target, executionID, calldata,
-  //             { from: exec }
-  //           ).should.not.be.fulfilled
-  //         })
-  //       })
-  //
-  //       describe('app storage request not divisible by 64 bytes', async () => {
-  //
-  //         beforeEach(async () => {
-  //           calldata = await appMockUtil.inv4.call()
-  //           calldata.should.not.eq('0x')
-  //         })
-  //
-  //         it('should throw', async () => {
-  //           await storage.exec.call(
-  //             target, executionID, calldata,
-  //             { from: exec }
-  //           ).should.not.be.fulfilled
-  //         })
-  //       })
-  //
-  //       describe('app storage request length under 128 bytes', async () => {
-  //
-  //         beforeEach(async () => {
-  //           calldata = await appMockUtil.inv5.call()
-  //           calldata.should.not.eq('0x')
-  //         })
-  //
-  //         it('should throw', async () => {
-  //           await storage.exec.call(
-  //             target, executionID, calldata,
-  //             { from: exec }
-  //           ).should.not.be.fulfilled
-  //         })
-  //       })
-  //     })
-  //   })
-  //
-  //   describe('target application returns well-formed data', async () => {
-  //
-  //     let target
-  //     let calldata
-  //     let returnData
-  //     let execEvents
-  //
-  //     context('target is StdApp', async () => {
-  //
-  //       beforeEach(async () => {
-  //         // Transfer funds from payDest to exec
-  //         sendBalanceTo(payDest, exec)
-  //         let bal = await getBalance(viewBalance, payDest)
-  //         bal.should.be.eq(0)
-  //
-  //         target = stdApp.address
-  //       })
-  //
-  //       describe('store to one slot', async () => {
-  //
-  //         beforeEach(async () => {
-  //           calldata = await appMockUtil.std1.call(storageLocations[0], storageValues[0])
-  //           calldata.should.not.eq('0x')
-  //
-  //           returnData = await storage.exec.call(
-  //             target, executionID, calldata,
-  //             { from: exec, value: payAmt }
-  //           ).should.be.fulfilled
-  //
-  //           execEvents = await storage.exec(
-  //             target, executionID, calldata,
-  //             { from: exec, value: payAmt }
-  //           ).should.be.fulfilled.then((tx) => {
-  //             return tx.logs
-  //           })
-  //         })
-  //
-  //         describe('returned data', async () => {
-  //
-  //           it('should return a tuple with 3 fields', async () => {
-  //             returnData.length.should.be.eq(3)
-  //           })
-  //
-  //           it('should return success', async () => {
-  //             returnData[0].should.be.eq(true)
-  //           })
-  //
-  //           it('should return the correct amount written', async () => {
-  //             returnData[1].toNumber().should.be.eq(1)
-  //           })
-  //
-  //           it('should return an empty bytes array', async () => {
-  //             let parsedReturn = await appMockUtil.parsePayable.call(returnData[2]).should.be.fulfilled
-  //             parsedReturn.length.should.be.eq(3)
-  //             parsedReturn[0].toNumber().should.be.eq(64)
-  //             parsedReturn[1].toNumber().should.be.eq(0)
-  //             web3.toDecimal(parsedReturn[2]).should.be.eq(0)
-  //           })
-  //         })
-  //
-  //         describe('exec events', async () => {
-  //
-  //           it('should emit a single ApplicationExecution event', async () => {
-  //             execEvents.length.should.be.eq(1)
-  //             execEvents[0].event.should.be.eq('ApplicationExecution')
-  //           })
-  //
-  //           it('should match the used execution id', async () => {
-  //             let emittedExecId = execEvents[0].args['execution_id']
-  //             emittedExecId.should.be.eq(executionID)
-  //           })
-  //
-  //           it('should match the targeted app address', async () => {
-  //             let emittedAddr = execEvents[0].args['script_target']
-  //             emittedAddr.should.be.eq(target)
-  //           })
-  //         })
-  //
-  //         describe('storage', async () => {
-  //
-  //           it('should have correctly stored the value at the location', async () => {
-  //             let readValue = await storage.read.call(executionID, storageLocations[0])
-  //             hexStrEquals(readValue, storageValues[0])
-  //               .should.be.eq(true, "val read:" + readValue)
-  //           })
-  //         })
-  //       })
-  //
-  //       describe('store to 2 slots', async () => {
-  //
-  //         beforeEach(async () => {
-  //           calldata = await appMockUtil.std2.call(
-  //             storageLocations[0], storageValues[0], storageLocations[1], storageValues[1]
-  //           )
-  //           calldata.should.not.eq('0x')
-  //
-  //           returnData = await storage.exec.call(
-  //             target, executionID, calldata,
-  //             { from: exec, value: payAmt }
-  //           ).should.be.fulfilled
-  //
-  //           execEvents = await storage.exec(
-  //             target, executionID, calldata,
-  //             { from: exec, value: payAmt }
-  //           ).should.be.fulfilled.then((tx) => {
-  //             return tx.logs
-  //           })
-  //         })
-  //
-  //         describe('returned data', async () => {
-  //
-  //           it('should return a tuple with 3 fields', async () => {
-  //             returnData.length.should.be.eq(3)
-  //           })
-  //
-  //           it('should return success', async () => {
-  //             returnData[0].should.be.eq(true)
-  //           })
-  //
-  //           it('should return the correct amount written', async () => {
-  //             returnData[1].toNumber().should.be.eq(2)
-  //           })
-  //
-  //           it('should return an empty bytes array', async () => {
-  //             let parsedReturn = await appMockUtil.parsePayable.call(returnData[2]).should.be.fulfilled
-  //             parsedReturn.length.should.be.eq(3)
-  //             parsedReturn[0].toNumber().should.be.eq(64)
-  //             parsedReturn[1].toNumber().should.be.eq(0)
-  //             web3.toDecimal(parsedReturn[2]).should.be.eq(0)
-  //           })
-  //         })
-  //
-  //         describe('exec events', async () => {
-  //
-  //           it('should emit a single ApplicationExecution event', async () => {
-  //             execEvents.length.should.be.eq(1)
-  //             execEvents[0].event.should.be.eq('ApplicationExecution')
-  //           })
-  //
-  //           it('should match the used execution id', async () => {
-  //             let emittedExecId = execEvents[0].args['execution_id']
-  //             emittedExecId.should.be.eq(executionID)
-  //           })
-  //
-  //           it('should match the targeted app address', async () => {
-  //             let emittedAddr = execEvents[0].args['script_target']
-  //             emittedAddr.should.be.eq(target)
-  //           })
-  //         })
-  //
-  //         describe('storage', async () => {
-  //
-  //           it('should have correctly stored the value at the first location', async () => {
-  //             let readValue = await storage.read.call(executionID, storageLocations[0])
-  //             hexStrEquals(readValue, storageValues[0])
-  //               .should.be.eq(true, "val read:" + readValue)
-  //           })
-  //
-  //           it('should have correctly stored the value at the second location', async () => {
-  //             let readValue = await storage.read.call(executionID, storageLocations[1])
-  //             hexStrEquals(readValue, storageValues[1])
-  //               .should.be.eq(true, "val read:" + readValue)
-  //           })
-  //         })
-  //       })
-  //
-  //     })
-  //
-  //     context('target is PayableApp', async () => {
-  //
-  //       beforeEach(async () => {
-  //         // Transfer funds from payDest to exec
-  //         sendBalanceTo(payDest, exec)
-  //         let bal = await getBalance(viewBalance, payDest)
-  //         bal.should.be.eq(0)
-  //
-  //         target = payableApp.address
-  //       })
-  //
-  //       describe('payment without storage', async () => {
-  //
-  //         beforeEach(async () => {
-  //           calldata = await appMockUtil.pay1.call(payDest, payAmt)
-  //           calldata.should.not.eq('0x')
-  //
-  //           returnData = await storage.exec.call(
-  //             target, executionID, calldata,
-  //             { from: exec, value: payAmt }
-  //           ).should.be.fulfilled
-  //
-  //           execEvents = await storage.exec(
-  //             target, executionID, calldata,
-  //             { from: exec, value: payAmt }
-  //           ).should.be.fulfilled.then((tx) => {
-  //             return tx.logs
-  //           })
-  //         })
-  //
-  //         describe('returned data', async () => {
-  //
-  //           it('should return a tuple with 3 fields', async () => {
-  //             returnData.length.should.be.eq(3)
-  //           })
-  //
-  //           it('should return success', async () => {
-  //             returnData[0].should.be.eq(true)
-  //           })
-  //
-  //           it('should return the correct amount written', async () => {
-  //             returnData[1].toNumber().should.be.eq(0)
-  //           })
-  //
-  //           it('should return a bytes array populated with payment destination and send amount', async () => {
-  //             let parsedReturn = await appMockUtil.parsePayable.call(returnData[2]).should.be.fulfilled
-  //             parsedReturn.length.should.be.eq(3)
-  //             parsedReturn[0].toNumber().should.be.eq(64)
-  //             parsedReturn[1].toNumber().should.be.eq(payAmt)
-  //             parsedReturn[2].should.be.eq(payDest)
-  //           })
-  //         })
-  //
-  //         describe('exec events', async () => {
-  //
-  //           it('should emit an ApplicationExecution event and a DeliveredPayment event', async () => {
-  //             execEvents.length.should.be.eq(2)
-  //             execEvents[0].event.should.be.eq('DeliveredPayment')
-  //             execEvents[1].event.should.be.eq('ApplicationExecution')
-  //           })
-  //
-  //           it('both events should match the used execution id', async () => {
-  //             let emittedExecId = execEvents[0].args['execution_id']
-  //             emittedExecId.should.be.eq(executionID)
-  //             emittedExecId = execEvents[1].args['execution_id']
-  //             emittedExecId.should.be.eq(executionID)
-  //           })
-  //
-  //           it('the ApplicationExecution event should match the targeted app address', async () => {
-  //             let emittedAddr = execEvents[1].args['script_target']
-  //             emittedAddr.should.be.eq(target)
-  //           })
-  //
-  //           it('the DeliveredPayment event should match the destination and amoutn sent', async () => {
-  //             let dest = execEvents[0].args['destination']
-  //             dest.should.be.eq(payDest)
-  //             let amtSend = execEvents[0].args['amount']
-  //             amtSend.toNumber().should.be.eq(payAmt)
-  //           })
-  //         })
-  //
-  //         describe('payment', async () => {
-  //
-  //           it('should have paid the amount to the requested destination', async () => {
-  //             let bal = await getBalance(viewBalance, payDest)
-  //             bal.should.be.eq(payAmt)
-  //           })
-  //         })
-  //       })
-  //
-  //       describe('store to one slot', async () => {
-  //
-  //         beforeEach(async () => {
-  //           calldata = await appMockUtil.pay2.call(
-  //             payDest, payAmt, storageLocations[0], storageValues[0]
-  //           )
-  //           calldata.should.not.eq('0x')
-  //
-  //           returnData = await storage.exec.call(
-  //             target, executionID, calldata,
-  //             { from: exec, value: payAmt }
-  //           ).should.be.fulfilled
-  //
-  //           execEvents = await storage.exec(
-  //             target, executionID, calldata,
-  //             { from: exec, value: payAmt }
-  //           ).should.be.fulfilled.then((tx) => {
-  //             return tx.logs
-  //           })
-  //         })
-  //
-  //         describe('returned data', async () => {
-  //
-  //           it('should return a tuple with 3 fields', async () => {
-  //             returnData.length.should.be.eq(3)
-  //           })
-  //
-  //           it('should return success', async () => {
-  //             returnData[0].should.be.eq(true)
-  //           })
-  //
-  //           it('should return the correct amount written', async () => {
-  //             returnData[1].toNumber().should.be.eq(1)
-  //           })
-  //
-  //           it('should return a bytes array populated with payment destination and send amount', async () => {
-  //             let parsedReturn = await appMockUtil.parsePayable.call(returnData[2]).should.be.fulfilled
-  //             parsedReturn.length.should.be.eq(3)
-  //             parsedReturn[0].toNumber().should.be.eq(64)
-  //             parsedReturn[1].toNumber().should.be.eq(payAmt)
-  //             parsedReturn[2].should.be.eq(payDest)
-  //           })
-  //         })
-  //
-  //         describe('exec events', async () => {
-  //
-  //           it('should emit an ApplicationExecution event and a DeliveredPayment event', async () => {
-  //             execEvents.length.should.be.eq(2)
-  //             execEvents[0].event.should.be.eq('DeliveredPayment')
-  //             execEvents[1].event.should.be.eq('ApplicationExecution')
-  //           })
-  //
-  //           it('both events should match the used execution id', async () => {
-  //             let emittedExecId = execEvents[0].args['execution_id']
-  //             emittedExecId.should.be.eq(executionID)
-  //             emittedExecId = execEvents[1].args['execution_id']
-  //             emittedExecId.should.be.eq(executionID)
-  //           })
-  //
-  //           it('the ApplicationExecution event should match the targeted app address', async () => {
-  //             let emittedAddr = execEvents[1].args['script_target']
-  //             emittedAddr.should.be.eq(target)
-  //           })
-  //
-  //           it('the DeliveredPayment event should match the destination and amoutn sent', async () => {
-  //             let dest = execEvents[0].args['destination']
-  //             dest.should.be.eq(payDest)
-  //             let amtSend = execEvents[0].args['amount']
-  //             amtSend.toNumber().should.be.eq(payAmt)
-  //           })
-  //         })
-  //
-  //         describe('storage', async () => {
-  //
-  //           it('should not have stored to the payment destination', async () => {
-  //             let readValue = await storage.read.call(executionID, payDest)
-  //             web3.toDecimal(readValue).should.be.eq(0)
-  //           })
-  //
-  //           it('should have correctly stored the value at the location', async () => {
-  //             let readValue = await storage.read.call(executionID, storageLocations[0])
-  //             hexStrEquals(readValue, storageValues[0])
-  //               .should.be.eq(true, "val read:" + readValue)
-  //           })
-  //         })
-  //
-  //         describe('payment', async () => {
-  //
-  //           it('should have paid the amount to the requested destination', async () => {
-  //             let bal = await getBalance(viewBalance, payDest)
-  //             bal.should.be.eq(payAmt)
-  //           })
-  //         })
-  //       })
-  //
-  //       describe('store to 2 slots', async () => {
-  //
-  //         beforeEach(async () => {
-  //           calldata = await appMockUtil.pay3.call(
-  //             payDest, payAmt,
-  //             storageLocations[0], storageValues[0],
-  //             storageLocations[1], storageValues[1]
-  //           )
-  //           calldata.should.not.eq('0x')
-  //
-  //           returnData = await storage.exec.call(
-  //             target, executionID, calldata,
-  //             { from: exec, value: payAmt }
-  //           ).should.be.fulfilled
-  //
-  //           execEvents = await storage.exec(
-  //             target, executionID, calldata,
-  //             { from: exec, value: payAmt }
-  //           ).should.be.fulfilled.then((tx) => {
-  //             return tx.logs
-  //           })
-  //         })
-  //
-  //         describe('returned data', async () => {
-  //
-  //           it('should return a tuple with 3 fields', async () => {
-  //             returnData.length.should.be.eq(3)
-  //           })
-  //
-  //           it('should return success', async () => {
-  //             returnData[0].should.be.eq(true)
-  //           })
-  //
-  //           it('should return the correct amount written', async () => {
-  //             returnData[1].toNumber().should.be.eq(2)
-  //           })
-  //
-  //           it('should return a bytes array populated with payment destination and send amount', async () => {
-  //             let parsedReturn = await appMockUtil.parsePayable.call(returnData[2]).should.be.fulfilled
-  //             parsedReturn.length.should.be.eq(3)
-  //             parsedReturn[0].toNumber().should.be.eq(64)
-  //             parsedReturn[1].toNumber().should.be.eq(payAmt)
-  //             parsedReturn[2].should.be.eq(payDest)
-  //           })
-  //         })
-  //
-  //         describe('exec events', async () => {
-  //
-  //           it('should emit an ApplicationExecution event and a DeliveredPayment event', async () => {
-  //             execEvents.length.should.be.eq(2)
-  //             execEvents[0].event.should.be.eq('DeliveredPayment')
-  //             execEvents[1].event.should.be.eq('ApplicationExecution')
-  //           })
-  //
-  //           it('both events should match the used execution id', async () => {
-  //             let emittedExecId = execEvents[0].args['execution_id']
-  //             emittedExecId.should.be.eq(executionID)
-  //             emittedExecId = execEvents[1].args['execution_id']
-  //             emittedExecId.should.be.eq(executionID)
-  //           })
-  //
-  //           it('the ApplicationExecution event should match the targeted app address', async () => {
-  //             let emittedAddr = execEvents[1].args['script_target']
-  //             emittedAddr.should.be.eq(target)
-  //           })
-  //
-  //           it('the DeliveredPayment event should match the destination and amoutn sent', async () => {
-  //             let dest = execEvents[0].args['destination']
-  //             dest.should.be.eq(payDest)
-  //             let amtSend = execEvents[0].args['amount']
-  //             amtSend.toNumber().should.be.eq(payAmt)
-  //           })
-  //         })
-  //
-  //         describe('storage', async () => {
-  //
-  //           it('should not have stored to the payment destination', async () => {
-  //             let readValue = await storage.read.call(executionID, payDest)
-  //             web3.toDecimal(readValue).should.be.eq(0)
-  //           })
-  //
-  //           it('should have correctly stored the value at the first location', async () => {
-  //             let readValue = await storage.read.call(executionID, storageLocations[0])
-  //             hexStrEquals(readValue, storageValues[0])
-  //               .should.be.eq(true, "val read:" + readValue)
-  //           })
-  //
-  //           it('should have correctly stored the value at the second location', async () => {
-  //             let readValue = await storage.read.call(executionID, storageLocations[1])
-  //             hexStrEquals(readValue, storageValues[1])
-  //               .should.be.eq(true, "val read:" + readValue)
-  //           })
-  //         })
-  //
-  //         describe('payment', async () => {
-  //
-  //           it('should have paid the amount to the requested destination', async () => {
-  //             let bal = await getBalance(viewBalance, payDest)
-  //             bal.should.be.eq(payAmt)
-  //           })
-  //         })
-  //       })
-  //     })
-  //   })
-  // })
-  //
-  // describe('#exec - nonpayable', async () => {
-  //
-  //   let executionID
-  //
-  //   beforeEach(async () => {
-  //     let events = await storage.initAndFinalize(
-  //       updater, false, appInit.address, initCalldata, allowedAddrs,
-  //       { from: exec }
-  //     ).should.be.fulfilled.then((tx) => {
-  //       return tx.logs
-  //     })
-  //     events.should.not.eq(null)
-  //     events.length.should.be.eq(2)
-  //     events[0].event.should.be.eq('ApplicationInitialized')
-  //     events[1].event.should.be.eq('ApplicationFinalization')
-  //     executionID = events[0].args['execution_id']
-  //     web3.toDecimal(executionID).should.not.eq(0)
-  //   })
-  //
-  //   describe('invalid inputs or invalid state', async () => {
-  //
-  //     context('calldata is too short', async () => {
-  //
-  //       let invalidCalldata = '0xabcd'
-  //
-  //       it('should throw', async () => {
-  //         await storage.exec(
-  //           allowedAddrs[0], executionID, invalidCalldata,
-  //           { from: exec }
-  //         ).should.not.be.fulfilled
-  //       })
-  //     })
-  //
-  //     context('target address is 0', async () => {
-  //
-  //       let invalidAddr = zeroAddress()
-  //
-  //       it('should throw', async () => {
-  //         await storage.exec(
-  //           invalidAddr, executionID, stdAppCalldata[0],
-  //           { from: exec }
-  //         ).should.not.be.fulfilled
-  //       })
-  //     })
-  //
-  //     context('exec id is 0', async () => {
-  //
-  //       let invalidExecID = web3.toHex(0)
-  //
-  //       it('should throw', async () => {
-  //         await storage.exec(
-  //           allowedAddrs[0], invalidExecID, stdAppCalldata[0],
-  //           { from: exec }
-  //         ).should.not.be.fulfilled
-  //       })
-  //     })
-  //
-  //     context('sender is not script exec for the passed in execution id', async () => {
-  //
-  //       let invalidExec = otherAddr
-  //
-  //       it('should throw', async () => {
-  //         await storage.exec(
-  //           stdApp.address, executionID, stdAppCalldata[0],
-  //           { from: invalidExec }
-  //         ).should.not.be.fulfilled
-  //       })
-  //     })
-  //
-  //     context('ether sent to non-payable app', async () => {
-  //
-  //       it('should throw', async () => {
-  //         await storage.exec(
-  //           stdApp.address, executionID, stdAppCalldata[0],
-  //           { from: exec, value: 1 }
-  //         ).should.not.be.fulfilled
-  //       })
-  //     })
-  //
-  //     context('script target not in exec id allowed list', async () => {
-  //
-  //       let invalidTarget = otherAddr
-  //
-  //       it('should throw', async () => {
-  //         await storage.exec(
-  //           invalidTarget, executionID, stdAppCalldata[0],
-  //           { from: exec }
-  //         ).should.not.be.fulfilled
-  //       })
-  //     })
-  //
-  //     context('app is paused', async () => {
-  //
-  //       beforeEach(async () => {
-  //         await storage.pauseAppInstance(executionID, { from: updater }).should.be.fulfilled
-  //         let appInfo = await storage.app_info.call(executionID)
-  //         appInfo[0].should.be.eq(true)
-  //       })
-  //
-  //       it('should throw', async () => {
-  //         await storage.exec(
-  //           stdApp.address, executionID, stdAppCalldata[0],
-  //           { from: exec }
-  //         ).should.not.be.fulfilled
-  //       })
-  //     })
-  //   })
-  //
-  //   describe('target application reverts (RevertApp tests)', async () => {
-  //
-  //     let revertEvents
-  //     let revertReturn
-  //
-  //     context('function did not exist', async () => {
-  //
-  //       let invalidCalldata
-  //
-  //       beforeEach(async () => {
-  //         invalidCalldata = await appMockUtil.rev0.call()
-  //         invalidCalldata.should.not.eq('0x')
-  //
-  //         revertReturn = await storage.exec.call(
-  //           revertApp.address, executionID, invalidCalldata,
-  //           { from: exec }
-  //         ).should.be.fulfilled
-  //
-  //         revertEvents = await storage.exec(
-  //           revertApp.address, executionID, invalidCalldata,
-  //           { from: exec }
-  //         ).should.be.fulfilled.then((tx) => {
-  //           return tx.logs
-  //         })
-  //       })
-  //
-  //       describe('returned data', async () => {
-  //
-  //         it('should return a tuple with 3 fields', async () => {
-  //           revertReturn.length.should.be.eq(3)
-  //         })
-  //
-  //         it('should return blank data', async () => {
-  //           revertReturn[0].should.be.eq(false)
-  //           revertReturn[1].toNumber().should.be.eq(0)
-  //           revertReturn[2].should.be.eq('0x')
-  //         })
-  //       })
-  //
-  //       describe('revert events', async () => {
-  //
-  //         it('should emit a single ApplicationException event', async () => {
-  //           revertEvents.length.should.be.eq(1)
-  //           revertEvents[0].event.should.be.eq('ApplicationException')
-  //         })
-  //
-  //         it('should match the used execution id', async () => {
-  //           let emittedExecId = revertEvents[0].args['execution_id']
-  //           emittedExecId.should.be.eq(executionID)
-  //         })
-  //
-  //         it('should match the targeted app address', async () => {
-  //           let emittedAddr = revertEvents[0].args['application_address']
-  //           emittedAddr.should.be.eq(revertApp.address)
-  //         })
-  //
-  //         it('should emit a message matching \'DefaultException\'', async () => {
-  //           let emittedMessage = revertEvents[0].args['message']
-  //           hexStrEquals(emittedMessage, 'DefaultException').should.be.eq(true,
-  //             "emitted:" + web3.toAscii(emittedMessage)
-  //           )
-  //         })
-  //       })
-  //     })
-  //
-  //     context('reverts with no message', async () => {
-  //
-  //       beforeEach(async () => {
-  //         let revertCalldata = await appMockUtil.rev1.call()
-  //         revertCalldata.should.not.eq('0x')
-  //
-  //         revertReturn = await storage.exec.call(
-  //           revertApp.address, executionID, revertCalldata,
-  //           { from: exec }
-  //         ).should.be.fulfilled
-  //
-  //         revertEvents = await storage.exec(
-  //           revertApp.address, executionID, revertCalldata,
-  //           { from: exec }
-  //         ).should.be.fulfilled.then((tx) => {
-  //           return tx.logs
-  //         })
-  //       })
-  //
-  //       describe('returned data', async () => {
-  //
-  //         it('should return a tuple with 3 fields', async () => {
-  //           revertReturn.length.should.be.eq(3)
-  //         })
-  //
-  //         it('should return blank data', async () => {
-  //           revertReturn[0].should.be.eq(false)
-  //           revertReturn[1].toNumber().should.be.eq(0)
-  //           revertReturn[2].should.be.eq('0x')
-  //         })
-  //       })
-  //
-  //       describe('revert events', async () => {
-  //
-  //         it('should emit a single ApplicationException event', async () => {
-  //           revertEvents.length.should.be.eq(1)
-  //           revertEvents[0].event.should.be.eq('ApplicationException')
-  //         })
-  //
-  //         it('should match the used execution id', async () => {
-  //           let emittedExecId = revertEvents[0].args['execution_id']
-  //           emittedExecId.should.be.eq(executionID)
-  //         })
-  //
-  //         it('should match the targeted app address', async () => {
-  //           let emittedAddr = revertEvents[0].args['application_address']
-  //           emittedAddr.should.be.eq(revertApp.address)
-  //         })
-  //
-  //         it('should emit a message matching \'DefaultException\'', async () => {
-  //           let emittedMessage = revertEvents[0].args['message']
-  //           hexStrEquals(emittedMessage, 'DefaultException').should.be.eq(true,
-  //             "emitted:" + web3.toAscii(emittedMessage)
-  //           )
-  //         })
-  //       })
-  //     })
-  //
-  //     context('reverts with message', async () => {
-  //
-  //       beforeEach(async () => {
-  //         let revertCalldata = await appMockUtil.rev2.call(revertMessage)
-  //         revertCalldata.should.not.eq('0x')
-  //
-  //         revertReturn = await storage.exec.call(
-  //           revertApp.address, executionID, revertCalldata,
-  //           { from: exec }
-  //         ).should.be.fulfilled
-  //
-  //         revertEvents = await storage.exec(
-  //           revertApp.address, executionID, revertCalldata,
-  //           { from: exec }
-  //         ).should.be.fulfilled.then((tx) => {
-  //           return tx.logs
-  //         })
-  //       })
-  //
-  //       describe('returned data', async () => {
-  //
-  //         it('should return a tuple with 3 fields', async () => {
-  //           revertReturn.length.should.be.eq(3)
-  //         })
-  //
-  //         it('should return blank data', async () => {
-  //           revertReturn[0].should.be.eq(false)
-  //           revertReturn[1].toNumber().should.be.eq(0)
-  //           revertReturn[2].should.be.eq('0x')
-  //         })
-  //       })
-  //
-  //       describe('revert events', async () => {
-  //
-  //         it('should emit a single ApplicationException event', async () => {
-  //           revertEvents.length.should.be.eq(1)
-  //           revertEvents[0].event.should.be.eq('ApplicationException')
-  //         })
-  //
-  //         it('should match the used execution id', async () => {
-  //           let emittedExecId = revertEvents[0].args['execution_id']
-  //           emittedExecId.should.be.eq(executionID)
-  //         })
-  //
-  //         it('should match the targeted app address', async () => {
-  //           let emittedAddr = revertEvents[0].args['application_address']
-  //           emittedAddr.should.be.eq(revertApp.address)
-  //         })
-  //
-  //         it('should emit the correct message', async () => {
-  //           let emittedMessage = revertEvents[0].args['message']
-  //           hexStrEquals(emittedMessage, revertMessage).should.be.eq(true,
-  //             "emitted:" + web3.toAscii(emittedMessage)
-  //           )
-  //         })
-  //       })
-  //     })
-  //   })
-  //
-  //   describe('target application returns malformed data', async () => {
-  //
-  //     let target
-  //     let calldata
-  //
-  //     context('target is InvalidApp', async () => {
-  //
-  //       beforeEach(async () => {
-  //         target = invalidApp.address
-  //       })
-  //
-  //       describe('app attempts to pay storage contract', async () => {
-  //
-  //         beforeEach(async () => {
-  //           calldata = await appMockUtil.inv1.call(payAmt)
-  //           calldata.should.not.eq('0x')
-  //         })
-  //
-  //         it('should throw', async () => {
-  //           await storage.exec.call(
-  //             target, executionID, calldata,
-  //             { from: exec }
-  //           ).should.not.be.fulfilled
-  //         })
-  //       })
-  //
-  //       describe('app pays no one and stores no data', async () => {
-  //
-  //         beforeEach(async () => {
-  //           calldata = await appMockUtil.inv2.call()
-  //           calldata.should.not.eq('0x')
-  //         })
-  //
-  //         it('should throw', async () => {
-  //           await storage.exec.call(
-  //             target, executionID, calldata,
-  //             { from: exec }
-  //           ).should.not.be.fulfilled
-  //         })
-  //       })
-  //
-  //       describe('app storage request has odd length', async () => {
-  //
-  //         beforeEach(async () => {
-  //           calldata = await appMockUtil.inv3.call()
-  //           calldata.should.not.eq('0x')
-  //         })
-  //
-  //         it('should throw', async () => {
-  //           await storage.exec.call(
-  //             target, executionID, calldata,
-  //             { from: exec }
-  //           ).should.not.be.fulfilled
-  //         })
-  //       })
-  //
-  //       describe('app storage request not divisible by 64 bytes', async () => {
-  //
-  //         beforeEach(async () => {
-  //           calldata = await appMockUtil.inv4.call()
-  //           calldata.should.not.eq('0x')
-  //         })
-  //
-  //         it('should throw', async () => {
-  //           await storage.exec.call(
-  //             target, executionID, calldata,
-  //             { from: exec }
-  //           ).should.not.be.fulfilled
-  //         })
-  //       })
-  //
-  //       describe('app storage request length under 128 bytes', async () => {
-  //
-  //         beforeEach(async () => {
-  //           calldata = await appMockUtil.inv5.call()
-  //           calldata.should.not.eq('0x')
-  //         })
-  //
-  //         it('should throw', async () => {
-  //           await storage.exec.call(
-  //             target, executionID, calldata,
-  //             { from: exec }
-  //           ).should.not.be.fulfilled
-  //         })
-  //       })
-  //     })
-  //   })
-  //
-  //   describe('target application returns well-formed data', async () => {
-  //
-  //     let target
-  //     let calldata
-  //     let returnData
-  //     let execEvents
-  //
-  //     context('target is StdApp', async () => {
-  //
-  //       beforeEach(async () => {
-  //         target = stdApp.address
-  //       })
-  //
-  //       describe('store to one slot', async () => {
-  //
-  //         beforeEach(async () => {
-  //           calldata = await appMockUtil.std1.call(storageLocations[0], storageValues[0])
-  //           calldata.should.not.eq('0x')
-  //
-  //           returnData = await storage.exec.call(
-  //             target, executionID, calldata,
-  //             { from: exec }
-  //           ).should.be.fulfilled
-  //
-  //           execEvents = await storage.exec(
-  //             target, executionID, calldata,
-  //             { from: exec }
-  //           ).should.be.fulfilled.then((tx) => {
-  //             return tx.logs
-  //           })
-  //         })
-  //
-  //         describe('returned data', async () => {
-  //
-  //           it('should return a tuple with 3 fields', async () => {
-  //             returnData.length.should.be.eq(3)
-  //           })
-  //
-  //           it('should return success', async () => {
-  //             returnData[0].should.be.eq(true)
-  //           })
-  //
-  //           it('should return the correct amount written', async () => {
-  //             returnData[1].toNumber().should.be.eq(1)
-  //           })
-  //
-  //           it('should return an empty bytes array', async () => {
-  //             returnData[2].should.be.eq('0x')
-  //           })
-  //         })
-  //
-  //         describe('exec events', async () => {
-  //
-  //           it('should emit a single ApplicationExecution event', async () => {
-  //             execEvents.length.should.be.eq(1)
-  //             execEvents[0].event.should.be.eq('ApplicationExecution')
-  //           })
-  //
-  //           it('should match the used execution id', async () => {
-  //             let emittedExecId = execEvents[0].args['execution_id']
-  //             emittedExecId.should.be.eq(executionID)
-  //           })
-  //
-  //           it('should match the targeted app address', async () => {
-  //             let emittedAddr = execEvents[0].args['script_target']
-  //             emittedAddr.should.be.eq(target)
-  //           })
-  //         })
-  //
-  //         describe('storage', async () => {
-  //
-  //           it('should have correctly stored the value at the location', async () => {
-  //             let readValue = await storage.read.call(executionID, storageLocations[0])
-  //             hexStrEquals(readValue, storageValues[0])
-  //               .should.be.eq(true, "val read:" + readValue)
-  //           })
-  //         })
-  //       })
-  //
-  //       describe('store to 2 slots', async () => {
-  //
-  //         beforeEach(async () => {
-  //           calldata = await appMockUtil.std2.call(
-  //             storageLocations[0], storageValues[0], storageLocations[1], storageValues[1]
-  //           )
-  //           calldata.should.not.eq('0x')
-  //
-  //           returnData = await storage.exec.call(
-  //             target, executionID, calldata,
-  //             { from: exec }
-  //           ).should.be.fulfilled
-  //
-  //           execEvents = await storage.exec(
-  //             target, executionID, calldata,
-  //             { from: exec }
-  //           ).should.be.fulfilled.then((tx) => {
-  //             return tx.logs
-  //           })
-  //         })
-  //
-  //         describe('returned data', async () => {
-  //
-  //           it('should return a tuple with 3 fields', async () => {
-  //             returnData.length.should.be.eq(3)
-  //           })
-  //
-  //           it('should return success', async () => {
-  //             returnData[0].should.be.eq(true)
-  //           })
-  //
-  //           it('should return the correct amount written', async () => {
-  //             returnData[1].toNumber().should.be.eq(2)
-  //           })
-  //
-  //           it('should return an empty bytes array', async () => {
-  //             returnData[2].should.be.eq('0x')
-  //           })
-  //         })
-  //
-  //         describe('exec events', async () => {
-  //
-  //           it('should emit a single ApplicationExecution event', async () => {
-  //             execEvents.length.should.be.eq(1)
-  //             execEvents[0].event.should.be.eq('ApplicationExecution')
-  //           })
-  //
-  //           it('should match the used execution id', async () => {
-  //             let emittedExecId = execEvents[0].args['execution_id']
-  //             emittedExecId.should.be.eq(executionID)
-  //           })
-  //
-  //           it('should match the targeted app address', async () => {
-  //             let emittedAddr = execEvents[0].args['script_target']
-  //             emittedAddr.should.be.eq(target)
-  //           })
-  //         })
-  //
-  //         describe('storage', async () => {
-  //
-  //           it('should have correctly stored the value at the first location', async () => {
-  //             let readValue = await storage.read.call(executionID, storageLocations[0])
-  //             hexStrEquals(readValue, storageValues[0])
-  //               .should.be.eq(true, "val read:" + readValue)
-  //           })
-  //
-  //           it('should have correctly stored the value at the second location', async () => {
-  //             let readValue = await storage.read.call(executionID, storageLocations[1])
-  //             hexStrEquals(readValue, storageValues[1])
-  //               .should.be.eq(true, "val read:" + readValue)
-  //           })
-  //         })
-  //       })
-  //
-  //     })
-  //
-  //     context('target is PayableApp', async () => {
-  //
-  //       beforeEach(async () => {
-  //         target = payableApp.address
-  //       })
-  //
-  //       describe('payment without storage', async () => {
-  //
-  //         let invalidCalldata
-  //
-  //         beforeEach(async () => {
-  //           invalidCalldata = await appMockUtil.pay1.call(payDest, payAmt)
-  //           invalidCalldata.should.not.eq('0x')
-  //         })
-  //
-  //         it('should throw', async () => {
-  //           await storage.exec(
-  //             target, executionID, invalidCalldata,
-  //             { from: exec }
-  //           ).should.not.be.fulfilled
-  //         })
-  //       })
-  //
-  //       describe('store to one slot', async () => {
-  //
-  //         beforeEach(async () => {
-  //           calldata = await appMockUtil.pay2.call(
-  //             payDest, payAmt, storageLocations[0], storageValues[0]
-  //           )
-  //           calldata.should.not.eq('0x')
-  //
-  //           returnData = await storage.exec.call(
-  //             target, executionID, calldata,
-  //             { from: exec }
-  //           ).should.be.fulfilled
-  //
-  //           execEvents = await storage.exec(
-  //             target, executionID, calldata,
-  //             { from: exec }
-  //           ).should.be.fulfilled.then((tx) => {
-  //             return tx.logs
-  //           })
-  //         })
-  //
-  //         describe('returned data', async () => {
-  //
-  //           it('should return a tuple with 3 fields', async () => {
-  //             returnData.length.should.be.eq(3)
-  //           })
-  //
-  //           it('should return success', async () => {
-  //             returnData[0].should.be.eq(true)
-  //           })
-  //
-  //           it('should return the correct amount written', async () => {
-  //             returnData[1].toNumber().should.be.eq(1)
-  //           })
-  //
-  //           it('should return an empty bytes array', async () => {
-  //             returnData[2].should.be.eq('0x')
-  //           })
-  //         })
-  //
-  //         describe('exec events', async () => {
-  //
-  //           it('should emit a single ApplicationExecution event', async () => {
-  //             execEvents.length.should.be.eq(1)
-  //             execEvents[0].event.should.be.eq('ApplicationExecution')
-  //           })
-  //
-  //           it('should match the used execution id', async () => {
-  //             let emittedExecId = execEvents[0].args['execution_id']
-  //             emittedExecId.should.be.eq(executionID)
-  //           })
-  //
-  //           it('should match the targeted app address', async () => {
-  //             let emittedAddr = execEvents[0].args['script_target']
-  //             emittedAddr.should.be.eq(target)
-  //           })
-  //         })
-  //
-  //         describe('storage', async () => {
-  //
-  //           it('should not have stored to the payment destination', async () => {
-  //             let readValue = await storage.read.call(executionID, payDest)
-  //             web3.toDecimal(readValue).should.be.eq(0)
-  //           })
-  //
-  //           it('should have correctly stored the value at the location', async () => {
-  //             let readValue = await storage.read.call(executionID, storageLocations[0])
-  //             hexStrEquals(readValue, storageValues[0])
-  //               .should.be.eq(true, "val read:" + readValue)
-  //           })
-  //         })
-  //
-  //         describe('payment', async () => {
-  //
-  //           it('should not have paid the requested destination', async () => {
-  //             let bal = await getBalance(viewBalance, payDest)
-  //             bal.should.be.eq(0)
-  //           })
-  //         })
-  //       })
-  //
-  //       describe('store to 2 slots', async () => {
-  //
-  //         beforeEach(async () => {
-  //           calldata = await appMockUtil.pay3.call(
-  //             payDest, payAmt,
-  //             storageLocations[0], storageValues[0],
-  //             storageLocations[1], storageValues[1]
-  //           )
-  //           calldata.should.not.eq('0x')
-  //
-  //           returnData = await storage.exec.call(
-  //             target, executionID, calldata,
-  //             { from: exec }
-  //           ).should.be.fulfilled
-  //
-  //           execEvents = await storage.exec(
-  //             target, executionID, calldata,
-  //             { from: exec }
-  //           ).should.be.fulfilled.then((tx) => {
-  //             return tx.logs
-  //           })
-  //         })
-  //
-  //         describe('returned data', async () => {
-  //
-  //           it('should return a tuple with 3 fields', async () => {
-  //             returnData.length.should.be.eq(3)
-  //           })
-  //
-  //           it('should return success', async () => {
-  //             returnData[0].should.be.eq(true)
-  //           })
-  //
-  //           it('should return the correct amount written', async () => {
-  //             returnData[1].toNumber().should.be.eq(2)
-  //           })
-  //
-  //           it('should return an empty bytes array', async () => {
-  //             returnData[2].should.be.eq('0x')
-  //           })
-  //         })
-  //
-  //         describe('exec events', async () => {
-  //
-  //           it('should emit a single ApplicationExecution event', async () => {
-  //             execEvents.length.should.be.eq(1)
-  //             execEvents[0].event.should.be.eq('ApplicationExecution')
-  //           })
-  //
-  //           it('should match the used execution id', async () => {
-  //             let emittedExecId = execEvents[0].args['execution_id']
-  //             emittedExecId.should.be.eq(executionID)
-  //           })
-  //
-  //           it('should match the targeted app address', async () => {
-  //             let emittedAddr = execEvents[0].args['script_target']
-  //             emittedAddr.should.be.eq(target)
-  //           })
-  //         })
-  //
-  //         describe('storage', async () => {
-  //
-  //           it('should not have stored to the payment destination', async () => {
-  //             let readValue = await storage.read.call(executionID, payDest)
-  //             web3.toDecimal(readValue).should.be.eq(0)
-  //           })
-  //
-  //           it('should have correctly stored the value at the first location', async () => {
-  //             let readValue = await storage.read.call(executionID, storageLocations[0])
-  //             hexStrEquals(readValue, storageValues[0])
-  //               .should.be.eq(true, "val read:" + readValue)
-  //           })
-  //
-  //           it('should have correctly stored the value at the second location', async () => {
-  //             let readValue = await storage.read.call(executionID, storageLocations[1])
-  //             hexStrEquals(readValue, storageValues[1])
-  //               .should.be.eq(true, "val read:" + readValue)
-  //           })
-  //         })
-  //
-  //         describe('payment', async () => {
-  //
-  //           it('should not have paid the requested destination', async () => {
-  //             let bal = await getBalance(viewBalance, payDest)
-  //             bal.should.be.eq(0)
-  //           })
-  //         })
-  //       })
-  //     })
-  //   })
-  // })
+  describe('#exec - payable', async () => {
+
+    let executionID
+
+    beforeEach(async () => {
+      // Transfer funds from payDest to exec
+      sendBalanceTo(payDest, exec)
+      let bal = await getBalance(viewBalance, payDest)
+      bal.should.be.eq(0)
+
+      let events = await storage.initAndFinalize(
+        updater, true, appInit.address, initCalldata, allowedAddrs,
+        { from: exec }
+      ).should.be.fulfilled.then((tx) => {
+        return tx.logs
+      })
+      events.should.not.eq(null)
+      events.length.should.be.eq(2)
+      events[0].event.should.be.eq('ApplicationInitialized')
+      events[1].event.should.be.eq('ApplicationFinalization')
+      executionID = events[0].args['execution_id']
+      web3.toDecimal(executionID).should.not.eq(0)
+    })
+
+    describe('invalid inputs or invalid state', async () => {
+
+      context('calldata is too short', async () => {
+
+        let invalidCalldata = '0xabcd'
+
+        it('should throw', async () => {
+          await storage.exec(
+            allowedAddrs[0], executionID, invalidCalldata,
+            { from: exec }
+          ).should.not.be.fulfilled
+        })
+      })
+
+      context('target address is 0', async () => {
+
+        let invalidAddr = zeroAddress()
+
+        it('should throw', async () => {
+          await storage.exec(
+            invalidAddr, executionID, stdAppCalldata[0],
+            { from: exec }
+          ).should.not.be.fulfilled
+        })
+      })
+
+      context('exec id is 0', async () => {
+
+        let invalidExecID = web3.toHex(0)
+
+        it('should throw', async () => {
+          await storage.exec(
+            allowedAddrs[0], invalidExecID, stdAppCalldata[0],
+            { from: exec }
+          ).should.not.be.fulfilled
+        })
+      })
+
+      context('sender is not script exec for the passed in execution id', async () => {
+
+        let invalidExec = otherAddr
+
+        it('should throw', async () => {
+          await storage.exec(
+            stdApp.address, executionID, stdAppCalldata[0],
+            { from: invalidExec }
+          ).should.not.be.fulfilled
+        })
+      })
+
+      context('script target not in exec id allowed list', async () => {
+
+        let invalidTarget = otherAddr
+
+        it('should throw', async () => {
+          await storage.exec(
+            invalidTarget, executionID, stdAppCalldata[0],
+            { from: exec }
+          ).should.not.be.fulfilled
+        })
+      })
+
+      context('app is paused', async () => {
+
+        beforeEach(async () => {
+          await storage.pauseAppInstance(executionID, { from: updater }).should.be.fulfilled
+          let appInfo = await storage.app_info.call(executionID)
+          appInfo[0].should.be.eq(true)
+        })
+
+        it('should throw', async () => {
+          await storage.exec(
+            stdApp.address, executionID, stdAppCalldata[0],
+            { from: exec }
+          ).should.not.be.fulfilled
+        })
+      })
+    })
+
+    describe('target application reverts (RevertApp tests)', async () => {
+
+      let revertEvents
+      let revertReturn
+
+      context('function did not exist', async () => {
+
+        let invalidCalldata
+
+        beforeEach(async () => {
+          invalidCalldata = await appMockUtil.rev0.call()
+          invalidCalldata.should.not.eq('0x')
+
+          revertReturn = await storage.exec.call(
+            revertApp.address, executionID, invalidCalldata,
+            { from: exec }
+          ).should.be.fulfilled
+
+          revertEvents = await storage.exec(
+            revertApp.address, executionID, invalidCalldata,
+            { from: exec }
+          ).should.be.fulfilled.then((tx) => {
+            return tx.logs
+          })
+        })
+
+        describe('returned data', async () => {
+
+          it('should return a tuple with 3 fields', async () => {
+            revertReturn.length.should.be.eq(3)
+          })
+
+          it('should return blank data', async () => {
+            revertReturn[0].should.be.eq(false)
+            revertReturn[1].toNumber().should.be.eq(0)
+            revertReturn[2].should.be.eq('0x')
+          })
+        })
+
+        describe('revert events', async () => {
+
+          it('should emit a single ApplicationException event', async () => {
+            revertEvents.length.should.be.eq(1)
+            revertEvents[0].event.should.be.eq('ApplicationException')
+          })
+
+          it('should match the used execution id', async () => {
+            let emittedExecId = revertEvents[0].args['execution_id']
+            emittedExecId.should.be.eq(executionID)
+          })
+
+          it('should match the targeted app address', async () => {
+            let emittedAddr = revertEvents[0].args['application_address']
+            emittedAddr.should.be.eq(revertApp.address)
+          })
+
+          it('should emit a message matching \'DefaultException\'', async () => {
+            let emittedMessage = revertEvents[0].args['message']
+            hexStrEquals(emittedMessage, 'DefaultException').should.be.eq(true,
+              "emitted:" + web3.toAscii(emittedMessage)
+            )
+          })
+        })
+      })
+
+      context('reverts with no message', async () => {
+
+        beforeEach(async () => {
+          let revertCalldata = await appMockUtil.rev1.call()
+          revertCalldata.should.not.eq('0x')
+
+          revertReturn = await storage.exec.call(
+            revertApp.address, executionID, revertCalldata,
+            { from: exec }
+          ).should.be.fulfilled
+
+          revertEvents = await storage.exec(
+            revertApp.address, executionID, revertCalldata,
+            { from: exec }
+          ).should.be.fulfilled.then((tx) => {
+            return tx.logs
+          })
+        })
+
+        describe('returned data', async () => {
+
+          it('should return a tuple with 3 fields', async () => {
+            revertReturn.length.should.be.eq(3)
+          })
+
+          it('should return blank data', async () => {
+            revertReturn[0].should.be.eq(false)
+            revertReturn[1].toNumber().should.be.eq(0)
+            revertReturn[2].should.be.eq('0x')
+          })
+        })
+
+        describe('revert events', async () => {
+
+          it('should emit a single ApplicationException event', async () => {
+            revertEvents.length.should.be.eq(1)
+            revertEvents[0].event.should.be.eq('ApplicationException')
+          })
+
+          it('should match the used execution id', async () => {
+            let emittedExecId = revertEvents[0].args['execution_id']
+            emittedExecId.should.be.eq(executionID)
+          })
+
+          it('should match the targeted app address', async () => {
+            let emittedAddr = revertEvents[0].args['application_address']
+            emittedAddr.should.be.eq(revertApp.address)
+          })
+
+          it('should emit a message matching \'DefaultException\'', async () => {
+            let emittedMessage = revertEvents[0].args['message']
+            hexStrEquals(emittedMessage, 'DefaultException').should.be.eq(true,
+              "emitted:" + web3.toAscii(emittedMessage)
+            )
+          })
+        })
+      })
+
+      context('reverts with message', async () => {
+
+        beforeEach(async () => {
+          let revertCalldata = await appMockUtil.rev2.call(revertMessage)
+          revertCalldata.should.not.eq('0x')
+
+          revertReturn = await storage.exec.call(
+            revertApp.address, executionID, revertCalldata,
+            { from: exec }
+          ).should.be.fulfilled
+
+          revertEvents = await storage.exec(
+            revertApp.address, executionID, revertCalldata,
+            { from: exec }
+          ).should.be.fulfilled.then((tx) => {
+            return tx.logs
+          })
+        })
+
+        describe('returned data', async () => {
+
+          it('should return a tuple with 3 fields', async () => {
+            revertReturn.length.should.be.eq(3)
+          })
+
+          it('should return blank data', async () => {
+            revertReturn[0].should.be.eq(false)
+            revertReturn[1].toNumber().should.be.eq(0)
+            revertReturn[2].should.be.eq('0x')
+          })
+        })
+
+        describe('revert events', async () => {
+
+          it('should emit a single ApplicationException event', async () => {
+            revertEvents.length.should.be.eq(1)
+            revertEvents[0].event.should.be.eq('ApplicationException')
+          })
+
+          it('should match the used execution id', async () => {
+            let emittedExecId = revertEvents[0].args['execution_id']
+            emittedExecId.should.be.eq(executionID)
+          })
+
+          it('should match the targeted app address', async () => {
+            let emittedAddr = revertEvents[0].args['application_address']
+            emittedAddr.should.be.eq(revertApp.address)
+          })
+
+          it('should emit the correct message', async () => {
+            let emittedMessage = revertEvents[0].args['message']
+            hexStrEquals(emittedMessage, revertMessage).should.be.eq(true,
+              "emitted:" + web3.toAscii(emittedMessage)
+            )
+          })
+        })
+      })
+    })
+
+    describe('target application returns malformed data', async () => {
+
+      let target
+      let calldata
+
+      context('target is InvalidApp', async () => {
+
+        beforeEach(async () => {
+          target = invalidApp.address
+        })
+
+        describe('app attempts to pay storage contract', async () => {
+
+          beforeEach(async () => {
+            calldata = await appMockUtil.inv1.call(payAmt)
+            calldata.should.not.eq('0x')
+          })
+
+          it('should throw', async () => {
+            await storage.exec.call(
+              target, executionID, calldata,
+              { from: exec, value: payAmt }
+            ).should.not.be.fulfilled
+          })
+        })
+
+        describe('app pays no one and stores no data', async () => {
+
+          beforeEach(async () => {
+            calldata = await appMockUtil.inv2.call()
+            calldata.should.not.eq('0x')
+          })
+
+          it('should throw', async () => {
+            await storage.exec.call(
+              target, executionID, calldata,
+              { from: exec }
+            ).should.not.be.fulfilled
+          })
+        })
+
+        describe('app storage request has odd length', async () => {
+
+          beforeEach(async () => {
+            calldata = await appMockUtil.inv3.call()
+            calldata.should.not.eq('0x')
+          })
+
+          it('should throw', async () => {
+            await storage.exec.call(
+              target, executionID, calldata,
+              { from: exec }
+            ).should.not.be.fulfilled
+          })
+        })
+
+        describe('app storage request not divisible by 64 bytes', async () => {
+
+          beforeEach(async () => {
+            calldata = await appMockUtil.inv4.call()
+            calldata.should.not.eq('0x')
+          })
+
+          it('should throw', async () => {
+            await storage.exec.call(
+              target, executionID, calldata,
+              { from: exec }
+            ).should.not.be.fulfilled
+          })
+        })
+
+        describe('app storage request length under 128 bytes', async () => {
+
+          beforeEach(async () => {
+            calldata = await appMockUtil.inv5.call()
+            calldata.should.not.eq('0x')
+          })
+
+          it('should throw', async () => {
+            await storage.exec.call(
+              target, executionID, calldata,
+              { from: exec }
+            ).should.not.be.fulfilled
+          })
+        })
+      })
+    })
+
+    describe('target application returns well-formed data', async () => {
+
+      let target
+      let calldata
+      let returnData
+      let execEvents
+
+      context('target is StdApp', async () => {
+
+        beforeEach(async () => {
+          // Transfer funds from payDest to exec
+          sendBalanceTo(payDest, exec)
+          let bal = await getBalance(viewBalance, payDest)
+          bal.should.be.eq(0)
+
+          target = stdApp.address
+        })
+
+        describe('store to one slot', async () => {
+
+          beforeEach(async () => {
+            calldata = await appMockUtil.std1.call(storageLocations[0], storageValues[0])
+            calldata.should.not.eq('0x')
+
+            returnData = await storage.exec.call(
+              target, executionID, calldata,
+              { from: exec, value: payAmt }
+            ).should.be.fulfilled
+
+            execEvents = await storage.exec(
+              target, executionID, calldata,
+              { from: exec, value: payAmt }
+            ).should.be.fulfilled.then((tx) => {
+              return tx.logs
+            })
+          })
+
+          describe('returned data', async () => {
+
+            it('should return a tuple with 3 fields', async () => {
+              returnData.length.should.be.eq(3)
+            })
+
+            it('should return success', async () => {
+              returnData[0].should.be.eq(true)
+            })
+
+            it('should return the correct amount written', async () => {
+              returnData[1].toNumber().should.be.eq(1)
+            })
+
+            it('should return an empty bytes array', async () => {
+              let parsedReturn = await appMockUtil.parsePayable.call(returnData[2]).should.be.fulfilled
+              parsedReturn.length.should.be.eq(3)
+              parsedReturn[0].toNumber().should.be.eq(64)
+              parsedReturn[1].toNumber().should.be.eq(0)
+              web3.toDecimal(parsedReturn[2]).should.be.eq(0)
+            })
+          })
+
+          describe('exec events', async () => {
+
+            it('should emit a single ApplicationExecution event', async () => {
+              execEvents.length.should.be.eq(1)
+              execEvents[0].event.should.be.eq('ApplicationExecution')
+            })
+
+            it('should match the used execution id', async () => {
+              let emittedExecId = execEvents[0].args['execution_id']
+              emittedExecId.should.be.eq(executionID)
+            })
+
+            it('should match the targeted app address', async () => {
+              let emittedAddr = execEvents[0].args['script_target']
+              emittedAddr.should.be.eq(target)
+            })
+          })
+
+          describe('storage', async () => {
+
+            it('should have correctly stored the value at the location', async () => {
+              let readValue = await storage.read.call(executionID, storageLocations[0])
+              hexStrEquals(readValue, storageValues[0])
+                .should.be.eq(true, "val read:" + readValue)
+            })
+          })
+        })
+
+        describe('store to 2 slots', async () => {
+
+          beforeEach(async () => {
+            calldata = await appMockUtil.std2.call(
+              storageLocations[0], storageValues[0], storageLocations[1], storageValues[1]
+            )
+            calldata.should.not.eq('0x')
+
+            returnData = await storage.exec.call(
+              target, executionID, calldata,
+              { from: exec, value: payAmt }
+            ).should.be.fulfilled
+
+            execEvents = await storage.exec(
+              target, executionID, calldata,
+              { from: exec, value: payAmt }
+            ).should.be.fulfilled.then((tx) => {
+              return tx.logs
+            })
+          })
+
+          describe('returned data', async () => {
+
+            it('should return a tuple with 3 fields', async () => {
+              returnData.length.should.be.eq(3)
+            })
+
+            it('should return success', async () => {
+              returnData[0].should.be.eq(true)
+            })
+
+            it('should return the correct amount written', async () => {
+              returnData[1].toNumber().should.be.eq(2)
+            })
+
+            it('should return an empty bytes array', async () => {
+              let parsedReturn = await appMockUtil.parsePayable.call(returnData[2]).should.be.fulfilled
+              parsedReturn.length.should.be.eq(3)
+              parsedReturn[0].toNumber().should.be.eq(64)
+              parsedReturn[1].toNumber().should.be.eq(0)
+              web3.toDecimal(parsedReturn[2]).should.be.eq(0)
+            })
+          })
+
+          describe('exec events', async () => {
+
+            it('should emit a single ApplicationExecution event', async () => {
+              execEvents.length.should.be.eq(1)
+              execEvents[0].event.should.be.eq('ApplicationExecution')
+            })
+
+            it('should match the used execution id', async () => {
+              let emittedExecId = execEvents[0].args['execution_id']
+              emittedExecId.should.be.eq(executionID)
+            })
+
+            it('should match the targeted app address', async () => {
+              let emittedAddr = execEvents[0].args['script_target']
+              emittedAddr.should.be.eq(target)
+            })
+          })
+
+          describe('storage', async () => {
+
+            it('should have correctly stored the value at the first location', async () => {
+              let readValue = await storage.read.call(executionID, storageLocations[0])
+              hexStrEquals(readValue, storageValues[0])
+                .should.be.eq(true, "val read:" + readValue)
+            })
+
+            it('should have correctly stored the value at the second location', async () => {
+              let readValue = await storage.read.call(executionID, storageLocations[1])
+              hexStrEquals(readValue, storageValues[1])
+                .should.be.eq(true, "val read:" + readValue)
+            })
+          })
+        })
+
+      })
+
+      context('target is PayableApp', async () => {
+
+        beforeEach(async () => {
+          // Transfer funds from payDest to exec
+          sendBalanceTo(payDest, exec)
+          let bal = await getBalance(viewBalance, payDest)
+          bal.should.be.eq(0)
+
+          target = payableApp.address
+        })
+
+        describe('payment without storage', async () => {
+
+          beforeEach(async () => {
+            calldata = await appMockUtil.pay1.call(payDest, payAmt)
+            calldata.should.not.eq('0x')
+
+            returnData = await storage.exec.call(
+              target, executionID, calldata,
+              { from: exec, value: payAmt }
+            ).should.be.fulfilled
+
+            execEvents = await storage.exec(
+              target, executionID, calldata,
+              { from: exec, value: payAmt }
+            ).should.be.fulfilled.then((tx) => {
+              return tx.logs
+            })
+          })
+
+          describe('returned data', async () => {
+
+            it('should return a tuple with 3 fields', async () => {
+              returnData.length.should.be.eq(3)
+            })
+
+            it('should return success', async () => {
+              returnData[0].should.be.eq(true)
+            })
+
+            it('should return the correct amount written', async () => {
+              returnData[1].toNumber().should.be.eq(0)
+            })
+
+            it('should return a bytes array populated with payment destination and send amount', async () => {
+              let parsedReturn = await appMockUtil.parsePayable.call(returnData[2]).should.be.fulfilled
+              parsedReturn.length.should.be.eq(3)
+              parsedReturn[0].toNumber().should.be.eq(64)
+              parsedReturn[1].toNumber().should.be.eq(payAmt)
+              parsedReturn[2].should.be.eq(payDest)
+            })
+          })
+
+          describe('exec events', async () => {
+
+            it('should emit an ApplicationExecution event and a DeliveredPayment event', async () => {
+              execEvents.length.should.be.eq(2)
+              execEvents[0].event.should.be.eq('DeliveredPayment')
+              execEvents[1].event.should.be.eq('ApplicationExecution')
+            })
+
+            it('both events should match the used execution id', async () => {
+              let emittedExecId = execEvents[0].args['execution_id']
+              emittedExecId.should.be.eq(executionID)
+              emittedExecId = execEvents[1].args['execution_id']
+              emittedExecId.should.be.eq(executionID)
+            })
+
+            it('the ApplicationExecution event should match the targeted app address', async () => {
+              let emittedAddr = execEvents[1].args['script_target']
+              emittedAddr.should.be.eq(target)
+            })
+
+            it('the DeliveredPayment event should match the destination and amoutn sent', async () => {
+              let dest = execEvents[0].args['destination']
+              dest.should.be.eq(payDest)
+              let amtSend = execEvents[0].args['amount']
+              amtSend.toNumber().should.be.eq(payAmt)
+            })
+          })
+
+          describe('payment', async () => {
+
+            it('should have paid the amount to the requested destination', async () => {
+              let bal = await getBalance(viewBalance, payDest)
+              bal.should.be.eq(payAmt)
+            })
+          })
+        })
+
+        describe('store to one slot', async () => {
+
+          beforeEach(async () => {
+            calldata = await appMockUtil.pay2.call(
+              payDest, payAmt, storageLocations[0], storageValues[0]
+            )
+            calldata.should.not.eq('0x')
+
+            returnData = await storage.exec.call(
+              target, executionID, calldata,
+              { from: exec, value: payAmt }
+            ).should.be.fulfilled
+
+            execEvents = await storage.exec(
+              target, executionID, calldata,
+              { from: exec, value: payAmt }
+            ).should.be.fulfilled.then((tx) => {
+              return tx.logs
+            })
+          })
+
+          describe('returned data', async () => {
+
+            it('should return a tuple with 3 fields', async () => {
+              returnData.length.should.be.eq(3)
+            })
+
+            it('should return success', async () => {
+              returnData[0].should.be.eq(true)
+            })
+
+            it('should return the correct amount written', async () => {
+              returnData[1].toNumber().should.be.eq(1)
+            })
+
+            it('should return a bytes array populated with payment destination and send amount', async () => {
+              let parsedReturn = await appMockUtil.parsePayable.call(returnData[2]).should.be.fulfilled
+              parsedReturn.length.should.be.eq(3)
+              parsedReturn[0].toNumber().should.be.eq(64)
+              parsedReturn[1].toNumber().should.be.eq(payAmt)
+              parsedReturn[2].should.be.eq(payDest)
+            })
+          })
+
+          describe('exec events', async () => {
+
+            it('should emit an ApplicationExecution event and a DeliveredPayment event', async () => {
+              execEvents.length.should.be.eq(2)
+              execEvents[0].event.should.be.eq('DeliveredPayment')
+              execEvents[1].event.should.be.eq('ApplicationExecution')
+            })
+
+            it('both events should match the used execution id', async () => {
+              let emittedExecId = execEvents[0].args['execution_id']
+              emittedExecId.should.be.eq(executionID)
+              emittedExecId = execEvents[1].args['execution_id']
+              emittedExecId.should.be.eq(executionID)
+            })
+
+            it('the ApplicationExecution event should match the targeted app address', async () => {
+              let emittedAddr = execEvents[1].args['script_target']
+              emittedAddr.should.be.eq(target)
+            })
+
+            it('the DeliveredPayment event should match the destination and amoutn sent', async () => {
+              let dest = execEvents[0].args['destination']
+              dest.should.be.eq(payDest)
+              let amtSend = execEvents[0].args['amount']
+              amtSend.toNumber().should.be.eq(payAmt)
+            })
+          })
+
+          describe('storage', async () => {
+
+            it('should not have stored to the payment destination', async () => {
+              let readValue = await storage.read.call(executionID, payDest)
+              web3.toDecimal(readValue).should.be.eq(0)
+            })
+
+            it('should have correctly stored the value at the location', async () => {
+              let readValue = await storage.read.call(executionID, storageLocations[0])
+              hexStrEquals(readValue, storageValues[0])
+                .should.be.eq(true, "val read:" + readValue)
+            })
+          })
+
+          describe('payment', async () => {
+
+            it('should have paid the amount to the requested destination', async () => {
+              let bal = await getBalance(viewBalance, payDest)
+              bal.should.be.eq(payAmt)
+            })
+          })
+        })
+
+        describe('store to 2 slots', async () => {
+
+          beforeEach(async () => {
+            calldata = await appMockUtil.pay3.call(
+              payDest, payAmt,
+              storageLocations[0], storageValues[0],
+              storageLocations[1], storageValues[1]
+            )
+            calldata.should.not.eq('0x')
+
+            returnData = await storage.exec.call(
+              target, executionID, calldata,
+              { from: exec, value: payAmt }
+            ).should.be.fulfilled
+
+            execEvents = await storage.exec(
+              target, executionID, calldata,
+              { from: exec, value: payAmt }
+            ).should.be.fulfilled.then((tx) => {
+              return tx.logs
+            })
+          })
+
+          describe('returned data', async () => {
+
+            it('should return a tuple with 3 fields', async () => {
+              returnData.length.should.be.eq(3)
+            })
+
+            it('should return success', async () => {
+              returnData[0].should.be.eq(true)
+            })
+
+            it('should return the correct amount written', async () => {
+              returnData[1].toNumber().should.be.eq(2)
+            })
+
+            it('should return a bytes array populated with payment destination and send amount', async () => {
+              let parsedReturn = await appMockUtil.parsePayable.call(returnData[2]).should.be.fulfilled
+              parsedReturn.length.should.be.eq(3)
+              parsedReturn[0].toNumber().should.be.eq(64)
+              parsedReturn[1].toNumber().should.be.eq(payAmt)
+              parsedReturn[2].should.be.eq(payDest)
+            })
+          })
+
+          describe('exec events', async () => {
+
+            it('should emit an ApplicationExecution event and a DeliveredPayment event', async () => {
+              execEvents.length.should.be.eq(2)
+              execEvents[0].event.should.be.eq('DeliveredPayment')
+              execEvents[1].event.should.be.eq('ApplicationExecution')
+            })
+
+            it('both events should match the used execution id', async () => {
+              let emittedExecId = execEvents[0].args['execution_id']
+              emittedExecId.should.be.eq(executionID)
+              emittedExecId = execEvents[1].args['execution_id']
+              emittedExecId.should.be.eq(executionID)
+            })
+
+            it('the ApplicationExecution event should match the targeted app address', async () => {
+              let emittedAddr = execEvents[1].args['script_target']
+              emittedAddr.should.be.eq(target)
+            })
+
+            it('the DeliveredPayment event should match the destination and amoutn sent', async () => {
+              let dest = execEvents[0].args['destination']
+              dest.should.be.eq(payDest)
+              let amtSend = execEvents[0].args['amount']
+              amtSend.toNumber().should.be.eq(payAmt)
+            })
+          })
+
+          describe('storage', async () => {
+
+            it('should not have stored to the payment destination', async () => {
+              let readValue = await storage.read.call(executionID, payDest)
+              web3.toDecimal(readValue).should.be.eq(0)
+            })
+
+            it('should have correctly stored the value at the first location', async () => {
+              let readValue = await storage.read.call(executionID, storageLocations[0])
+              hexStrEquals(readValue, storageValues[0])
+                .should.be.eq(true, "val read:" + readValue)
+            })
+
+            it('should have correctly stored the value at the second location', async () => {
+              let readValue = await storage.read.call(executionID, storageLocations[1])
+              hexStrEquals(readValue, storageValues[1])
+                .should.be.eq(true, "val read:" + readValue)
+            })
+          })
+
+          describe('payment', async () => {
+
+            it('should have paid the amount to the requested destination', async () => {
+              let bal = await getBalance(viewBalance, payDest)
+              bal.should.be.eq(payAmt)
+            })
+          })
+        })
+      })
+    })
+  })
+
+  describe('#exec - nonpayable', async () => {
+
+    let executionID
+
+    beforeEach(async () => {
+      let events = await storage.initAndFinalize(
+        updater, false, appInit.address, initCalldata, allowedAddrs,
+        { from: exec }
+      ).should.be.fulfilled.then((tx) => {
+        return tx.logs
+      })
+      events.should.not.eq(null)
+      events.length.should.be.eq(2)
+      events[0].event.should.be.eq('ApplicationInitialized')
+      events[1].event.should.be.eq('ApplicationFinalization')
+      executionID = events[0].args['execution_id']
+      web3.toDecimal(executionID).should.not.eq(0)
+    })
+
+    describe('invalid inputs or invalid state', async () => {
+
+      context('calldata is too short', async () => {
+
+        let invalidCalldata = '0xabcd'
+
+        it('should throw', async () => {
+          await storage.exec(
+            allowedAddrs[0], executionID, invalidCalldata,
+            { from: exec }
+          ).should.not.be.fulfilled
+        })
+      })
+
+      context('target address is 0', async () => {
+
+        let invalidAddr = zeroAddress()
+
+        it('should throw', async () => {
+          await storage.exec(
+            invalidAddr, executionID, stdAppCalldata[0],
+            { from: exec }
+          ).should.not.be.fulfilled
+        })
+      })
+
+      context('exec id is 0', async () => {
+
+        let invalidExecID = web3.toHex(0)
+
+        it('should throw', async () => {
+          await storage.exec(
+            allowedAddrs[0], invalidExecID, stdAppCalldata[0],
+            { from: exec }
+          ).should.not.be.fulfilled
+        })
+      })
+
+      context('sender is not script exec for the passed in execution id', async () => {
+
+        let invalidExec = otherAddr
+
+        it('should throw', async () => {
+          await storage.exec(
+            stdApp.address, executionID, stdAppCalldata[0],
+            { from: invalidExec }
+          ).should.not.be.fulfilled
+        })
+      })
+
+      context('ether sent to non-payable app', async () => {
+
+        it('should throw', async () => {
+          await storage.exec(
+            stdApp.address, executionID, stdAppCalldata[0],
+            { from: exec, value: 1 }
+          ).should.not.be.fulfilled
+        })
+      })
+
+      context('script target not in exec id allowed list', async () => {
+
+        let invalidTarget = otherAddr
+
+        it('should throw', async () => {
+          await storage.exec(
+            invalidTarget, executionID, stdAppCalldata[0],
+            { from: exec }
+          ).should.not.be.fulfilled
+        })
+      })
+
+      context('app is paused', async () => {
+
+        beforeEach(async () => {
+          await storage.pauseAppInstance(executionID, { from: updater }).should.be.fulfilled
+          let appInfo = await storage.app_info.call(executionID)
+          appInfo[0].should.be.eq(true)
+        })
+
+        it('should throw', async () => {
+          await storage.exec(
+            stdApp.address, executionID, stdAppCalldata[0],
+            { from: exec }
+          ).should.not.be.fulfilled
+        })
+      })
+    })
+
+    describe('target application reverts (RevertApp tests)', async () => {
+
+      let revertEvents
+      let revertReturn
+
+      context('function did not exist', async () => {
+
+        let invalidCalldata
+
+        beforeEach(async () => {
+          invalidCalldata = await appMockUtil.rev0.call()
+          invalidCalldata.should.not.eq('0x')
+
+          revertReturn = await storage.exec.call(
+            revertApp.address, executionID, invalidCalldata,
+            { from: exec }
+          ).should.be.fulfilled
+
+          revertEvents = await storage.exec(
+            revertApp.address, executionID, invalidCalldata,
+            { from: exec }
+          ).should.be.fulfilled.then((tx) => {
+            return tx.logs
+          })
+        })
+
+        describe('returned data', async () => {
+
+          it('should return a tuple with 3 fields', async () => {
+            revertReturn.length.should.be.eq(3)
+          })
+
+          it('should return blank data', async () => {
+            revertReturn[0].should.be.eq(false)
+            revertReturn[1].toNumber().should.be.eq(0)
+            revertReturn[2].should.be.eq('0x')
+          })
+        })
+
+        describe('revert events', async () => {
+
+          it('should emit a single ApplicationException event', async () => {
+            revertEvents.length.should.be.eq(1)
+            revertEvents[0].event.should.be.eq('ApplicationException')
+          })
+
+          it('should match the used execution id', async () => {
+            let emittedExecId = revertEvents[0].args['execution_id']
+            emittedExecId.should.be.eq(executionID)
+          })
+
+          it('should match the targeted app address', async () => {
+            let emittedAddr = revertEvents[0].args['application_address']
+            emittedAddr.should.be.eq(revertApp.address)
+          })
+
+          it('should emit a message matching \'DefaultException\'', async () => {
+            let emittedMessage = revertEvents[0].args['message']
+            hexStrEquals(emittedMessage, 'DefaultException').should.be.eq(true,
+              "emitted:" + web3.toAscii(emittedMessage)
+            )
+          })
+        })
+      })
+
+      context('reverts with no message', async () => {
+
+        beforeEach(async () => {
+          let revertCalldata = await appMockUtil.rev1.call()
+          revertCalldata.should.not.eq('0x')
+
+          revertReturn = await storage.exec.call(
+            revertApp.address, executionID, revertCalldata,
+            { from: exec }
+          ).should.be.fulfilled
+
+          revertEvents = await storage.exec(
+            revertApp.address, executionID, revertCalldata,
+            { from: exec }
+          ).should.be.fulfilled.then((tx) => {
+            return tx.logs
+          })
+        })
+
+        describe('returned data', async () => {
+
+          it('should return a tuple with 3 fields', async () => {
+            revertReturn.length.should.be.eq(3)
+          })
+
+          it('should return blank data', async () => {
+            revertReturn[0].should.be.eq(false)
+            revertReturn[1].toNumber().should.be.eq(0)
+            revertReturn[2].should.be.eq('0x')
+          })
+        })
+
+        describe('revert events', async () => {
+
+          it('should emit a single ApplicationException event', async () => {
+            revertEvents.length.should.be.eq(1)
+            revertEvents[0].event.should.be.eq('ApplicationException')
+          })
+
+          it('should match the used execution id', async () => {
+            let emittedExecId = revertEvents[0].args['execution_id']
+            emittedExecId.should.be.eq(executionID)
+          })
+
+          it('should match the targeted app address', async () => {
+            let emittedAddr = revertEvents[0].args['application_address']
+            emittedAddr.should.be.eq(revertApp.address)
+          })
+
+          it('should emit a message matching \'DefaultException\'', async () => {
+            let emittedMessage = revertEvents[0].args['message']
+            hexStrEquals(emittedMessage, 'DefaultException').should.be.eq(true,
+              "emitted:" + web3.toAscii(emittedMessage)
+            )
+          })
+        })
+      })
+
+      context('reverts with message', async () => {
+
+        beforeEach(async () => {
+          let revertCalldata = await appMockUtil.rev2.call(revertMessage)
+          revertCalldata.should.not.eq('0x')
+
+          revertReturn = await storage.exec.call(
+            revertApp.address, executionID, revertCalldata,
+            { from: exec }
+          ).should.be.fulfilled
+
+          revertEvents = await storage.exec(
+            revertApp.address, executionID, revertCalldata,
+            { from: exec }
+          ).should.be.fulfilled.then((tx) => {
+            return tx.logs
+          })
+        })
+
+        describe('returned data', async () => {
+
+          it('should return a tuple with 3 fields', async () => {
+            revertReturn.length.should.be.eq(3)
+          })
+
+          it('should return blank data', async () => {
+            revertReturn[0].should.be.eq(false)
+            revertReturn[1].toNumber().should.be.eq(0)
+            revertReturn[2].should.be.eq('0x')
+          })
+        })
+
+        describe('revert events', async () => {
+
+          it('should emit a single ApplicationException event', async () => {
+            revertEvents.length.should.be.eq(1)
+            revertEvents[0].event.should.be.eq('ApplicationException')
+          })
+
+          it('should match the used execution id', async () => {
+            let emittedExecId = revertEvents[0].args['execution_id']
+            emittedExecId.should.be.eq(executionID)
+          })
+
+          it('should match the targeted app address', async () => {
+            let emittedAddr = revertEvents[0].args['application_address']
+            emittedAddr.should.be.eq(revertApp.address)
+          })
+
+          it('should emit the correct message', async () => {
+            let emittedMessage = revertEvents[0].args['message']
+            hexStrEquals(emittedMessage, revertMessage).should.be.eq(true,
+              "emitted:" + web3.toAscii(emittedMessage)
+            )
+          })
+        })
+      })
+    })
+
+    describe('target application returns malformed data', async () => {
+
+      let target
+      let calldata
+
+      context('target is InvalidApp', async () => {
+
+        beforeEach(async () => {
+          target = invalidApp.address
+        })
+
+        describe('app attempts to pay storage contract', async () => {
+
+          beforeEach(async () => {
+            calldata = await appMockUtil.inv1.call(payAmt)
+            calldata.should.not.eq('0x')
+          })
+
+          it('should throw', async () => {
+            await storage.exec.call(
+              target, executionID, calldata,
+              { from: exec }
+            ).should.not.be.fulfilled
+          })
+        })
+
+        describe('app pays no one and stores no data', async () => {
+
+          beforeEach(async () => {
+            calldata = await appMockUtil.inv2.call()
+            calldata.should.not.eq('0x')
+          })
+
+          it('should throw', async () => {
+            await storage.exec.call(
+              target, executionID, calldata,
+              { from: exec }
+            ).should.not.be.fulfilled
+          })
+        })
+
+        describe('app storage request has odd length', async () => {
+
+          beforeEach(async () => {
+            calldata = await appMockUtil.inv3.call()
+            calldata.should.not.eq('0x')
+          })
+
+          it('should throw', async () => {
+            await storage.exec.call(
+              target, executionID, calldata,
+              { from: exec }
+            ).should.not.be.fulfilled
+          })
+        })
+
+        describe('app storage request not divisible by 64 bytes', async () => {
+
+          beforeEach(async () => {
+            calldata = await appMockUtil.inv4.call()
+            calldata.should.not.eq('0x')
+          })
+
+          it('should throw', async () => {
+            await storage.exec.call(
+              target, executionID, calldata,
+              { from: exec }
+            ).should.not.be.fulfilled
+          })
+        })
+
+        describe('app storage request length under 128 bytes', async () => {
+
+          beforeEach(async () => {
+            calldata = await appMockUtil.inv5.call()
+            calldata.should.not.eq('0x')
+          })
+
+          it('should throw', async () => {
+            await storage.exec.call(
+              target, executionID, calldata,
+              { from: exec }
+            ).should.not.be.fulfilled
+          })
+        })
+      })
+    })
+
+    describe('target application returns well-formed data', async () => {
+
+      let target
+      let calldata
+      let returnData
+      let execEvents
+
+      context('target is StdApp', async () => {
+
+        beforeEach(async () => {
+          target = stdApp.address
+        })
+
+        describe('store to one slot', async () => {
+
+          beforeEach(async () => {
+            calldata = await appMockUtil.std1.call(storageLocations[0], storageValues[0])
+            calldata.should.not.eq('0x')
+
+            returnData = await storage.exec.call(
+              target, executionID, calldata,
+              { from: exec }
+            ).should.be.fulfilled
+
+            execEvents = await storage.exec(
+              target, executionID, calldata,
+              { from: exec }
+            ).should.be.fulfilled.then((tx) => {
+              return tx.logs
+            })
+          })
+
+          describe('returned data', async () => {
+
+            it('should return a tuple with 3 fields', async () => {
+              returnData.length.should.be.eq(3)
+            })
+
+            it('should return success', async () => {
+              returnData[0].should.be.eq(true)
+            })
+
+            it('should return the correct amount written', async () => {
+              returnData[1].toNumber().should.be.eq(1)
+            })
+
+            it('should return an empty bytes array', async () => {
+              returnData[2].should.be.eq('0x')
+            })
+          })
+
+          describe('exec events', async () => {
+
+            it('should emit a single ApplicationExecution event', async () => {
+              execEvents.length.should.be.eq(1)
+              execEvents[0].event.should.be.eq('ApplicationExecution')
+            })
+
+            it('should match the used execution id', async () => {
+              let emittedExecId = execEvents[0].args['execution_id']
+              emittedExecId.should.be.eq(executionID)
+            })
+
+            it('should match the targeted app address', async () => {
+              let emittedAddr = execEvents[0].args['script_target']
+              emittedAddr.should.be.eq(target)
+            })
+          })
+
+          describe('storage', async () => {
+
+            it('should have correctly stored the value at the location', async () => {
+              let readValue = await storage.read.call(executionID, storageLocations[0])
+              hexStrEquals(readValue, storageValues[0])
+                .should.be.eq(true, "val read:" + readValue)
+            })
+          })
+        })
+
+        describe('store to 2 slots', async () => {
+
+          beforeEach(async () => {
+            calldata = await appMockUtil.std2.call(
+              storageLocations[0], storageValues[0], storageLocations[1], storageValues[1]
+            )
+            calldata.should.not.eq('0x')
+
+            returnData = await storage.exec.call(
+              target, executionID, calldata,
+              { from: exec }
+            ).should.be.fulfilled
+
+            execEvents = await storage.exec(
+              target, executionID, calldata,
+              { from: exec }
+            ).should.be.fulfilled.then((tx) => {
+              return tx.logs
+            })
+          })
+
+          describe('returned data', async () => {
+
+            it('should return a tuple with 3 fields', async () => {
+              returnData.length.should.be.eq(3)
+            })
+
+            it('should return success', async () => {
+              returnData[0].should.be.eq(true)
+            })
+
+            it('should return the correct amount written', async () => {
+              returnData[1].toNumber().should.be.eq(2)
+            })
+
+            it('should return an empty bytes array', async () => {
+              returnData[2].should.be.eq('0x')
+            })
+          })
+
+          describe('exec events', async () => {
+
+            it('should emit a single ApplicationExecution event', async () => {
+              execEvents.length.should.be.eq(1)
+              execEvents[0].event.should.be.eq('ApplicationExecution')
+            })
+
+            it('should match the used execution id', async () => {
+              let emittedExecId = execEvents[0].args['execution_id']
+              emittedExecId.should.be.eq(executionID)
+            })
+
+            it('should match the targeted app address', async () => {
+              let emittedAddr = execEvents[0].args['script_target']
+              emittedAddr.should.be.eq(target)
+            })
+          })
+
+          describe('storage', async () => {
+
+            it('should have correctly stored the value at the first location', async () => {
+              let readValue = await storage.read.call(executionID, storageLocations[0])
+              hexStrEquals(readValue, storageValues[0])
+                .should.be.eq(true, "val read:" + readValue)
+            })
+
+            it('should have correctly stored the value at the second location', async () => {
+              let readValue = await storage.read.call(executionID, storageLocations[1])
+              hexStrEquals(readValue, storageValues[1])
+                .should.be.eq(true, "val read:" + readValue)
+            })
+          })
+        })
+
+      })
+
+      context('target is PayableApp', async () => {
+
+        beforeEach(async () => {
+          target = payableApp.address
+        })
+
+        describe('payment without storage', async () => {
+
+          let invalidCalldata
+
+          beforeEach(async () => {
+            invalidCalldata = await appMockUtil.pay1.call(payDest, payAmt)
+            invalidCalldata.should.not.eq('0x')
+          })
+
+          it('should throw', async () => {
+            await storage.exec(
+              target, executionID, invalidCalldata,
+              { from: exec }
+            ).should.not.be.fulfilled
+          })
+        })
+
+        describe('store to one slot', async () => {
+
+          beforeEach(async () => {
+            calldata = await appMockUtil.pay2.call(
+              payDest, payAmt, storageLocations[0], storageValues[0]
+            )
+            calldata.should.not.eq('0x')
+
+            returnData = await storage.exec.call(
+              target, executionID, calldata,
+              { from: exec }
+            ).should.be.fulfilled
+
+            execEvents = await storage.exec(
+              target, executionID, calldata,
+              { from: exec }
+            ).should.be.fulfilled.then((tx) => {
+              return tx.logs
+            })
+          })
+
+          describe('returned data', async () => {
+
+            it('should return a tuple with 3 fields', async () => {
+              returnData.length.should.be.eq(3)
+            })
+
+            it('should return success', async () => {
+              returnData[0].should.be.eq(true)
+            })
+
+            it('should return the correct amount written', async () => {
+              returnData[1].toNumber().should.be.eq(1)
+            })
+
+            it('should return an empty bytes array', async () => {
+              returnData[2].should.be.eq('0x')
+            })
+          })
+
+          describe('exec events', async () => {
+
+            it('should emit a single ApplicationExecution event', async () => {
+              execEvents.length.should.be.eq(1)
+              execEvents[0].event.should.be.eq('ApplicationExecution')
+            })
+
+            it('should match the used execution id', async () => {
+              let emittedExecId = execEvents[0].args['execution_id']
+              emittedExecId.should.be.eq(executionID)
+            })
+
+            it('should match the targeted app address', async () => {
+              let emittedAddr = execEvents[0].args['script_target']
+              emittedAddr.should.be.eq(target)
+            })
+          })
+
+          describe('storage', async () => {
+
+            it('should not have stored to the payment destination', async () => {
+              let readValue = await storage.read.call(executionID, payDest)
+              web3.toDecimal(readValue).should.be.eq(0)
+            })
+
+            it('should have correctly stored the value at the location', async () => {
+              let readValue = await storage.read.call(executionID, storageLocations[0])
+              hexStrEquals(readValue, storageValues[0])
+                .should.be.eq(true, "val read:" + readValue)
+            })
+          })
+
+          describe('payment', async () => {
+
+            it('should not have paid the requested destination', async () => {
+              let bal = await getBalance(viewBalance, payDest)
+              bal.should.be.eq(0)
+            })
+          })
+        })
+
+        describe('store to 2 slots', async () => {
+
+          beforeEach(async () => {
+            calldata = await appMockUtil.pay3.call(
+              payDest, payAmt,
+              storageLocations[0], storageValues[0],
+              storageLocations[1], storageValues[1]
+            )
+            calldata.should.not.eq('0x')
+
+            returnData = await storage.exec.call(
+              target, executionID, calldata,
+              { from: exec }
+            ).should.be.fulfilled
+
+            execEvents = await storage.exec(
+              target, executionID, calldata,
+              { from: exec }
+            ).should.be.fulfilled.then((tx) => {
+              return tx.logs
+            })
+          })
+
+          describe('returned data', async () => {
+
+            it('should return a tuple with 3 fields', async () => {
+              returnData.length.should.be.eq(3)
+            })
+
+            it('should return success', async () => {
+              returnData[0].should.be.eq(true)
+            })
+
+            it('should return the correct amount written', async () => {
+              returnData[1].toNumber().should.be.eq(2)
+            })
+
+            it('should return an empty bytes array', async () => {
+              returnData[2].should.be.eq('0x')
+            })
+          })
+
+          describe('exec events', async () => {
+
+            it('should emit a single ApplicationExecution event', async () => {
+              execEvents.length.should.be.eq(1)
+              execEvents[0].event.should.be.eq('ApplicationExecution')
+            })
+
+            it('should match the used execution id', async () => {
+              let emittedExecId = execEvents[0].args['execution_id']
+              emittedExecId.should.be.eq(executionID)
+            })
+
+            it('should match the targeted app address', async () => {
+              let emittedAddr = execEvents[0].args['script_target']
+              emittedAddr.should.be.eq(target)
+            })
+          })
+
+          describe('storage', async () => {
+
+            it('should not have stored to the payment destination', async () => {
+              let readValue = await storage.read.call(executionID, payDest)
+              web3.toDecimal(readValue).should.be.eq(0)
+            })
+
+            it('should have correctly stored the value at the first location', async () => {
+              let readValue = await storage.read.call(executionID, storageLocations[0])
+              hexStrEquals(readValue, storageValues[0])
+                .should.be.eq(true, "val read:" + readValue)
+            })
+
+            it('should have correctly stored the value at the second location', async () => {
+              let readValue = await storage.read.call(executionID, storageLocations[1])
+              hexStrEquals(readValue, storageValues[1])
+                .should.be.eq(true, "val read:" + readValue)
+            })
+          })
+
+          describe('payment', async () => {
+
+            it('should not have paid the requested destination', async () => {
+              let bal = await getBalance(viewBalance, payDest)
+              bal.should.be.eq(0)
+            })
+          })
+        })
+      })
+    })
+  })
 
   describe('#initAppInstance', async () => {
 

@@ -1,6 +1,14 @@
 pragma solidity ^0.4.23;
 
+import "../../lib/Pointers.sol";
+import "../../lib/LibEvents.sol";
+import "../../lib/LibStorage.sol";
+
 library VersionConsole {
+
+  using Pointers for *;
+  using LibEvents for uint;
+  using LibStorage for uint;
 
   /// PROVIDER STORAGE ///
 
@@ -52,6 +60,14 @@ library VersionConsole {
   // [PROVIDERS][provider_id][APPS][app_hash][VERSIONS][ver_name][VER_INIT_DESC] = bytes description
   bytes32 internal constant VER_INIT_DESC = keccak256("ver_init_desc");
 
+  /// EVENT TOPICS ///
+
+  // event VersionRegistered(bytes32 indexed execution_id, bytes32 indexed provider_id, bytes32 indexed app_name, bytes32 version_name);
+  bytes32 internal constant VERSION_REGISTERED = keccak256("VersionRegistered(bytes32,bytes32,bytes32,bytes32)");
+
+  // event VersionReleased(bytes32 indexed execution_id, bytes32 indexed provider_id, bytes32 indexed app_name, bytes32 version_name);
+  bytes32 internal constant VERSION_RELEASED = keccak256("VersionReleased(bytes32,bytes32,bytes32,bytes32)");
+
   /// FUNCTION SELECTORS ///
 
   // Function selector for storage 'readMulti'
@@ -71,10 +87,10 @@ library VersionConsole {
     1. Application execution id
     2. Original script sender (address, padded to 32 bytes)
     3. Wei amount sent with transaction to storage
-  @return store_data: A formatted storage request - first 64 bytes designate a forwarding address (and amount) for any wei sent
+  @return bytes: A formatted bytes array that will be parsed by storage to emit events, forward payment, and store data
   */
   function registerVersion(bytes32 _app, bytes32 _ver_name, address _ver_storage, bytes memory _ver_desc, bytes memory _context) public view
-  returns (bytes32[] memory store_data) {
+  returns (bytes memory) {
     // Ensure input is correctly formatted
     require(_context.length == 96);
     require(_app != bytes32(0) && _ver_name != bytes32(0) && _ver_desc.length > 0);
@@ -121,31 +137,51 @@ library VersionConsole {
 
     /// App is registered, and version name is unique - store version information:
 
-    // Overwrite previous read buffer with storage return buffer
-    stOverwrite(ptr);
-    // Push payment destination and amount to buffer
-    stPush(ptr, 0);
-    stPush(ptr, 0);
-    // Increment app version list length, and push new version name to the end of that list
-    stPush(ptr, keccak256(APP_VERSIONS_LIST, temp));
-    stPush(ptr, bytes32(num_versions + 1));
-    // End of app version list - 32 * num_versions + base_location
-    stPush(ptr, bytes32(32 * (1 + num_versions) + uint(keccak256(APP_VERSIONS_LIST, temp))));
-    stPush(ptr, _ver_name);
+    // Get pointer to free memory
+    ptr = ptr.clear();
+
+    // Set up STORES action requests -
+    ptr.stores();
+    // Push each storage location and value to the STORES request buffer:
+
+    // Place incremented app version list length at app version list storage location
+    ptr.store(
+      num_versions + 1
+    ).at(keccak256(APP_VERSIONS_LIST, temp));
+
+    // Push new version name to end of app version list
+    ptr.store(
+      _ver_name
+    ).at(bytes32(32 * (1 + num_versions) + uint(keccak256(APP_VERSIONS_LIST, temp))));
+
     // Place version name in version base storage location
     temp = keccak256(keccak256(_ver_name), keccak256(VERSIONS, temp));
-    stPush(ptr, temp);
-    stPush(ptr, _ver_name);
-    // Place version storage address in version storage address location
-    stPush(ptr, keccak256(VER_STORAGE_IMPL, temp));
-    stPush(ptr, bytes32(_ver_storage));
-    // Push version description to storage buffer
-    // Get version description storage location
-    temp = keccak256(VER_DESC, temp);
-    stPushBytes(ptr, temp, _ver_desc);
+    ptr.store(
+      _ver_name
+    ).at(temp);
 
-    // Get bytes32[] representation of storage buffer
-    store_data = getBuffer(ptr);
+    // Place version storage address in version storage address location
+    ptr.store(
+      _ver_storage
+    ).at(keccak256(VER_STORAGE_IMPL, temp));
+
+    // Store entirety of version description
+    temp = keccak256(VER_DESC, temp);
+    ptr.storeBytesAt(_ver_desc, temp);
+
+    // Done with STORES action - set up EMITS action
+    ptr.emits();
+
+    // Add VERSION_REGISTERED topics
+    ptr.topics(
+      [VERSION_REGISTERED, exec_id, keccak256(provider), _app]
+    );
+    // Add VERSION_REGISTERED data (version name)
+    // Separate line to avoid 'Stack too deep' issues
+    ptr.data(_ver_name);
+
+    // Return formatted action requests to storage
+    return ptr.getBuffer();
   }
 
   /*
@@ -160,10 +196,10 @@ library VersionConsole {
     1. Application execution id
     2. Original script sender (address, padded to 32 bytes)
     3. Wei amount sent with transaction to storage
-  @return store_data: A formatted storage request - first 64 bytes designate a forwarding address (and amount) for any wei sent
+  @return bytes: A formatted bytes array that will be parsed by storage to emit events, forward payment, and store data
   */
   function finalizeVersion(bytes32 _app, bytes32 _ver_name, address _ver_init_address, bytes4 _init_sig, bytes memory _init_description, bytes memory _context) public view
-  returns (bytes32[] memory store_data) {
+  returns (bytes memory) {
     // Ensure input is correctly formatted
     require(_context.length == 96);
     require(_app != bytes32(0) && _ver_name != bytes32(0));
@@ -205,102 +241,44 @@ library VersionConsole {
 
     /// App and version are registered, and version is ready to be finalized -
 
-    // Overwrite previous read buffer with storage buffer
-    stOverwrite(ptr);
-    // Push payment destination and value (0, 0) to storage buffer
-    stPush(ptr, 0);
-    stPush(ptr, 0);
-    // Push new version finalization status to buffer
-    stPush(ptr, keccak256(VER_IS_FINALIZED, temp));
-    stPush(ptr, bytes32(1));
-    // Push version initialization address to buffer
-    stPush(ptr, keccak256(VER_INIT_ADDR, temp));
-    stPush(ptr, bytes32(_ver_init_address));
-    // Push version initialization function selector to buffer
-    stPush(ptr, keccak256(VER_INIT_SIG, temp));
-    stPush(ptr, _init_sig);
-    // Add version initialization fucntion description to buffer
-    stPushBytes(ptr, keccak256(VER_INIT_DESC, temp), _init_description);
+    // Get pointer to free memory
+    ptr = ptr.clear();
 
-    // Get bytes32[] representation of storage buffer
-    store_data = getBuffer(ptr);
-  }
+    // Set up STORES action requests -
+    ptr.stores();
+    // Push each storage location and value to the STORES request buffer:
 
-  /*
-  Creates a new return data storage buffer at the position given by the pointer. Does not update free memory
+    // Store version finalization status
+    ptr.store(
+      true
+    ).at(keccak256(VER_IS_FINALIZED, temp));
 
-  @param _ptr: A pointer to the location where the buffer will be created
-  */
-  function stOverwrite(uint _ptr) internal pure {
-    assembly {
-      // Simple set the initial length - 0
-      mstore(_ptr, 0)
-    }
-  }
+    // Store version initialization address
+    ptr.store(
+      _ver_init_address
+    ).at(keccak256(VER_INIT_ADDR, temp));
 
-  /*
-  Pushes a value to the end of a storage return buffer, and updates the length
+    // Store version initialization function selector
+    ptr.store(
+      _init_sig
+    ).at(keccak256(VER_INIT_SIG, temp));
 
-  @param _ptr: A pointer to the start of the buffer
-  @param _val: The value to push to the buffer
-  */
-  function stPush(uint _ptr, bytes32 _val) internal pure {
-    assembly {
-      // Get end of buffer - 32 bytes plus the length stored at the pointer
-      let len := add(0x20, mload(_ptr))
-      // Push value to end of buffer (overwrites memory - be careful!)
-      mstore(add(_ptr, len), _val)
-      // Increment buffer length
-      mstore(_ptr, len)
-      // If the free-memory pointer does not point beyond the buffer's current size, update it
-      if lt(mload(0x40), add(add(0x20, _ptr), len)) {
-        mstore(0x40, add(add(0x40, _ptr), len)) // Ensure free memory pointer points to the beginning of a memory slot
-      }
-    }
-  }
+    // Store entirety of version initialization function description
+    ptr.storeBytesAt(_init_description, keccak256(VER_INIT_DESC, temp));
 
-  /*
-  Pushes a bytes array to the storage buffer, including its length. Uses the given base location to get the storage locations for each
-  index in the array
+    // Done with STORES action - set up EMITS action
+    ptr.emits();
 
-  @param _ptr: A pointer to the start of the buffer
-  @param _base_location: The storage location of the length of the array
-  @param _arr: The bytes array to push
-  */
-  function stPushBytes(uint _ptr, bytes32 _base_location, bytes memory _arr) internal pure {
-    assembly {
-      // Get end of buffer - 32 bytes plus the length stored at the pointer
-      let len := add(0x20, mload(_ptr))
-      // Loop over bytes array, and push each value to storage buffer, while incrementing the current storage location
-      let offset := 0x00
-      for { } lt(offset, add(0x20, mload(_arr))) { offset := add(0x20, offset) } {
-        // Push incremented location to buffer
-        mstore(add(add(len, mul(2, offset)), _ptr), add(offset, _base_location))
-        // Push bytes array chunk to buffer
-        mstore(add(add(add(0x20, len), mul(2, offset)), _ptr), mload(add(offset, _arr)))
-      }
-      // Increment buffer length
-      mstore(_ptr, add(mul(2, offset), mload(_ptr)))
-      // If the free-memory pointer does not point beyond the buffer's current size, update it
-      if lt(mload(0x40), add(add(0x20, _ptr), mload(_ptr))) {
-        mstore(0x40, add(add(0x40, _ptr), mload(_ptr))) // Ensure free memory pointer points to the beginning of a memory slot
-      }
-    }
-  }
+    // Add VERSION_RELEASED topics
+    ptr.topics(
+      [VERSION_RELEASED, exec_id, keccak256(provider), _app]
+    );
+    // Add VERSION_RELEASED data (version name)
+    // Separate line to avoid 'Stack too deep' issues
+    ptr.data(_ver_name);
 
-  /*
-  Returns the bytes32[] stored at the buffer
-
-  @param _ptr: A pointer to the location in memory where the calldata for the call is stored
-  @return store_data: The return values, which will be stored
-  */
-  function getBuffer(uint _ptr) internal pure returns (bytes32[] memory store_data){
-    assembly {
-      // If the size stored at the pointer is not evenly divislble into 32-byte segments, this was improperly constructed
-      if gt(mod(mload(_ptr), 0x20), 0) { revert (0, 0) }
-      mstore(_ptr, div(mload(_ptr), 0x20))
-      store_data := _ptr
-    }
+    // Return formatted action requests to storage
+    return ptr.getBuffer();
   }
 
   /*
