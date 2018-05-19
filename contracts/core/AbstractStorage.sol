@@ -174,7 +174,7 @@ contract AbstractStorage {
     // If the call failed, emit an error message and return
     if (!success) {
       handleException(_init, exec_id);
-      return;
+      return bytes32(0);
     } else if (size > 0) {
       // If the call succeeded and returndatasize is nonzero, parse returned data for actions
       executeAppReturn(exec_id);
@@ -242,6 +242,7 @@ contract AbstractStorage {
   */
   function initAndFinalize(address _updater, bool _is_payable, address _init, bytes _init_calldata, address[] _allowed) public returns (bytes32 exec_id) {
     exec_id = initAppInstance(_updater, _is_payable, _init, _init_calldata, _allowed);
+    require(exec_id != bytes32(0));
     finalizeAppInstance(exec_id);
     assert(exec_id != bytes32(0));
   }
@@ -325,7 +326,7 @@ contract AbstractStorage {
           require(n_paid == 0, 'Duplicate action: PAYS');
           // Otherwise, forward ETH and get amount of addresses forwarded to
           // doPay increments the pointer to the end of the data portion of the action executed
-          (_ptr, n_paid) = doPay(_ptr, ptr_bound);
+          (_ptr, n_paid) = doPay(_ptr, ptr_bound, _exec_id);
           // If no destinations recieved ETH, returndata is malformed: throw
           require(n_paid != 0, 'Unfulfilled action: PAYS');
         } else {
@@ -334,6 +335,7 @@ contract AbstractStorage {
         }
       }
     }
+    assert(n_emitted != 0 || n_paid != 0 || n_stored != 0);
   }
 
   /*
@@ -345,8 +347,8 @@ contract AbstractStorage {
   */
   function getReturnedData() internal pure returns (uint ptr_bounds, uint _returndata_ptr) {
     assembly {
-      // returndatasize must be minimum 32 bytes
-      if lt(returndatasize, 0x20) {
+      // returndatasize must be minimum 96 bytes (offset, length, and requestor)
+      if lt(returndatasize, 0x60) {
         mstore(0, 'Insufficient return size')
         revert(0, 0x20)
       }
@@ -355,7 +357,7 @@ contract AbstractStorage {
       // Copy returned data to pointer location, starting with length
       returndatacopy(_returndata_ptr, 0x20, sub(returndatasize, 0x20))
       // Get maximum memory location value for returndata
-      ptr_bounds := add(_returndata_ptr, returndatasize)
+      ptr_bounds := add(_returndata_ptr, sub(returndatasize, 0x20))
       // Set new free-memory pointer to point after the returndata in memory
       // Returndata is automatically 32-bytes padded
       mstore(0x40, add(0x20, ptr_bounds))
@@ -394,10 +396,11 @@ contract AbstractStorage {
 
   @param _ptr: A pointer in memory to an application's returned payment request
   @param _ptr_bound: The upper bound on the value for _ptr before it is reading invalid data
+  @param _exec_id: The execution id of the application which triggered the payment
   @return ptr: An updated pointer, pointing to the end of the PAYS action request in memory
   @return n_paid: The number of destinations paid out to from the returned PAYS request
   */
-  function doPay(uint _ptr, uint _ptr_bound) internal returns (uint ptr, uint n_paid) {
+  function doPay(uint _ptr, uint _ptr_bound, bytes32 _exec_id) internal returns (uint ptr, uint n_paid) {
     // Ensure ETH was sent with the call
     require(msg.value > 0);
     assert(getAction(_ptr) == PAYS);
@@ -423,6 +426,8 @@ contract AbstractStorage {
       n_paid++;
       // Increment pointer
       _ptr += 64;
+      // Emit event
+      emit DeliveredPayment(_exec_id, pay_to, amt);
     }
     ptr = _ptr;
     assert(n_paid == num_destinations);
@@ -437,6 +442,7 @@ contract AbstractStorage {
 
   @param _ptr: A pointer in memory to an application's returned payment request
   @param _ptr_bound: The upper bound on the value for _ptr before it is reading invalid data
+  @param _exec_id: The execution id under which storage is located
   @return ptr: An updated pointer, pointing to the end of the STORES action request in memory
   @return n_paid: The number of storage locations written to from the returned PAYS request
   */

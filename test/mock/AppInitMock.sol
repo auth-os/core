@@ -18,28 +18,19 @@ library AppInitMock {
   }
 
   function initThrowsAction() public pure returns (bytes memory) {
-    return abi.encodeWithSelector(THROWS, uint(4), bytes4(0xffffffff));
+    bytes memory temp = abi.encodeWithSelector(THROWS, uint(4));
+    return abi.encodePacked(temp, bytes4(0xffffffff));
   }
 
-  bytes32 internal constant EVENT_TOPIC = keccak256("EventEmitted(address)");
-
-  /* function initEmits() public pure returns (bytes memory) {
-    return abi.encodeWithSelector(EMITS, uint(1), uint(1), EVENT_TOPIC, )
-  } */
-
-  function initValidSingle(bytes32 _loc, bytes32 _val) public pure returns (bytes memory) {
-    store_data = new bytes(4);
-    store_data[2] = _loc;
-    store_data[3] = _val;
-    return store_data;
+  function initEmits(bytes32 _t1) public pure returns (bytes memory) {
+    return abi.encodeWithSelector(EMITS, uint(1), uint(1), _t1, uint(0));
   }
 
-  function initValidMulti(bytes32 _loc1, bytes32 _val1, bytes32 _loc2, bytes32 _val2) public pure returns (bytes memory) {
-    store_data = new bytes(6);
-    store_data[2] = _loc1;
-    store_data[3] = _val1;
-    store_data[4] = _loc2;
-    store_data[5] = _val2;
-    return store_data;
+  function initPays(address _dest, uint _amt) public pure returns (bytes memory) {
+    return abi.encodeWithSelector(PAYS, uint(1), _amt, _dest);
+  }
+
+  function initStores(bytes32 _location, bytes32 _val) public pure returns (bytes memory) {
+    return abi.encodeWithSelector(STORES, uint(1), _val, _location);
   }
 }
