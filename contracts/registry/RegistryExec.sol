@@ -80,9 +80,11 @@ contract RegistryExec is ScriptExec {
       exec_id := mload(_ptr)
     }
 
-    require(exec_id != bytes32(0));
-    default_registry_exec_id = exec_id;  // FIXME-- should this always happen? or only if previously unset?
+    if (default_registry_exec_id == bytes32(0)) {
+      default_registry_exec_id = exec_id;
+    }
 
+    require(exec_id != bytes32(0));
     registries[exec_id] = Registry({
       exec_id: exec_id,
       init: _init,

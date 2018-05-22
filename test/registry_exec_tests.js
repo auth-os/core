@@ -43,7 +43,7 @@ contract('RegistryExec', function(accounts) {
         initRegistry = await InitRegistry.new().should.be.fulfilled
         initRegistry.should.not.eq(null)
 
-        scriptExec = await RegistryExec.new(updater, storage.address, provider, { from: execAdmin }).should.be.fulfilled
+        scriptExec = await RegistryExec.new(execAdmin, updater, storage.address, provider, { from: execAdmin }).should.be.fulfilled
         scriptExec.should.not.eq(null)
 
         registryExecId = await scriptExec.initRegistry(initRegistry.address, appConsole.address, versionConsole.address, implementationConsole.address, { from: execAdmin }).should.be.fulfilled.then((tx) => {
@@ -94,7 +94,7 @@ contract('RegistryExec', function(accounts) {
 
         context('when the script exec contract is initialized with "zero-state" params', async () => {
             beforeEach(async () => {
-                scriptExec = await RegistryExec.new(utils.ADDRESS_0x, utils.ADDRESS_0x, 0, { from: execAdmin }).should.be.fulfilled
+                scriptExec = await RegistryExec.new(utils.ADDRESS_0x, utils.ADDRESS_0x, utils.ADDRESS_0x, 0, { from: execAdmin }).should.be.fulfilled
             })
 
             it('should have initialized the script exec contract', async() => {
