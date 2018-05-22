@@ -1,6 +1,6 @@
 pragma solidity ^0.4.23;
 
-library EmitsApp {
+library EmitsAppContext {
 
   bytes4 internal constant EMITS = bytes4(keccak256('emits:'));
 

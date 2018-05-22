@@ -1,12 +1,12 @@
 pragma solidity ^0.4.23;
 
-library RevertApp {
+library RevertAppContext {
 
   bytes4 internal constant THROWS = bytes4(keccak256('throws:'));
   bytes4 internal constant STORES = bytes4(keccak256('stores:'));
 
   // Used to check errors when function does not exist
-  /* function rev0() public pure { } */
+  /* function rev0(bytes memory) public pure { } */
 
   function rev1(bytes memory) public pure {
     revert();

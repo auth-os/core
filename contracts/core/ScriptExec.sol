@@ -24,8 +24,11 @@ contract ScriptExec {
 
   /// FUNCTION SELECTORS ///
 
-  // Function selector for registry 'getAppInitInfo' - returns information necessary to initialization
-  bytes4 internal constant GET_INIT_INFO = bytes4(keccak256("getAppInitInfo(bytes32,bytes32,bytes32)"));
+  // Function selector for registry 'getAppLatestInfo' - returns information necessary for initialization
+  bytes4 internal constant GET_LATEST_INFO = bytes4(keccak256("getAppLatestInfo(address,bytes32,bytes32,bytes32)"));
+
+  // Function selector for abstract storage 'app_info' mapping - returns information on an exec id
+  bytes4 internal constant GET_APP_INFO = bytes4(keccak256("app_info(bytes32)"));
 
   // Function selector for zero-arg application initializer
   bytes4 internal constant DEFAULT_INIT = bytes4(keccak256(("init()")));
@@ -111,10 +114,10 @@ contract ScriptExec {
 
   @param _target: The target address, which houses the function being called
   @param _app_calldata: The calldata to forward to the application target address
-  @return failed: Whether execution failed or not
+  @return success: Whether execution succeeded or not
   @return returned_data: Data returned from app storage
   */
-  function exec(address _target, bytes _app_calldata) public payable returns (bool failed, bytes returned_data) {
+  function exec(address _target, bytes _app_calldata) public payable returns (bool success) {
     bytes32 exec_id;
     bytes32 exec_as;
     uint wei_sent;
@@ -127,23 +130,29 @@ contract ScriptExec {
     require(default_storage.call.value(msg.value)(calldata));
 
     // Get returned data
-    assembly {
-      returned_data := add(0x20, msize)
-      mstore(returned_data, returndatasize)
-      returndatacopy(add(0x20, returned_data), 0, returndatasize)
-      // If first 32 bytes of returned data are 0, and returndatasize is nonzero call failed
-      if gt(returndatasize, 0x20) {
-        if iszero(mload(add(0x20, returned_data))) {
-          failed := 1
-        }
-      }
-    }
+    success = checkReturn();
     // If execution failed, emit event
-    if (failed)
+    if (!success)
       emit StorageException(default_storage, exec_id, msg.sender, msg.value);
 
     // Transfer any returned wei back to the sender
     address(msg.sender).transfer(address(this).balance);
+  }
+
+  function checkReturn() internal pure returns (bool success) {
+    success = false;
+    assembly {
+      // returndata size must be 0x60 bytes
+      if eq(returndatasize, 0x60) {
+        // Copy returned data to pointer and check that at least one value is nonzero
+        let ptr := mload(0x40)
+        returndatacopy(ptr, 0, returndatasize)
+        if iszero(iszero(mload(ptr))) { success := 1 }
+        if iszero(iszero(mload(add(0x20, ptr)))) { success := 1 }
+        if iszero(iszero(mload(add(0x40, ptr)))) { success := 1 }
+      }
+    }
+    return success;
   }
 
   /// APPLICATION INITIALIZATION ///
@@ -164,98 +173,88 @@ contract ScriptExec {
   @param _app: The name of the application to initialize
   @param _is_payable: Whether the app will accept ether
   @param _init_calldata: Calldata to be forwarded to an application's initialization function
-  @return app_storage: The storage address of the application - pulled from default_registry
   @return ver_name: The name of the most recent stable version of the application, which was used to register this app instance
   @return exec_id: The execution id (within the application's storage) of the created application instance
   */
-  function initAppInstance(bytes32 _app, bool _is_payable, bytes _init_calldata) public returns (address app_storage, bytes32 ver_name, bytes32 app_exec_id) {
+  function initAppInstance(bytes32 _app, bool _is_payable, bytes _init_calldata) public returns (bytes32 ver_name, bytes32 app_exec_id) {
     // Ensure valid input
     require(_app != bytes32(0) && _init_calldata.length != 0);
 
-    // Create struct in memory to hold values
-    AppInit memory init_info = AppInit({
-      get_init: GET_INIT_INFO,
-      init_app: INIT_APP,
-      registry_addr: default_storage,
-      exec_id: default_registry_exec_id,
-      provider: default_provider,
-      updater: default_updater
-    });
+    address init_registry;
 
+    // Get registry application information from storage
+    require(default_storage.call(abi.encodeWithSelector(GET_APP_INFO, default_registry_exec_id)), "app_info call failed");
+    // Get init address from returned data
     assembly {
-      // Call RegistryStorage.getAppInitInfo -
-
-      // Get pointer for calldata
-      let ptr := mload(0x40)
-      // Store function selector, default registry exec id, default provider, and app name in calldata
-      mstore(ptr, mload(init_info))
-      mstore(add(0x04, ptr), mload(add(0x60, init_info)))
-      mstore(add(0x24, ptr), mload(add(0x80, init_info)))
-      mstore(add(0x44, ptr), _app)
-
-      // Read app init info from registry storage
-      let ret := staticcall(gas, mload(add(0x40, init_info)), ptr, 0x64, 0, 0)
-      if iszero(ret) { revert (0, 0) }
-
-      // Get returned app init info, and call application storage 'initAndFinalize' -
-
-      // Copy returned payable status, storage address, version name, init address, and address array length to pointer
-      // Returned data should also include a populated address[] of permissioned addresses, which will
-      // be copied to calldata below
-      returndatacopy(ptr, 0, 0xc0)
-
-      // Get returned data -
-      app_storage := mload(add(0x20, ptr))
-      ver_name := mload(add(0x40, ptr))
-      let app_init_addr := mload(add(0x60, ptr))
-      let num_addrs := mload(add(0xa0, ptr))
-
-      if iszero(app_storage) { revert (0, 0) }
-      if iszero(ver_name) { revert (0, 0) }
-
-      // Move pointer to free memory
-      ptr := add(ptr, returndatasize)
-
-      // Get init_calldata length, and normalize to 32-bytes
-      let cd_len := mload(_init_calldata)
-      if gt(mod(cd_len, 0x20), 0) {
-        cd_len := sub(add(cd_len, 0x20), mod(cd_len, 0x20))
-      }
-
-      // Set up application storage 'initAndFinalize' call
-      mstore(ptr, mload(add(0x20, init_info)))
-      // Place updater address, payable status, app init address, init calldata, and allowed addresses in calldata
-      mstore(add(0x04, ptr), mload(add(0xa0, init_info)))
-      mstore(add(0x24, ptr), _is_payable)
-      mstore(add(0x44, ptr), app_init_addr)
-      // Get passed in init calldata, which will be forwarded to the application's init function
-      mstore(add(0x64, ptr), 0xa0) // Data read offset - init calldata
-      mstore(add(0x84, ptr), add(0xc0, cd_len)) // Data read offset - _allowed array
-      calldatacopy(add(0xa4, ptr), 0x64, add(0x20, mload(_init_calldata)))
-      // Get returned 'allowed' array list and add to calldata
-      returndatacopy(add(add(0xc4, cd_len), ptr), 0xa0, sub(returndatasize, 0xa0))
-
-      // Get total calldata size -
-      // 0xe4 (args + length storage + offsets) + _init_calldata.length + 32 * allowed.length
-      cd_len := add(0xe4, add(cd_len, mul(0x20, num_addrs)))
-
-      // Initialize application and get returned unique app execution id -
-      // Copy returned exec id to pointer
-      ret := call(gas, app_storage, 0, ptr, cd_len, ptr, 0x20)
-      if iszero(ret) { revert (0, 0) }
-      app_exec_id := mload(ptr)
-      if iszero(app_exec_id) { revert (0, 0) }
+      // Check returndatasize - should be 0xc0 bytes
+      if iszero(eq(returndatasize, 0xc0)) { revert (0, 0) }
+      // Grab the last 32 bytes of returndata
+      returndatacopy(0, sub(returndatasize, 0x20), 0x20)
+      // Get InitRegistry address
+      init_registry := mload(0)
     }
+    // Ensure a valid registry init address
+    require(init_registry != address(0), "Invalid registry init address");
 
-    emit AppInstanceCreated(msg.sender, app_exec_id, app_storage, _app, ver_name);
+    bytes memory calldata = abi.encodeWithSelector(
+      GET_LATEST_INFO, default_storage, default_registry_exec_id,
+      default_provider, _app
+    );
 
-    deployed_apps[app_storage][app_exec_id] = AppInstance({
+    address app_init;
+    address[] memory app_allowed;
+
+    // Get information on latest version of application from InitRegistry
+    assembly {
+      // Set up staticcall to library
+      let ret := staticcall(gas, init_registry, add(0x20, calldata), mload(calldata), 0, 0)
+      // Ensure success
+      if iszero(ret) { revert (0, 0) }
+      // Check returndatasize - should be at least 0xc0 bytes
+      if lt(returndatasize, 0xc0) { revert (0, 0) }
+
+      // Copy returned data to free memory
+      let ptr := mload(0x40)
+      // (omitting app storage address in copy)
+      returndatacopy(ptr, 0x20, sub(returndatasize, 0x20))
+      // Update free memory pointer
+      // Get version name from returned data
+      ver_name := mload(ptr)
+      // Get application init address from returned data
+      app_init := mload(add(0x20, ptr))
+      // Get app allowed addresses from returned data
+      app_allowed := add(0x60, ptr)
+      mstore(0x40, add(returndatasize, app_allowed))
+    }
+    // Ensure valid app init address, version name, and allowed address array
+    require(ver_name != bytes32(0) && app_init != address(0) && app_allowed.length != 0, "invalid version info returned");
+
+    // Call AbstractStorage.initAndFinalize
+    require(default_storage.call(abi.encodeWithSelector(
+      INIT_APP, default_updater, _is_payable, app_init, _init_calldata, app_allowed
+    )), "initAndFinalize call failed");
+    // Get returned execution id from calldata
+    assembly {
+      // Returned data should be 0x20 bytes
+      if iszero(eq(returndatasize, 0x20)) { revert (0, 0) }
+      // Copy returned data to memory
+      returndatacopy(0, 0, 0x20)
+      // Get returned execution id
+      app_exec_id := mload(0)
+    }
+    // Ensure valid returned execution id
+    require(app_exec_id != bytes32(0), "invalid exec id returned");
+
+    // Emit event
+    emit AppInstanceCreated(msg.sender, app_exec_id, default_storage, _app, ver_name);
+
+    deployed_apps[default_storage][app_exec_id] = AppInstance({
       deployer: msg.sender,
       app_name: _app,
       version_name: ver_name
     });
 
-    exec_id_lists[app_storage].push(app_exec_id);
+    exec_id_lists[default_storage].push(app_exec_id);
 
     deployer_instances[msg.sender].push(ActiveInstance({
       exec_id: app_exec_id,
