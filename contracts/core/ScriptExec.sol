@@ -336,9 +336,9 @@ contract ScriptExec {
   // Parses payable app calldata and returns app exec id, sender address, and wei sent
   function parse(bytes _app_calldata) internal pure returns (bytes32 exec_id, bytes32 exec_as, uint wei_sent) {
     assembly {
-      exec_id := mload(add(0x20, _app_calldata))
-      exec_as := mload(add(0x40, _app_calldata))
-      wei_sent := mload(add(0x60, _app_calldata))
+      exec_id := mload(sub(add(_app_calldata, mload(_app_calldata)), 0x40))
+      exec_as := mload(sub(add(_app_calldata, mload(_app_calldata)), 0x20))
+      wei_sent := mload(add(_app_calldata, mload(_app_calldata)))
     }
   }
 }
