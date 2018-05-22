@@ -1,8 +1,8 @@
 pragma solidity ^0.4.23;
 
-import "../../lib/Pointers.sol";
-import "../../lib/LibEvents.sol";
-import "../../lib/LibStorage.sol";
+import '../../lib/Pointers.sol';
+import '../../lib/LibEvents.sol';
+import '../../lib/LibStorage.sol';
 
 library ImplementationConsole {
 
