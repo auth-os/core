@@ -290,6 +290,8 @@ contract ScriptExec {
   function migrateApplication(bytes32 _exec_id) public {
     // Ensure sender is the app deployer
     require(deployed_apps[default_storage][_exec_id].deployer == msg.sender);
+    // Ensure new script exec address has been set
+    require(new_script_exec != address(0));
 
     // Call abstract storage and migrate the exec id
     bytes4 change_selector = bytes4(keccak256("changeScriptExec(bytes32,address)"));
