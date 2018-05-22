@@ -8,22 +8,22 @@ library RevertApp {
   // Used to check errors when function does not exist
   /* function rev0() public pure { } */
 
-  function rev1() public pure {
+  function rev1(bytes memory) public pure {
     revert();
   }
 
-  function rev2(bytes32 _message) public pure {
+  function rev2(bytes32 _message, bytes memory) public pure {
     assembly {
       mstore(0, _message)
       revert(0, 0x20)
     }
   }
 
-  function throws1(bytes memory _message) public pure returns (bytes memory) {
+  function throws1(bytes memory _message, bytes memory) public pure returns (bytes memory) {
     return abi.encodePacked(THROWS, _message.length, _message);
   }
 
-  function throws2(bytes memory _message) public pure returns (bytes memory) {
+  function throws2(bytes memory _message, bytes memory) public pure returns (bytes memory) {
     bytes memory temp = abi.encodeWithSelector(STORES, uint(1), uint(1), uint(1));
     return abi.encodePacked(temp, THROWS, _message.length, _message);
   }
