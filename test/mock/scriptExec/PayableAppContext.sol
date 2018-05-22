@@ -1,6 +1,6 @@
 pragma solidity ^0.4.23;
 
-library PayableApp {
+library PayableAppContext {
 
   bytes4 internal constant PAYS = bytes4(keccak256('pays:'));
 

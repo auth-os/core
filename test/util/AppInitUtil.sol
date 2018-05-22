@@ -22,4 +22,12 @@ contract AppInitUtil {
       updater := mload(add(0x40, _data))
     }
   }
+
+  function parseInstanceCreated(bytes memory _data) public pure returns (address storage_addr, bytes32 app, bytes32 version) {
+    assembly {
+      storage_addr := mload(add(0x20, _data))
+      app := mload(add(0x40, _data))
+      version := mload(add(0x60, _data))
+    }
+  }
 }

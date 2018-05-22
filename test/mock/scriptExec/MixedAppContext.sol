@@ -1,6 +1,6 @@
 pragma solidity ^0.4.23;
 
-library MixedApp {
+library MixedAppContext {
 
   // ACTION REQUESTORS //
 
@@ -59,8 +59,9 @@ library MixedApp {
 
   // EMITS 2, PAYS 1, STORES 2
   function reqs1(
-    address _dest, uint _val, bytes memory _context,
-    bytes32 _loc1, bytes32 _val1, bytes32 _loc2, bytes32 _val2
+    address _dest, uint _val,
+    bytes32 _loc1, bytes32 _val1, bytes32 _loc2, bytes32 _val2,
+    bytes memory _context
   ) public pure returns (bytes memory) {
     bytes memory temp = abi.encodeWithSelector(
       EMITS, uint(2), uint(0)
@@ -74,8 +75,8 @@ library MixedApp {
   // PAYS 1, EMITS 3, STORES 1
   function reqs2(
     address _dest, uint _val,
-    bytes32[4] memory _topics, bytes memory _context,
-    bytes32 _loc, bytes32 _val1
+    bytes32[4] memory _topics,
+    bytes32 _loc, bytes32 _val1, bytes memory _context
   ) public pure returns (bytes memory) {
     bytes memory temp = abi.encodeWithSelector(PAYS, uint(1), _val, _dest);
     temp = abi.encodePacked(
@@ -97,8 +98,9 @@ library MixedApp {
   // STORES 2, PAYS 1, EMITS 1
   function reqs3(
     address _dest, uint _val,
-    bytes32 _t1, bytes memory _context,
-    bytes32 _loc1, bytes32 _val1, bytes32 _loc2, bytes32 _val2
+    bytes32 _t1,
+    bytes32 _loc1, bytes32 _val1, bytes32 _loc2, bytes32 _val2,
+    bytes memory _context
   ) public pure returns (bytes memory) {
     bytes memory temp = abi.encodeWithSelector(
       STORES, uint(2), _val1, _loc1, _val2, _loc2

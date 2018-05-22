@@ -32,4 +32,12 @@ contract TestUtils {
   function getAppProviderHash(address _provider) public pure returns (bytes32 provider) {
     provider = keccak256(bytes32(_provider));
   }
+
+  function parseStorageExceptionData(bytes memory _data) public pure returns (address sender, uint wei_sent) {
+    require(_data.length == 64);
+    assembly {
+      sender := mload(add(0x20, _data))
+      wei_sent := mload(add(0x40, _data))
+    }
+  }
 }

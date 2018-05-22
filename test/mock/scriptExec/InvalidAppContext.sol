@@ -1,6 +1,6 @@
 pragma solidity ^0.4.23;
 
-library InvalidApp {
+library InvalidAppContext {
 
   bytes4 internal constant EMITS = bytes4(keccak256('emits:'));
   bytes4 internal constant STORES = bytes4(keccak256('stores:'));
