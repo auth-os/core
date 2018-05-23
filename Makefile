@@ -26,6 +26,8 @@ flat:
 	cp contracts/registry/*.sol tmp/
 	cp contracts/core/* tmp/
 
+	rm tmp/Migrations.sol
+
 	sed -i '' -e "s/\(import \)\(.*\)\/\(.*\).sol/import '.\/\3.sol/g" tmp/*
 	node_modules/.bin/truffle-flattener tmp/* | sed "1s/.*/pragma solidity ^0.4.23;/" > flat/auth-os.sol
 
