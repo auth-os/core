@@ -76,7 +76,7 @@ library InitRegistry {
   /// SCRIPT REGISTRY INIT ///
 
   // Empty init function for simple script registry
-  function init() public pure { }
+  function init() public pure { revert(); }
 
   /// PROVIDER INFORMATION ///
 
@@ -98,7 +98,7 @@ library InitRegistry {
     // Push exec id to calldata buffer
     cdPush(ptr, _exec_id);
     // Place provider app list storage location in calldata buffer
-    cdPush(ptr, keccak256(PROVIDER_APP_LIST, keccak256(_provider, PROVIDERS)));
+    cdPush(ptr, keccak256(_provider, PROVIDERS));
     // Read single value from storage, and place return in buffer
     uint app_count = uint(readSingleFrom(ptr, _storage));
 
@@ -113,7 +113,7 @@ library InitRegistry {
     cdPush(ptr, 0x40);
     cdPush(ptr, bytes32(app_count));
     // Get base storage location for provider app list
-    uint provider_list_storage = uint(keccak256(PROVIDER_APP_LIST, keccak256(_provider, PROVIDERS)));
+    uint provider_list_storage = uint(keccak256(_provider, PROVIDERS));
     // Loop over app coutn and store list index locations in calldata buffer
     for (uint i = 1; i <= app_count; i++)
       cdPush(ptr, bytes32((32 * i) + provider_list_storage));
@@ -136,14 +136,14 @@ library InitRegistry {
     // Ensure valid input
     require(_storage != address(0) && _exec_id != bytes32(0) && bytes32(_provider) != bytes32(0));
     // Get provider id from provider address
-    provider = keccak256(bytes32(_provider));
+    provider = bytes32(_provider);
 
     // Create 'read' calldata buffer in memory
     uint ptr = cdBuff(RD_SING);
     // Push exec id to calldata buffer
     cdPush(ptr, _exec_id);
     // Place provider app list storage location in calldata buffer
-    cdPush(ptr, keccak256(PROVIDER_APP_LIST, keccak256(provider, PROVIDERS)));
+    cdPush(ptr, keccak256(provider, PROVIDERS));
     // Read single value from storage, and place return in buffer
     uint app_count = uint(readSingleFrom(ptr, _storage));
 
@@ -158,7 +158,7 @@ library InitRegistry {
     cdPush(ptr, 0x40);
     cdPush(ptr, bytes32(app_count));
     // Get base storage location for provider app list
-    uint provider_list_storage = uint(keccak256(PROVIDER_APP_LIST, keccak256(provider, PROVIDERS)));
+    uint provider_list_storage = uint(keccak256(provider, PROVIDERS));
     // Loop over app coutn and store list index locations in calldata buffer
     for (uint i = 1; i <= app_count; i++)
       cdPush(ptr, bytes32((32 * i) + provider_list_storage));
@@ -195,7 +195,7 @@ library InitRegistry {
     // Push app version list count, app default storage, and app description size storage locations to calldata buffer
     // Get app base storage -
     bytes32 temp = keccak256(_provider, PROVIDERS);
-    temp = keccak256(keccak256(_app), keccak256(APPS, temp));
+    temp = keccak256(keccak256(_app, APPS), temp);
     cdPush(ptr, keccak256(APP_VERSIONS_LIST, temp)); // App version list location
     cdPush(ptr, keccak256(APP_STORAGE_IMPL, temp)); // App default storage address location
     cdPush(ptr, keccak256(APP_DESC, temp)); // App description size location
@@ -250,8 +250,7 @@ library InitRegistry {
     cdPush(ptr, _exec_id);
     // Get app base storage location
     bytes32 temp = keccak256(_provider, PROVIDERS);
-    temp = keccak256(APPS, temp);
-    temp = keccak256(keccak256(_app), temp);
+    temp = keccak256(keccak256(_app, APPS), temp);
     cdPush(ptr, keccak256(APP_VERSIONS_LIST, temp));
     // Read from storage and place return in buffer
     app_version_count = uint(readSingleFrom(ptr, _storage));
@@ -312,9 +311,7 @@ library InitRegistry {
     cdPush(ptr, 0x40);
     cdPush(ptr, 2);
     // Get app base storage location
-    app_helper.temp = keccak256(_provider, PROVIDERS);
-    app_helper.temp = keccak256(APPS, app_helper.temp);
-    app_helper.temp = keccak256(keccak256(_app), app_helper.temp);
+    app_helper.temp = keccak256(keccak256(_app, APPS), app_helper.temp);
     // Push app default storage address location and app version list locations to buffer
     cdPush(ptr, keccak256(APP_STORAGE_IMPL, app_helper.temp));
     cdPush(ptr, keccak256(APP_VERSIONS_LIST, app_helper.temp));

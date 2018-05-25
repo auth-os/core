@@ -1,32 +1,94 @@
 pragma solidity ^0.4.23;
 
+import "./Errors.sol";
+
 library Pointers {
 
-  function getBuffer(uint _ptr) internal pure returns (bytes memory buffer) {
-    assembly {
-      buffer := _ptr
-    }
+  struct ActionPtr {
+    uint buffer;
+    uint length_ptr;
+    bytes32 next_flag;
+    bytes32 exec_id;
   }
 
-  function toPointer(bytes memory _buffer) internal pure returns (uint _ptr) {
-    assembly {
-      _ptr := _buffer
-    }
+  struct StoragePtr {
+    bytes32 location;
+    bytes32 exec_id;
+    uint class;
   }
 
-  function clear(uint _ptr) internal pure returns (uint) {
+  bytes32 internal constant ACTION_APPEND = keccak256('ACTION_APPEND');
+  bytes32 internal constant NEXT_ACTION = bytes32(1);
+
+  function location(StoragePtr _ptr) internal pure returns (bytes32) {
+    return _ptr.location;
+  }
+
+  // Initialize a new pointer in memory
+  function clear(bytes memory _context) internal pure returns (ActionPtr) {
+    // Ensure a valid input
+    bytes32 exec_id;
+    (exec_id, , ) = parse(_context);
+    Errors.failIf(exec_id == bytes32(0), 'Error at Pointers.clear: invalid _exec_id');
+    ActionPtr memory ptr;
     assembly {
-      _ptr := add(0x20, msize)
-      mstore(_ptr, 0)
-      mstore(0x40, add(0x20, _ptr))
+      ptr := msize
+      mstore(ptr, 0x60)
+      mstore(0x40, add(ptr, 0x80))
     }
+    ptr.next_flag = NEXT_ACTION;
+    ptr.exec_id = exec_id;
+    return ptr;
+  }
+
+  /* // If the pointer flag does not match the expected value, reverts with an error
+  function expect(ActionPtr _ptr, bytes4 _expected) internal pure {
+    Errors.failIf(_ptr.next_flag != _expected, 'PointerException');
+  } */
+
+  function nextAction(ActionPtr _ptr) internal pure returns (ActionPtr) {
+    _ptr.next_flag = NEXT_ACTION;
+    _ptr.length_ptr = 0;
     return _ptr;
   }
 
-  function end(uint _ptr) internal pure returns (uint buffer_end) {
+  function read(StoragePtr _ptr) internal view returns (bytes32 read_value) {
     assembly {
-      let len := mload(_ptr)
-      buffer_end := add(0x20, add(len, _ptr))
+      // Hash all 0x40 bytes in the StoragePointer to get the true storage location
+      read_value := sload(keccak256(_ptr, 0x40))
     }
+    return read_value;
+  }
+
+  function length(StoragePtr _ptr) internal view returns (uint read_value) {
+    assembly {
+      // Hash all 0x40 bytes in the StoragePointer to get the true storage location
+      read_value := sload(keccak256(_ptr, 0x40))
+    }
+    return read_value;
+  }
+
+  function finalize(ActionPtr _ptr) internal pure {
+    assembly {
+      // Set data read offset
+      mstore(add(0x40, _ptr), 0x20)
+      // Set buffer size
+      mstore(add(0x60, _ptr), sub(mload(_ptr), 0x60))
+      // Revert buffer to storage
+      revert(add(0x40, _ptr), sub(mload(_ptr), 0x40))
+    }
+  }
+
+  // Parses context array and returns execution id, provider, and sent wei amount
+  function parse(bytes memory _context) internal pure returns (bytes32 exec_id, bytes32 provider, uint wei_sent) {
+    Errors.failIf(_context.length != 96, 'UnknownContext');
+    assembly {
+      exec_id := mload(add(0x20, _context))
+      provider := mload(add(0x40, _context))
+      wei_sent := mload(add(0x60, _context))
+    }
+    // Ensure sender and exec id are valid
+    if (provider == bytes32(0) || exec_id == bytes32(0))
+      Errors.fail('UnknownContext');
   }
 }

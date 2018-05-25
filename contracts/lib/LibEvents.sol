@@ -1,211 +1,308 @@
 pragma solidity ^0.4.23;
 
+import "./Pointers.sol";
+
 library LibEvents {
 
   // ACTION REQUESTORS //
 
   bytes4 internal constant EMITS = bytes4(keccak256('emits:'));
 
+  // FLAGS //
+
+  bytes4 internal constant APPEND_DATA = bytes4(keccak256('APPEND_DATA'));
+
   // Takes an existing or empty buffer stored at the buffer and adds an EMITS
   // requestor to the end
-  function emits(uint _ptr) internal pure {
+  function emits(Pointers.ActionPtr _ptr) internal pure {
+    // Ensures the flag stored at the pointer is empty
+    _ptr.expect(0x00);
+    // Set next flag to Pointers.ACTION_APPEND
+    _ptr.next_flag = Pointers.ACTION_APPEND;
     bytes4 action_req = EMITS;
     assembly {
-      // Get end of buffer - 32 bytes plus the length stored at the pointer
-      let len := add(0x20, mload(_ptr))
+      // Get end of buffer -
+      let end := add(0x80, mload(add(0x60, _ptr)))
       // Push requestor to the of buffer
-      mstore(add(_ptr, len), action_req)
-      // Push '0' to the end of the 4 bytes just pushed - this will be the length of the EMITS action
-      mstore(add(_ptr, add(0x04, len)), 0)
-      // Increment buffer length
-      mstore(_ptr, add(0x04, len))
-      // Set a pointer to EMITS action length in the free slot before _ptr
-      mstore(sub(_ptr, 0x20), add(_ptr, add(0x04, len)))
+      mstore(add(_ptr, end), action_req)
+      // Push '0' to the end of the 4 bytes just pushed - this will be the length of the STORES action
+      mstore(add(_ptr, add(0x04, end)), 0)
+      // Increment buffer length (0x24 plus previous length)
+      mstore(add(0x60, _ptr), sub(end, 0x5C))
+      // Set a pointer to EMITS action length at _ptr.buffer_ptr
+      mstore(add(0x20, _ptr), add(_ptr, add(0x04, end)))
       // If the free-memory pointer does not point beyond the buffer's current size, update it
-      if lt(mload(0x40), add(add(0x44, _ptr), len)) {
-        mstore(0x40, add(add(0x44, _ptr), len))
+      if lt(mload(0x40), add(_ptr, add(0x44, end))) {
+        mstore(0x40, add(_ptr, add(0x44, end)))
       }
     }
   }
 
-  function topics(uint _ptr) internal pure returns (uint) {
+  function topics(Pointers.ActionPtr _ptr) internal pure returns (Pointers.ActionPtr) {
+    // Ensures the flag stored at the pointer is Pointers.ACTION_APPEND
+    _ptr.expect(Pointers.ACTION_APPEND);
+    // Set next flag to APPEND_DATA
+    _ptr.next_flag = APPEND_DATA;
     assembly {
-      // Get end of buffer - 32 bytes plus the length stored at the pointer
-      let len := add(0x20, mload(_ptr))
+      // Get end of buffer -
+      let end := add(0x80, mload(add(0x60, _ptr)))
       // Push 0 to the end of the buffer - event will have no topics
-      mstore(add(_ptr, len), 0)
-      // Increment buffer length
-      mstore(_ptr, len)
-      // Increment EMITS action length (pointer to length stored before _ptr)
-      let _len_ptr := mload(sub(_ptr, 0x20))
-      mstore(_len_ptr, add(1, mload(_len_ptr)))
+      mstore(add(_ptr, end), 0)
+      // Increment buffer length (0x20 plus previous length)
+      mstore(add(0x60, _ptr), sub(end, 0x60))
+      // Increment EMITS action length
+      mstore(
+        mload(add(0x20, _ptr)),
+        add(1, mload(mload(add(0x20, _ptr))))
+      )
       // If the free-memory pointer does not point beyond the buffer's current size, update it
-      if lt(mload(0x40), add(add(0x40, _ptr), len)) {
-        mstore(0x40, add(add(0x40, _ptr), len))
+      if lt(mload(0x40), add(_ptr, add(0x40, end))) {
+        mstore(0x40, add(_ptr, add(0x40, end)))
       }
     }
     return _ptr;
   }
 
-  function topics(uint _ptr, bytes32[1] memory _topics) internal pure returns (uint) {
+  function topics(Pointers.ActionPtr _ptr, bytes32[1] memory _topics) internal pure returns (Pointers.ActionPtr) {
+    // Ensures the flag stored at the pointer is Pointers.ACTION_APPEND
+    _ptr.expect(Pointers.ACTION_APPEND);
+    // Set next flag to APPEND_DATA
+    _ptr.next_flag = APPEND_DATA;
     assembly {
-      // Get end of buffer - 32 bytes plus the length stored at the pointer
-      let len := add(0x20, mload(_ptr))
-      // Push 1 to the end of the buffer - event will have 1 topics
-      mstore(add(_ptr, len), 1)
+      // Get end of buffer -
+      let end := add(0x80, mload(add(0x60, _ptr)))
+      // Push 1 to the end of the buffer - event will have 1 topic
+      mstore(add(_ptr, end), 1)
       // Push topic to end of buffer
-      mstore(add(_ptr, add(0x20, len)), mload(_topics))
-      // Increment buffer length
-      mstore(_ptr, add(0x20, len))
+      mstore(add(_ptr, add(0x20, end)), mload(_topics))
+      // Increment buffer length (0x40 plus previous length)
+      mstore(add(0x60, _ptr), sub(end, 0x40))
+      // Increment EMITS action length
+      mstore(
+        mload(add(0x20, _ptr)),
+        add(1, mload(mload(add(0x20, _ptr))))
+      )
       // If the free-memory pointer does not point beyond the buffer's current size, update it
-      if lt(mload(0x40), add(add(0x60, _ptr), len)) {
-        mstore(0x40, add(add(0x60, _ptr), len))
+      if lt(mload(0x40), add(_ptr, add(0x60, end))) {
+        mstore(0x40, add(_ptr, add(0x60, end)))
       }
-      // Increment EMITS action length (pointer to length stored before _ptr)
-      len := mload(sub(_ptr, 0x20))
-      mstore(len, add(1, mload(len)))
     }
     return _ptr;
   }
 
-  function topics(uint _ptr, bytes32[2] memory _topics) internal pure returns (uint) {
+  function topics(Pointers.ActionPtr _ptr, bytes32[2] memory _topics) internal pure returns (Pointers.ActionPtr) {
+    // Ensures the flag stored at the pointer is Pointers.ACTION_APPEND
+    _ptr.expect(Pointers.ACTION_APPEND);
+    // Set next flag to APPEND_DATA
+    _ptr.next_flag = APPEND_DATA;
     assembly {
-      // Get end of buffer - 32 bytes plus the length stored at the pointer
-      let len := add(0x20, mload(_ptr))
+      // Get end of buffer -
+      let end := add(0x80, mload(add(0x60, _ptr)))
       // Push 2 to the end of the buffer - event will have 2 topics
-      mstore(add(_ptr, len), 2)
+      mstore(add(_ptr, end), 2)
       // Push topics to end of buffer
-      mstore(add(_ptr, add(0x20, len)), mload(_topics))
-      mstore(add(_ptr, add(0x40, len)), mload(add(0x20, _topics)))
-      // Increment buffer length
-      mstore(_ptr, add(0x40, len))
+      mstore(add(_ptr, add(0x20, end)), mload(_topics))
+      mstore(add(_ptr, add(0x40, end)), mload(add(0x20, _topics)))
+      // Increment buffer length (0x60 plus previous length)
+      mstore(add(0x60, _ptr), sub(end, 0x20))
+      // Increment EMITS action length
+      mstore(
+        mload(add(0x20, _ptr)),
+        add(1, mload(mload(add(0x20, _ptr))))
+      )
       // If the free-memory pointer does not point beyond the buffer's current size, update it
-      if lt(mload(0x40), add(add(0x80, _ptr), len)) {
-        mstore(0x40, add(add(0x80, _ptr), len))
+      if lt(mload(0x40), add(_ptr, add(0x80, end))) {
+        mstore(0x40, add(_ptr, add(0x80, end)))
       }
-      // Increment EMITS action length (pointer to length stored before _ptr)
-      len := mload(sub(_ptr, 0x20))
-      mstore(len, add(1, mload(len)))
     }
     return _ptr;
   }
 
-  function topics(uint _ptr, bytes32[3] memory _topics) internal pure returns (uint) {
+  function topics(Pointers.ActionPtr _ptr, bytes32[3] memory _topics) internal pure returns (Pointers.ActionPtr) {
+    // Ensures the flag stored at the pointer is Pointers.ACTION_APPEND
+    _ptr.expect(Pointers.ACTION_APPEND);
+    // Set next flag to APPEND_DATA
+    _ptr.next_flag = APPEND_DATA;
     assembly {
-      // Get end of buffer - 32 bytes plus the length stored at the pointer
-      let len := add(0x20, mload(_ptr))
+      // Get end of buffer -
+      let end := add(0x80, mload(add(0x60, _ptr)))
       // Push 3 to the end of the buffer - event will have 3 topics
-      mstore(add(_ptr, len), 3)
+      mstore(add(_ptr, end), 3)
       // Push topics to end of buffer
-      mstore(add(_ptr, add(0x20, len)), mload(_topics))
-      mstore(add(_ptr, add(0x40, len)), mload(add(0x20, _topics)))
-      mstore(add(_ptr, add(0x60, len)), mload(add(0x40, _topics)))
-      // Increment buffer length
-      mstore(_ptr, add(0x60, len))
+      mstore(add(_ptr, add(0x20, end)), mload(_topics))
+      mstore(add(_ptr, add(0x40, end)), mload(add(0x20, _topics)))
+      mstore(add(_ptr, add(0x60, end)), mload(add(0x40, _topics)))
+      // Increment buffer length (0x80 plus previous length)
+      mstore(add(0x60, _ptr), end)
+      // Increment EMITS action length
+      mstore(
+        mload(add(0x20, _ptr)),
+        add(1, mload(mload(add(0x20, _ptr))))
+      )
       // If the free-memory pointer does not point beyond the buffer's current size, update it
-      if lt(mload(0x40), add(add(0xa0, _ptr), len)) {
-        mstore(0x40, add(add(0xa0, _ptr), len))
+      if lt(mload(0x40), add(_ptr, add(0xa0, end))) {
+        mstore(0x40, add(_ptr, add(0xa0, end)))
       }
-      // Increment EMITS action length (pointer to length stored before _ptr)
-      len := mload(sub(_ptr, 0x20))
-      mstore(len, add(1, mload(len)))
     }
     return _ptr;
   }
 
-  function topics(uint _ptr, bytes32[4] memory _topics) internal pure returns (uint) {
+  function topics(Pointers.ActionPtr _ptr, bytes32[4] memory _topics) internal pure returns (Pointers.ActionPtr) {
+    // Ensures the flag stored at the pointer is Pointers.ACTION_APPEND
+    _ptr.expect(Pointers.ACTION_APPEND);
+    // Set next flag to APPEND_DATA
+    _ptr.next_flag = APPEND_DATA;
     assembly {
-      // Get end of buffer - 32 bytes plus the length stored at the pointer
-      let len := add(0x20, mload(_ptr))
+      // Get end of buffer -
+      let end := add(0x80, mload(add(0x60, _ptr)))
       // Push 4 to the end of the buffer - event will have 4 topics
-      mstore(add(_ptr, len), 4)
+      mstore(add(_ptr, end), 4)
       // Push topics to end of buffer
-      mstore(add(_ptr, add(0x20, len)), mload(_topics))
-      mstore(add(_ptr, add(0x40, len)), mload(add(0x20, _topics)))
-      mstore(add(_ptr, add(0x60, len)), mload(add(0x40, _topics)))
-      mstore(add(_ptr, add(0x80, len)), mload(add(0x60, _topics)))
-      // Increment buffer length
-      mstore(_ptr, add(0x80, len))
+      mstore(add(_ptr, add(0x20, end)), mload(_topics))
+      mstore(add(_ptr, add(0x40, end)), mload(add(0x20, _topics)))
+      mstore(add(_ptr, add(0x60, end)), mload(add(0x40, _topics)))
+      mstore(add(_ptr, add(0x80, end)), mload(add(0x60, _topics)))
+      // Increment buffer length (0xa0 plus previous length)
+      mstore(add(0x60, _ptr), add(0x20, end))
+      // Increment EMITS action length
+      mstore(
+        mload(add(0x20, _ptr)),
+        add(1, mload(mload(add(0x20, _ptr))))
+      )
       // If the free-memory pointer does not point beyond the buffer's current size, update it
-      if lt(mload(0x40), add(add(0xc0, _ptr), len)) {
-        mstore(0x40, add(add(0xc0, _ptr), len))
+      if lt(mload(0x40), add(_ptr, add(0xc0, end))) {
+        mstore(0x40, add(_ptr, add(0xc0, end)))
       }
-      // Increment EMITS action length (pointer to length stored before _ptr)
-      len := mload(sub(_ptr, 0x20))
-      mstore(len, add(1, mload(len)))
     }
     return _ptr;
   }
 
-  function data(uint _ptr, bytes memory _data) internal pure returns (uint) {
+  function data(Pointers.ActionPtr _ptr) internal pure {
+    // Ensures the flag stored at the pointer is APPEND_DATA
+    _ptr.expect(APPEND_DATA);
+    // Set next flag to Pointers.ACTION_APPEND
+    _ptr.next_flag = Pointers.ACTION_APPEND;
     assembly {
+      // Get end of buffer -
+      let end := add(0x80, mload(add(0x60, _ptr)))
+      // Push data size (0 bytes) to end of buffer
+      mstore(add(_ptr, end), 0)
+      // Increment buffer length (0x20 plus previous length)
+      mstore(add(0x60, _ptr), sub(end, 0x60))
+      // If the free-memory pointer does not point beyond the buffer's current size, update it
+      if lt(mload(0x40), add(_ptr, add(0x40, end))) {
+        mstore(0x40, add(_ptr, add(0x40, end)))
+      }
+    }
+  }
+
+  function data(Pointers.ActionPtr _ptr, bytes memory _data) internal pure {
+    // Ensures the flag stored at the pointer is APPEND_DATA
+    _ptr.expect(APPEND_DATA);
+    // Set next flag to Pointers.ACTION_APPEND
+    _ptr.next_flag = Pointers.ACTION_APPEND;
+    assembly {
+      // Get end of buffer -
+      let end := add(0x80, mload(add(0x60, _ptr)))
       // Loop over bytes array, and push each value to storage buffer
       let offset := 0x0
       for { } lt(offset, add(0x20, mload(_data))) { offset := add(0x20, offset) } {
         // Push bytes array chunk to buffer
-        mstore(add(add(add(0x20, mload(_ptr)), offset), _ptr), mload(add(offset, _data)))
+        mstore(
+          add(_ptr, add(offset, add(0x80, mload(add(0x60, _ptr))))),
+          mload(add(offset, _data))
+        )
       }
       // Increment buffer length
-      mstore(_ptr, add(offset, mload(_ptr)))
+      mstore(add(0x60, _ptr), add(offset, mload(add(0x60, _ptr))))
       // If the free-memory pointer does not point beyond the buffer's current size, update it
-      if lt(mload(0x40), add(add(0x40, _ptr), mload(_ptr))) {
-        mstore(0x40, add(add(0x40, _ptr), mload(_ptr)))
+      if lt(mload(0x40), add(add(0x40, _ptr), mload(add(0x60, _ptr)))) {
+        mstore(0x40, add(add(0x40, _ptr), mload(add(0x60, _ptr))))
       }
     }
-    return _ptr;
   }
 
-  function data(uint _ptr, bytes32 _data) internal pure returns (uint) {
+  function data(Pointers.ActionPtr _ptr, bytes32 _data) internal pure {
+    // Ensures the flag stored at the pointer is APPEND_DATA
+    _ptr.expect(APPEND_DATA);
+    // Set next flag to Pointers.ACTION_APPEND
+    _ptr.next_flag = Pointers.ACTION_APPEND;
     assembly {
-      // Get end of buffer - 32 bytes plus the length stored at the pointer
-      let len := add(0x20, mload(_ptr))
+      // Get end of buffer -
+      let end := add(0x80, mload(add(0x60, _ptr)))
       // Push data size (32 bytes) to end of buffer
-      mstore(add(_ptr, len), 0x20)
+      mstore(add(_ptr, end), 0x20)
       // Push value to the end of the buffer
-      mstore(add(_ptr, add(0x20, len)), _data)
-      // Increment buffer length
-      mstore(_ptr, add(0x20, len))
+      mstore(add(_ptr, add(0x20, end)), _data)
+      // Increment buffer length (0x40 plus previous length)
+      mstore(add(0x60, _ptr), sub(end, 0x40))
       // If the free-memory pointer does not point beyond the buffer's current size, update it
-      if lt(mload(0x40), add(add(0x60, _ptr), len)) {
-        mstore(0x40, add(add(0x60, _ptr), len))
+      if lt(mload(0x40), add(_ptr, add(0x60, end))) {
+        mstore(0x40, add(_ptr, add(0x60, end)))
       }
     }
-    return _ptr;
   }
 
-  function data(uint _ptr, uint _data) internal pure returns (uint) {
+  function data(Pointers.ActionPtr _ptr, uint _data) internal pure {
+    // Ensures the flag stored at the pointer is APPEND_DATA
+    _ptr.expect(APPEND_DATA);
+    // Set next flag to Pointers.ACTION_APPEND
+    _ptr.next_flag = Pointers.ACTION_APPEND;
     assembly {
-      // Get end of buffer - 32 bytes plus the length stored at the pointer
-      let len := add(0x20, mload(_ptr))
+      // Get end of buffer -
+      let end := add(0x80, mload(add(0x60, _ptr)))
       // Push data size (32 bytes) to end of buffer
-      mstore(add(_ptr, len), 0x20)
+      mstore(add(_ptr, end), 0x20)
       // Push value to the end of the buffer
-      mstore(add(_ptr, add(0x20, len)), _data)
-      // Increment buffer length
-      mstore(_ptr, add(0x20, len))
+      mstore(add(_ptr, add(0x20, end)), _data)
+      // Increment buffer length (0x40 plus previous length)
+      mstore(add(0x60, _ptr), sub(end, 0x40))
       // If the free-memory pointer does not point beyond the buffer's current size, update it
-      if lt(mload(0x40), add(add(0x60, _ptr), len)) {
-        mstore(0x40, add(add(0x60, _ptr), len))
+      if lt(mload(0x40), add(_ptr, add(0x60, end))) {
+        mstore(0x40, add(_ptr, add(0x60, end)))
       }
     }
-    return _ptr;
   }
 
-  function data(uint _ptr, address _data) internal pure returns (uint) {
+  function data(Pointers.ActionPtr _ptr, address _data) internal pure {
+    // Ensures the flag stored at the pointer is APPEND_DATA
+    _ptr.expect(APPEND_DATA);
+    // Set next flag to Pointers.ACTION_APPEND
+    _ptr.next_flag = Pointers.ACTION_APPEND;
     assembly {
-      // Get end of buffer - 32 bytes plus the length stored at the pointer
-      let len := add(0x20, mload(_ptr))
+      // Get end of buffer -
+      let end := add(0x80, mload(add(0x60, _ptr)))
       // Push data size (32 bytes) to end of buffer
-      mstore(add(_ptr, len), 0x20)
+      mstore(add(_ptr, end), 0x20)
       // Push value to the end of the buffer
-      mstore(add(_ptr, add(0x20, len)), _data)
-      // Increment buffer length
-      mstore(_ptr, add(0x20, len))
+      mstore(add(_ptr, add(0x20, end)), _data)
+      // Increment buffer length (0x40 plus previous length)
+      mstore(add(0x60, _ptr), sub(end, 0x40))
       // If the free-memory pointer does not point beyond the buffer's current size, update it
-      if lt(mload(0x40), add(add(0x60, _ptr), len)) {
-        mstore(0x40, add(add(0x60, _ptr), len))
+      if lt(mload(0x40), add(_ptr, add(0x60, end))) {
+        mstore(0x40, add(_ptr, add(0x60, end)))
       }
     }
-    return _ptr;
+  }
+
+  function data(Pointers.ActionPtr _ptr, bool _data) internal pure {
+    // Ensures the flag stored at the pointer is APPEND_DATA
+    _ptr.expect(APPEND_DATA);
+    // Set next flag to Pointers.ACTION_APPEND
+    _ptr.next_flag = Pointers.ACTION_APPEND;
+    assembly {
+      // Get end of buffer -
+      let end := add(0x80, mload(add(0x60, _ptr)))
+      // Push data size (32 bytes) to end of buffer
+      mstore(add(_ptr, end), 0x20)
+      // Push value to the end of the buffer
+      mstore(add(_ptr, add(0x20, end)), _data)
+      // Increment buffer length (0x40 plus previous length)
+      mstore(add(0x60, _ptr), sub(end, 0x40))
+      // If the free-memory pointer does not point beyond the buffer's current size, update it
+      if lt(mload(0x40), add(_ptr, add(0x60, end))) {
+        mstore(0x40, add(_ptr, add(0x60, end)))
+      }
+    }
   }
 }

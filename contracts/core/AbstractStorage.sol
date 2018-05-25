@@ -76,10 +76,12 @@ contract AbstractStorage {
 
   /*
   ** Application execution follows a standard pattern:
-  ** Application libraries are forwarded passed-in calldata via staticcall (no
-  ** state changes). Application libraries must make use of 'read' and 'readMulti'
-  ** to read values from storage and execute logic on read values. Because application
-  ** libraries are stateless, they cannot emit events, store data, or forward Ether.
+  ** Application libraries are forwarded passed-in calldata via delegatecall.
+  ** Application libraries are able to read from storage locally. In order to protect against
+  ** malicious applications that might attempt to modify state, applications can only change
+  ** state by reverting a formatted request back to the storage contract. This allows the
+  ** storage contract to guaruntee that only safe state changes occur (for example, state
+  ** changes that do not overwrite state from other applications).
   **
   ** As such, applications must tell the storage contract which of these events should
   ** occur upon successful execution so that the storage contract is able to handle them
@@ -94,7 +96,7 @@ contract AbstractStorage {
   /*
   Executes an initialized application under a given execution id, with given logic target and calldata
 
-  @param _target: The logic address for the application to execute. Passed-in calldata is forwarded here as a static call, and the return value is parsed for executable actions.
+  @param _target: The logic address for the application to execute. Passed-in calldata is forwarded here as a delegatecall, and the return value is parsed for executable actions.
   @param _exec_id: The application execution id under which action requests for this application are made
   @param _calldata: The calldata to forward to the application. Typically, this is created in the script exec contract and contains information about the original sender's address and execution id
   @mod validState(_exec_id): Ensures the application is active and unpaused, and that the sender is the script exec contract. Also ensures that if wei was sent, the app is registered as payable
@@ -116,12 +118,11 @@ contract AbstractStorage {
     bool success;
     assembly {
       // Forward passed-in calldata to target contract
-      success := staticcall(gas, _target, add(0x20, _calldata), mload(_calldata), 0, 0)
+      success := delegatecall(gas, _target, add(0x20, _calldata), mload(_calldata), 0, 0)
     }
-    // If the call to the application failed, emit an ApplicationException and return failure
-    if (!success) {
-      handleException(_target, _exec_id);
-      return(0, 0, 0);
+    // If the call to the application did not result in a revert, a state change may have occured: revert
+    if (success) {
+      revert('Unsafe execution');
     } else {
       (n_emitted, n_paid, n_stored) = executeAppReturn(_exec_id);
     }
@@ -131,8 +132,8 @@ contract AbstractStorage {
 
     emit ApplicationExecution(_exec_id, _target);
 
-    // If execution reaches this point, call should have succeeded -
-    assert(success);
+    // If execution reaches this point, call should have reverted -
+    assert(!success);
   }
 
   /// APPLICATION INITIALIZATION ///
@@ -168,15 +169,14 @@ contract AbstractStorage {
     // Execute application init call
     bool success;
     assembly {
-      success := staticcall(gas, _init, add(0x20, _init_calldata), mload(_init_calldata), 0, 0)
+      success := delegatecall(gas, _init, add(0x20, _init_calldata), mload(_init_calldata), 0, 0)
       size := returndatasize
     }
-    // If the call failed, emit an error message and return
-    if (!success) {
-      handleException(_init, exec_id);
-      return bytes32(0);
+    // If the call to the application did not result in a revert, a state change may have occured: revert
+    if (success) {
+      revert('Unsafe execution');
     } else if (size > 0) {
-      // If the call succeeded and returndatasize is nonzero, parse returned data for actions
+      // If the call reverted and returndatasize is nonzero, parse returned data for actions
       executeAppReturn(exec_id);
     }
 
@@ -289,7 +289,7 @@ contract AbstractStorage {
   function executeAppReturn(bytes32 _exec_id) internal returns (uint n_emitted, uint n_paid, uint n_stored) {
     uint _ptr;      // Will be a pointer to the data returned by the application call
     uint ptr_bound; // Will be the maximum value of the pointer possible (end of the memory stored in the pointer)
-    (ptr_bound, _ptr)= getReturnedData();
+    (ptr_bound, _ptr) = getReturnedData();
     // Ensure there are at least 32 bytes stored at the pointer
     require(ptr_bound >= _ptr + 32, 'Malformed returndata - invalid size');
     _ptr += 32;
@@ -671,38 +671,10 @@ contract AbstractStorage {
     }
   }
 
-  /*
-  Handles an exception thrown by a deployed application - if the application provided a message, return the message
-  If ether was sent, return the ether to the sender
-
-  @param _application: The address which triggered the exception
-  @param _execution_id: The execution id specified by the sender
-  */
-  function handleException(address _application, bytes32 _execution_id) internal {
-    bytes memory message;
-    assembly {
-      // Copy returned data into the bytes array
-      message := msize
-      mstore(message, returndatasize)
-      returndatacopy(add(0x20, message), 0, returndatasize)
-      // Update free-memory pointer
-      mstore(0x40, add(add(0x20, mload(message)), message))
-    }
-    // If no returndata exists, use a default message
-    if (message.length == 0)
-      message = DEFAULT_EXCEPTION;
-
-    // Emit ApplicationException event with the message
-    emit ApplicationException(_application, _execution_id, message);
-    // If ether was sent, send it back with returnToSender
-    if (msg.value > 0)
-      address(msg.sender).transfer(msg.value);
-  }
-
   // Stores data to a given location, with a key (exec id)
   function store(bytes32 _exec_id, bytes32 _location, bytes32 _data) internal {
     // Get true location to store data to - hash of location hashed with exec id
-    _location = keccak256(keccak256(_location), _exec_id);
+    _location = keccak256(_location, _exec_id);
     assembly {
       // Store data
       sstore(_location, _data)
@@ -711,21 +683,13 @@ contract AbstractStorage {
 
   /// GETTERS ///
 
-  // Returns the addresses with permissioned storage access under the given execution id
-  function getExecAllowed(bytes32 _exec_id) public view returns (address[] allowed) {
-    allowed = allowed_addr_list[_exec_id];
-  }
-
-  // STORAGE READS //
-
   /*
   Returns data stored at a given location
-
   @param _location: The address to get data from
   @return data: The data stored at the location after hashing
   */
   function read(bytes32 _exec_id, bytes32 _location) public view returns (bytes32 data_read) {
-    bytes32 location = keccak256(keccak256(_location), _exec_id);
+    bytes32 location = keccak256(_location, _exec_id);
     assembly {
       data_read := sload(location)
     }
@@ -733,7 +697,6 @@ contract AbstractStorage {
 
   /*
   Returns data stored in several nonconsecutive locations
-
   @param _locations: A dynamic array of storage locations to read from
   @return data_read: The corresponding data stored in the requested locations
   */
@@ -747,14 +710,19 @@ contract AbstractStorage {
 
       // Loop over input and store in return data
       for { let offset := 0x20 } lt(offset, add(0x20, mul(0x20, mload(_locations)))) { offset := add(0x20, offset) } {
-        // Get storage location from hash of location in input array
-        mstore(hash_loc, keccak256(add(offset, _locations), 0x20))
-        // Hash exec id and location hash to get storage location
+        // Place input location at the hash ptr
+        mstore(hash_loc, add(offset, _locations))
+        // Hash exec id and location to get storage location
         let storage_location := keccak256(hash_loc, 0x40)
         // Copy data from storage to return array
         mstore(add(offset, data_read), sload(storage_location))
       }
     }
+  }
+
+  // Returns the addresses with permissioned storage access under the given execution id
+  function getExecAllowed(bytes32 _exec_id) public view returns (address[] allowed) {
+    allowed = allowed_addr_list[_exec_id];
   }
 
   // Ensure no funds are stuck in this address
