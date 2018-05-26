@@ -30,7 +30,7 @@ library AppConsole {
     // Get pointer to application base storage location
     Pointers.StoragePtr memory app_base = provider_apps.applications(_app_name);
 
-    Virtual.Struct memory application = _context.provider();
+    Virtual.Struct memory application = _context.toCtx().provider();
 
     // Ensure application is not already registered under this provider -
     if (app_base.read() != bytes32(0))

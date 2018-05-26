@@ -1,10 +1,9 @@
 pragma solidity ^0.4.23;
 
 import "./Virtual.sol";
+import "./Pointers.sol";
 
 library LibStorage {
-
-  /* using Pointers for *; */
 
   // ACTION REQUESTORS //
 

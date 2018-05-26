@@ -32,34 +32,41 @@ library LibRegistry {
 
   bytes32 internal constant APP_VERSIONS_LIST = keccak256("app_versions_list");
 
-  function provider(bytes memory _context) internal pure returns (Virtual.Struct memory) {
-    Context.Ctx memory ctx = _context.toCtx();
+  function provider(Context.Ctx memory _ctx) internal pure returns (Virtual.Struct memory) {
+    if (_ctx.exec_id == bytes32(0) || _ctx.sender == bytes32(0))
+      Errors.except('Error at LibRegistry.provider: invalid context');
+
+    return Virtual.Struct({
+      base_storage: keccak256(_ctx.sender, PROVIDERS),
+      context: _ctx,
+      class: uint(Classes.PROVIDER)
+    });
   }
 
   function provider_app_list(Virtual.Struct memory _provider) internal pure returns (Virtual.Array memory) {
-    if (_provider.class != Classes.PROVIDER)
+    if (_provider.class != uint(Classes.PROVIDER))
       Errors.except('Error at LibRegistry.provider_app_list: invalid class');
 
     return Virtual.Array({
       base_storage: keccak256(PROVIDER_APP_LIST, _provider.base_storage),
       context: _provider.context,
-      class: Types.Classes.APP_LIST /// TODO
+      class: uint(Classes.APP_LIST)
     });
   }
 
   function provider_application(Virtual.Struct memory _provider, bytes32 _app_name) internal pure returns (Virtual.Struct memory) {
-    if (_provider.class != Classes.PROVIDER)
+    if (_provider.class != uint(Classes.PROVIDER))
       Errors.except('Error at LibRegistry.provider_application: invalid class');
 
     return Virtual.Struct({
       base_storage: keccak256(keccak256(_app_name, APPS), _provider.base_storage),
       context: _provider.context,
-      class: Classes.APPLICATION
+      class: uint(Classes.APPLICATION)
     });
   }
 
   function app_name(Virtual.Struct memory _app) internal pure returns (Virtual.Bytes32 memory) {
-    if (_app.class != Classes.APPLICATION)
+    if (_app.class != uint(Classes.APPLICATION))
       Errors.except('Error at LibRegistry.app_name: invalid class');
 
     return Virtual.Bytes32({
@@ -70,7 +77,7 @@ library LibRegistry {
   }
 
   function app_description(Virtual.Struct memory _app) internal pure returns (Virtual.Bytes memory) {
-    if (_app.class != Classes.APPLICATION)
+    if (_app.class != uint(Classes.APPLICATION))
       Errors.except('Error at LibRegistry.app_description: invalid class');
 
     return Virtual.Bytes({
@@ -81,7 +88,7 @@ library LibRegistry {
   }
 
   function app_default_storage(Virtual.Struct memory _app) internal pure returns (Virtual.Address memory) {
-    if (_app.class != Classes.APPLICATION)
+    if (_app.class != uint(Classes.APPLICATION))
       Errors.except('Error at LibRegistry.app_default_storage: invalid class');
 
     return Virtual.Address({
@@ -92,13 +99,13 @@ library LibRegistry {
   }
 
   function app_version_list(Virtual.Struct memory _app) internal pure returns (Virtual.Array memory) {
-    if (_app.class != Classes.APPLICATION)
+    if (_app.class != uint(Classes.APPLICATION))
       Errors.except('Error at LibRegistry.app_version_list: invalid class');
 
     return Virtual.Array({
       base_storage: keccak256(APP_VERSIONS_LIST, _app.base_storage),
       context: _app.context,
-      class: Classes.VERSION_LIST
+      class: uint(Classes.VERSION_LIST)
     });
   }
 

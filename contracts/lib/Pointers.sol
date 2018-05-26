@@ -11,18 +11,8 @@ library Pointers {
     bytes32 exec_id;
   }
 
-  struct StoragePtr {
-    bytes32 location;
-    bytes32 exec_id;
-    uint class;
-  }
-
   bytes32 internal constant ACTION_APPEND = keccak256('ACTION_APPEND');
   bytes32 internal constant NEXT_ACTION = bytes32(1);
-
-  function location(StoragePtr _ptr) internal pure returns (bytes32) {
-    return _ptr.location;
-  }
 
   // Initialize a new pointer in memory
   function clear(bytes memory _context) internal pure returns (ActionPtr) {
@@ -52,22 +42,6 @@ library Pointers {
     return _ptr;
   }
 
-  function read(StoragePtr _ptr) internal view returns (bytes32 read_value) {
-    assembly {
-      // Hash all 0x40 bytes in the StoragePointer to get the true storage location
-      read_value := sload(keccak256(_ptr, 0x40))
-    }
-    return read_value;
-  }
-
-  function length(StoragePtr _ptr) internal view returns (uint read_value) {
-    assembly {
-      // Hash all 0x40 bytes in the StoragePointer to get the true storage location
-      read_value := sload(keccak256(_ptr, 0x40))
-    }
-    return read_value;
-  }
-
   function finalize(ActionPtr _ptr) internal pure {
     assembly {
       // Set data read offset
@@ -77,18 +51,5 @@ library Pointers {
       // Revert buffer to storage
       revert(add(0x40, _ptr), sub(mload(_ptr), 0x40))
     }
-  }
-
-  // Parses context array and returns execution id, provider, and sent wei amount
-  function parse(bytes memory _context) internal pure returns (bytes32 exec_id, bytes32 provider, uint wei_sent) {
-    Errors.failIf(_context.length != 96, 'UnknownContext');
-    assembly {
-      exec_id := mload(add(0x20, _context))
-      provider := mload(add(0x40, _context))
-      wei_sent := mload(add(0x60, _context))
-    }
-    // Ensure sender and exec id are valid
-    if (provider == bytes32(0) || exec_id == bytes32(0))
-      Errors.fail('UnknownContext');
   }
 }
