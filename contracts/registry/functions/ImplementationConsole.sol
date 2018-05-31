@@ -142,7 +142,7 @@ library ImplementationConsole {
     }
 
     // Return formatted action requests to storage
-    return ptr.getBuffer();
+    return ptr.toBuffer();
   }
 
   /*

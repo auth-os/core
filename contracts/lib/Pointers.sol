@@ -2,7 +2,7 @@ pragma solidity ^0.4.23;
 
 library Pointers {
 
-  function getBuffer(uint _ptr) internal pure returns (bytes memory buffer) {
+  function toBuffer(uint _ptr) internal pure returns (bytes memory buffer) {
     assembly {
       buffer := _ptr
     }

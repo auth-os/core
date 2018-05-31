@@ -129,7 +129,7 @@ library AppConsole {
     ).data(_app_name);
 
     // Return formatted action requests to storage
-    return ptr.getBuffer();
+    return ptr.toBuffer();
   }
 
   /*
