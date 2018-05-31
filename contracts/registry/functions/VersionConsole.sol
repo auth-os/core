@@ -181,7 +181,7 @@ library VersionConsole {
     ptr.data(_ver_name);
 
     // Return formatted action requests to storage
-    return ptr.getBuffer();
+    return ptr.toBuffer();
   }
 
   /*
@@ -278,7 +278,7 @@ library VersionConsole {
     ptr.data(_ver_name);
 
     // Return formatted action requests to storage
-    return ptr.getBuffer();
+    return ptr.toBuffer();
   }
 
   /*
