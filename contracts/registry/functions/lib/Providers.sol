@@ -13,28 +13,26 @@ library App {
 library Provider {
 
   using Abstract for Abstract.Class;
-  using Abstract for Abstract.Pointer;
-  using ProviderConsole for Abstract.Feature;
 
   // The '_class' function function relevant to the external call and returns its reference
   function _class(Abstract.Class memory _ptr) internal pure returns (
     function (Abstract.Feature memory) pure returns (Abstract.Function memory)
   ) {
     // Tell the execution pointer where this class is located -
-    _ptr.classAt('Provider');
+    _ptr.classAt();
 
     // Return reference to ProviderConsole -
-    return ProviderConsole.feature;
+    return ProviderConsole._feature;
   }
 
-  // Exposes Apps.app_name for ProviderConsole
-  function app_name(Abstract.Feature memory _ptr) internal pure returns (bytes32) {
+  // Exposes Apps.app_name for ProviderConsole -
+  /* function app_name(Abstract.Feature memory _ptr) internal pure returns (bytes32) {
 
   }
 
   function registered_apps(Abstract.Pointer memory _ptr) private pure returns (bytes32) {
 
-  }
+  } */
 }
 
 library ProviderConsole {
@@ -47,15 +45,15 @@ library ProviderConsole {
     function (Abstract.Function memory) view
   ) {
     // Tell the execution pointer where this feature is located -
-    _ptr.featureAt('ProviderConsole');
+    _ptr.featureAt();
     // Validate external calldata selector matches expected 'registerApp' -
-    if (msg.sig != REGISTER_APP) {
+    /* if (msg.sig != REGISTER_APP) {
       _ptr.throws({
         message: 'invalid selector',
         expected: REGISTER_APP.primitive(),
         got: msg.sig.primitive()
       });
-    }
+    } */
 
     // Validate calldata TODO
 
@@ -80,7 +78,7 @@ library ProviderConsole {
   */
   function registerApp(Abstract.Pointer memory _ptr) private view {
     // Tell the execution pointer where this function is located -
-    _ptr.functionAt('registerApp');
+    _ptr.functionAt();
 
     // Begin storing values -
     _ptr.storing();
