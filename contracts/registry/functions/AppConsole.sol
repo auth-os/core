@@ -1,15 +1,13 @@
 pragma solidity ^0.4.23;
 
-import '../../lib/LibRegistry.sol';
+import "../class/Registry.sol";
 
 library AppConsole {
 
-  using LibRegistry for *;
-  using Pointers for *;
-  /* using LibEvents for Pointers.ActionPtr; */
-  using LibStorage for Pointers.ActionPtr;
-
-  /// FUNCTIONS ///
+  /* using Contract for Contract.Task; */
+  using Registry for Contract.Class;
+  using Providers for Contract.Feature;
+  using Apps for Contract.Feature;
 
   /*
   Registers an application under the sender's provider id
@@ -23,46 +21,42 @@ library AppConsole {
     3. Wei amount sent with transaction to storage
   */
   function registerApp(bytes32 _app_name, address _app_storage, bytes _app_desc, bytes memory _context) public view {
-    require(_app_name != bytes32(0) && _app_desc.length > 0 && _app_storage != address(0));
+    // Declare instances
+    Contract.Class memory registry;
+    Contract.Feature memory provider;
+    Contract.Feature memory app; // will be initialized by the provider
+    Contract.Task memory task;
+    // Initialize registry class by passing in a reference to this contract's supported features -
+    registry.initFeatures(Registry.supported, this.registerApp.selector);
+    // Initialize provider through Registry class -
+    registry.initProvider(provider, _context);
+    // Create new application instance through provider -
+    provider.initApplication(app, _app_name);
+    // Initialize task and assign to provider -
+    provider.createTask(task, Providers.Tasks.REGISTERAPP);
 
-    // Get pointer to provider base storage location
-    Pointers.StoragePtr memory provider_apps = _context.provider_apps();
-    // Get pointer to application base storage location
-    Pointers.StoragePtr memory app_base = provider_apps.applications(_app_name);
+    // Begin task with stores action, checking pre-conditions -
+    provider.start(task.stores);
 
-    Virtual.Struct memory application = _context.toCtx().provider();
+    // Store app name in application name storage location -
+    task.store(_app_name).at(app.name);
+    // Store application default storage address -
+    task.store(_app_storage).at(app.storage_addr);
+    // Store application description -
+    task.store(_app_desc).at(app.description);
+    // Push app name to provider's registered application list -
+    task.push(_app_name).to(provider.registered_apps);
 
-    // Ensure application is not already registered under this provider -
-    if (app_base.read() != bytes32(0))
-      Errors.fail('App already registered');
+    // Finish storing values and begin emitting values -
+    provider.next(task.emits);
 
-    /// Application is unregistered - register application -
+    // Emit AppRegistered event TODO add func
+    task.log(provider.appRegisteredEvent).with(_app_name);
 
-    // Get pointer to free memory and set up STORES action requests -
-    Pointers.ActionPtr memory ptr = Pointers.clear(_context);
-    ptr.stores();
+    // Finish emitting values and declare end of task -
+    provider.finally(task.ends);
 
-    // Store app name in app base storage location
-    ptr.store(_app_name).at(app_base);
-
-    // Store app default storage address
-    ptr.store(_app_storage).at(app_base.default_storage_addr());
-
-    // Push app name to end of provider's app list -
-    ptr.push(_app_name).toEnd(provider_apps);
-
-    // Store application description
-    ptr.storeBytesAt(_app_desc, app_base.app_description());
-
-    /* // Finish STORES action and set up EMITS requests -
-    ptr.nextAction().emits();
-
-    // Add APP_REGISTERED event topics and data (app name)
-    ptr.topics(
-      [APP_REGISTERED, _context.exec_id(), _context.provider()]
-    ).data(_app_name); */
-
-    // Revert formatted action request to storage
-    ptr.finalize();
+    // Finalize state and end execution -
+    Registry.finalize(provider);
   }
 }

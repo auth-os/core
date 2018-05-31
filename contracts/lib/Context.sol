@@ -4,27 +4,21 @@ import "./Errors.sol";
 
 library Context {
 
-  struct Ctx {
-    bytes32 exec_id;
-    bytes32 sender;
-    uint wei_sent;
-  }
-
-  function toCtx(bytes memory _context) internal pure returns (Ctx memory) {
+  // Parses context array and returns execution id, sender, and sent wei amount
+  function parse(bytes memory _context) internal pure returns (bytes32 exec_id, bytes32 sender, uint wei_sent) {
+    // Validate input
     if (_context.length != 96)
-      Errors.except('Error at Context.toCtx: invalid context');
+      Errors.except('Error at Context.parse: invalid context length');
 
-    Ctx memory ret;
     assembly {
-      ret := msize
-      mstore(ret, add(0x20, _context))
-      mstore(add(0x20, ret), add(0x40, _context))
-      mstore(add(0x40, ret), add(0x60, _context))
-      mstore(0x40, add(0x60, ret))
+      exec_id := mload(add(0x20, _context))
+      sender := mload(add(0x40, _context))
+      wei_sent := mload(add(0x60, _context))
     }
-    if (ret.exec_id == bytes32(0) || ret.sender == bytes32(0))
-      Errors.except('Error at Context.toCtx: invalid context');
-
-    return ret;
+    // Validate result
+    if (sender == bytes32(0))
+      Errors.except('Error at Context.parse: invalid sender');
+    if (exec_id == bytes32(0))
+      Errors.except('Error at Context.parse: invalid exec_id');
   }
 }
