@@ -285,6 +285,26 @@ library Contract {
     isStoring();
   }
 
+  // Checks that a call pushing a payment destination to the buffer is expected and valid
+  function validPayDest() private pure {
+    // Ensure that the next function expected pushes a payment destination -
+    if (expected() != NextFunction.PAY_DEST)
+      revert('Unexpected function order - expected payment destination to be pushed');
+
+    // Ensure that the current buffer is pushing PAYS actions -
+    isPaying();
+  }
+
+  // Checks that a call pushing a payment amount to the buffer is expected and valid
+  function validPayAmt() private pure {
+    // Ensure that the next function expected pushes a payment amount -
+    if (expected() != NextFunction.PAY_AMT)
+      revert('Unexpected function order - expected payment amount to be pushed');
+
+    // Ensure that the current buffer is pushing PAYS actions -
+    isPaying();
+  }
+
   // Checks that a call pushing an event to the buffer is expected and valid
   function validEvent() private pure {
     // Ensure that the next function expected pushes an event -
@@ -682,17 +702,76 @@ library Contract {
     }
   }
 
-  /* function paying() internal pure {
-
+  // Begins creating a storage buffer - destinations entered will be forwarded wei
+  // before the end of execution
+  function paying() conditions(validPayBuff, isPaying) internal pure {
+    bytes4 action_req = PAYS;
+    assembly {
+      // Get pointer to buffer length -
+      let ptr := add(0x20, mload(0xc0))
+      // Push requestor to the end of buffer, as well as to the 'current action' slot -
+      mstore(add(0x20, add(ptr, mload(ptr))), action_req)
+      mstore(0xe0, action_req)
+      // Push '0' to the end of the 4 bytes just pushed - this will be the length of the PAYS action
+      mstore(add(0x24, add(ptr, mload(ptr))), 0)
+      // Increment buffer length - 0x24 plus the previous length
+      mstore(ptr, add(0x24, mload(ptr)))
+      // Set the current action being executed (PAYS) -
+      mstore(0xe0, action_req)
+      // Set the expected next function - PAY_AMT
+      mstore(0x100, 8)
+      // Set a pointer to the length of the current request within the buffer
+      mstore(sub(ptr, 0x20), add(ptr, mload(ptr)))
+      // If the free-memory pointer does not point beyond the buffer's current size, update it
+      if lt(mload(0x40), add(0x20, add(ptr, mload(ptr)))) {
+        mstore(0x40, add(0x20, add(ptr, mload(ptr))))
+      }
+    }
   }
 
-  function pay(uint _amount) internal pure returns (Contract) {
-
+  // Pushes an amount of wei to forward to the buffer
+  function pay(uint _amount) conditions(validPayAmt, validPayDest) internal pure returns (uint) {
+    assembly {
+      // Get pointer to buffer length -
+      let ptr := add(0x20, mload(0xc0))
+      // Push payment amount to the end of the buffer -
+      mstore(add(0x20, add(ptr, mload(ptr))), _amount)
+      // Increment buffer length - 0x20 plus the previous length
+      mstore(ptr, add(0x20, mload(ptr)))
+      // Set the expected next function - PAY_DEST
+      mstore(0x100, 7)
+      // Increment PAYS action length -
+      mstore(
+        mload(sub(ptr, 0x20)),
+        add(1, mload(mload(sub(ptr, 0x20))))
+      )
+      // Update number of payment destinations to be pushed to -
+      mstore(0x160, add(1, mload(0x160)))
+      // If the free-memory pointer does not point beyond the buffer's current size, update it
+      if lt(mload(0x40), add(0x20, add(ptr, mload(ptr)))) {
+        mstore(0x40, add(0x20, add(ptr, mload(ptr))))
+      }
+    }
+    return _amount;
   }
 
-  function to(address _dest) internal pure returns (Contract) {
-
-  } */
+  // Push an address to forward wei to, to the buffer
+  function toAcc(uint, address _dest) conditions(validPayDest, validPayAmt) internal pure {
+    assembly {
+      // Get pointer to buffer length -
+      let ptr := add(0x20, mload(0xc0))
+      // Push payment destination to the end of the buffer -
+      mstore(add(0x20, add(ptr, mload(ptr))), _dest)
+      // Increment buffer length - 0x20 plus the previous length
+      mstore(ptr, add(0x20, mload(ptr)))
+      // Set the expected next function - PAY_AMT
+      mstore(0x100, 8)
+      // If the free-memory pointer does not point beyond the buffer's current size, update it
+      if lt(mload(0x40), add(0x20, add(ptr, mload(ptr)))) {
+        mstore(0x40, add(0x20, add(ptr, mload(ptr))))
+      }
+    }
+  }
 
   // Returns the enum representing the next expected function to be called -
   function expected() private pure returns (NextFunction next) {
