@@ -2,10 +2,10 @@ pragma solidity ^0.4.23;
 
 contract AbstractStorage {
 
+  // Special storage locations - applications can read from 0x0 to get the execution id, and 0x20
+  // to get the sender from which the call originated
   bytes32 private exec_id;
   address private sender;
-
-  /* function () external payable { _exec(msg.data); } */
 
   // Keeps track of the number of applicaions initialized, so that each application has a unique execution id
   uint private nonce;
@@ -14,77 +14,92 @@ contract AbstractStorage {
 
   // ACTION REQUESTORS //
 
-  bytes4 internal constant EMITS = bytes4(keccak256('emits:'));
-  bytes4 internal constant STORES = bytes4(keccak256('stores:'));
-  bytes4 internal constant PAYS = bytes4(keccak256('pays:'));
-  bytes4 internal constant THROWS = bytes4(keccak256('throws:'));
+  bytes4 internal constant EMITS = bytes4(keccak256('Emit((bytes32[],bytes)[])'));
+  bytes4 internal constant STORES = bytes4(keccak256('Store(bytes32[])'));
+  bytes4 internal constant PAYS = bytes4(keccak256('Pay(bytes32[])'));
+  bytes4 internal constant THROWS = bytes4(keccak256('Error(string)'));
 
-  // OTHER //
+  // Used as a nonzero 'invalid' value, which will represent the exec id in the case that the application should
+  // treat the input as an instance initialization
+  bytes32 internal constant INVALID = bytes32(0xDEAD);
 
-  bytes internal constant DEFAULT_EXCEPTION = "DefaultException";
+  /// APPLICATION INSTANCE INITIALIZATION ///
+
+  /*
+  Executes an initialization function of an application, generating a new exec id that will be associated with that address
+
+  @param _sender: The sender of the transaction, as reported by the script exec contract
+  @param _application: The target application to which the calldata will be forwarded
+  @param _calldata: The calldata to forward to the application
+  @return new_exec_id: A new, unique execution id paired with the created instance of the application
+  */
+  function createInstance(address _sender, address _application, bytes _calldata) external payable returns (bytes32 new_exec_id) {
+    // Ensure valid input -
+    require(_sender != address(0) && _application != address(0) && _calldata.length >= 4);
+
+    // Create new exec id by incrementing the nonce -
+    new_exec_id = keccak256(++nonce);
+
+    // Sanity check - verify that this exec id is not linked to an existing application -
+    assert(getTarget(new_exec_id) == address(0));
+
+    // Set the exec id and sender addresses for the target application -
+    setContext(INVALID, _sender);
+
+    // Execute application, create a new exec id, and commit the returned data to storage -
+    require(address(_application).delegatecall(_calldata) == false, 'Unsafe execution');
+    // Get data returned from call revert and perform requested actions -
+    executeAppReturn(new_exec_id);
+
+    // Set the targeted application address as the new target for the created exec id -
+    setTarget(new_exec_id, _application);
+
+    // If execution reaches this point, newly generated exec id should be valid -
+    assert(new_exec_id != bytes32(0));
+  }
 
   /// APPLICATION EXECUTION ///
 
   /*
-  ** Application execution follows a standard pattern:
-  ** Application libraries are forwarded passed-in calldata via delegatecall.
-  ** Application libraries are able to read from storage locally. In order to protect against
-  ** malicious applications that might attempt to modify state, applications can only change
-  ** state by reverting a formatted request back to the storage contract. This allows the
-  ** storage contract to guaruntee that only safe state changes occur (for example, state
-  ** changes that do not overwrite state from other applications).
-  **
-  ** As such, applications must tell the storage contract which of these events should
-  ** occur upon successful execution so that the storage contract is able to handle them
-  ** for the application library. This is done through the data returned by the application
-  ** library. Returned data is formatted in such a way that the storage contract is able to
-  ** parse the data and execute various actions.
-  **
-  ** Actions allowed are: EMITS, PAYS, STORES, and THROWS. More information on these is provided
-  ** in the executeAppReturn function.
-  */
+  Executes an initialized application associated with the given exec id, under the sender's address and with
+  the given calldata
 
-  /*
-  Executes an initialized application under a given execution id, with given logic target and calldata
-
-  @param _target: The logic address for the application to execute. Passed-in calldata is forwarded here as a delegatecall, and the return value is parsed for executable actions.
-  @param _exec_id: The application execution id under which action requests for this application are made
-  @param _calldata: The calldata to forward to the application. Typically, this is created in the script exec contract and contains information about the original sender's address and execution id
-  @mod validState(_exec_id): Ensures the application is active and unpaused, and that the sender is the script exec contract. Also ensures that if wei was sent, the app is registered as payable
+  @param _sender: The address reported as the call sender by the script exec contract
+  @param _exec_id: The execution id corresponding to an instance of the application
+  @param _calldata: The calldata to forward to the application
   @return n_emitted: The number of events emitted on behalf of the application
   @return n_paid: The number of destinations ETH was forwarded to on behalf of the application
   @return n_stored: The number of storage slots written to on behalf of the application
   */
-  function exec(address _target, bytes32 _exec_id, bytes _calldata) public payable validState(_exec_id) returns (uint n_emitted, uint n_paid, uint n_stored) {
+  function exec(address _sender, bytes32 _exec_id, bytes _calldata) external payable returns (uint n_emitted, uint n_paid, uint n_stored) {
     // Ensure valid input and input size - minimum 4 bytes
-    require(_calldata.length >= 4 && _target != address(0) && _exec_id != bytes32(0));
+    require(_calldata.length >= 4 && _sender != address(0) && _exec_id != bytes32(0));
 
-    // Ensure sender is script executor for this exec id
-    require(msg.sender == app_info[_exec_id].script_exec);
+    // Get the target address associated with the given exec id
+    address target = getTarget(_exec_id);
+    require(target != address(0), 'Uninitialized application');
 
-    // Ensure app logic address has been approved for this exec id
-    require(allowed_addresses[_exec_id][_target] != 0);
+    // Set the exec id and sender addresses for the target application -
+    setContext(_exec_id, _sender);
 
-    // Script executor and passed-in request are valid. Execute application and store return to this application's storage
-    bool success;
-    assembly {
-      // Forward passed-in calldata to target contract
-      success := delegatecall(gas, _target, add(0x20, _calldata), mload(_calldata), 0, 0)
-    }
-    // If the call to the application did not result in a revert, a state change may have occured: revert
-    if (success) {
-      revert('Unsafe execution');
-    } else {
-      (n_emitted, n_paid, n_stored) = executeAppReturn(_exec_id);
-    }
+    // Execute application and commit returned data to storage -
+    require(address(target).delegatecall(_calldata) == false, 'Unsafe execution');
+    (n_emitted, n_paid, n_stored) = executeAppReturn(_exec_id);
 
+    // If no events were emitted, no wei was forwarded, and no storage was changed, revert -
     if (n_emitted == 0 && n_paid == 0 && n_stored == 0)
       revert('No state change occured');
+  }
 
-    emit ApplicationExecution(_exec_id, _target);
-
-    // If execution reaches this point, call should have reverted -
-    assert(!success);
+  // Given an exec id, returns the application address associated with that id
+  function getTarget(bytes32 _exec_id) public view returns (address target) {
+    assembly {
+      // Clear first 32 bytes, then place the exec id in the next slot in memory
+      mstore(0, 0)
+      mstore(0x20, _exec_id)
+      // An execution id's associated address is stored at the hash of '0' and the exec id
+      target := sload(keccak256(0, 0x40))
+    }
   }
 
   /// APPLICATION RETURNDATA HANDLING ///
@@ -166,7 +181,7 @@ contract AbstractStorage {
           require(n_paid == 0, 'Duplicate action: PAYS');
           // Otherwise, forward ETH and get amount of addresses forwarded to
           // doPay increments the pointer to the end of the data portion of the action executed
-          (_ptr, n_paid) = doPay(_ptr, ptr_bound, _exec_id);
+          (_ptr, n_paid) = doPay(_ptr, ptr_bound);
           // If no destinations recieved ETH, returndata is malformed: throw
           require(n_paid != 0, 'Unfulfilled action: PAYS');
         } else {
@@ -211,20 +226,17 @@ contract AbstractStorage {
   @return length: The value stored at that pointer
   */
   function getLength(uint _ptr) internal pure returns (uint length) {
-    assembly {
-      length := mload(_ptr)
-    }
+    assembly { length := mload(_ptr) }
   }
 
   // Executes the THROWS action, reverting any returned data back to the caller
   function doThrow(uint _ptr) internal pure {
     assert(getAction(_ptr) == THROWS);
-    _ptr += 4;
     assembly {
       // The data following the action requestor is a bytes array with the data to be reverted to caller
-      // The first 32 bytes is the size of the data -
-      let size := mload(_ptr)
-      revert(add(0x20, _ptr), size)
+      // The size of the error is located before the pointer -
+      let size := mload(sub(_ptr, 0x20))
+      revert(_ptr, size)
     }
   }
 
@@ -236,11 +248,10 @@ contract AbstractStorage {
 
   @param _ptr: A pointer in memory to an application's returned payment request
   @param _ptr_bound: The upper bound on the value for _ptr before it is reading invalid data
-  @param _exec_id: The execution id of the application which triggered the payment
   @return ptr: An updated pointer, pointing to the end of the PAYS action request in memory
   @return n_paid: The number of destinations paid out to from the returned PAYS request
   */
-  function doPay(uint _ptr, uint _ptr_bound, bytes32 _exec_id) internal returns (uint ptr, uint n_paid) {
+  function doPay(uint _ptr, uint _ptr_bound) internal returns (uint ptr, uint n_paid) {
     // Ensure ETH was sent with the call
     require(msg.value > 0);
     assert(getAction(_ptr) == PAYS);
@@ -266,8 +277,6 @@ contract AbstractStorage {
       n_paid++;
       // Increment pointer
       _ptr += 64;
-      // Emit event
-      emit DeliveredPayment(_exec_id, pay_to, amt);
     }
     ptr = _ptr;
     assert(n_paid == num_destinations);
@@ -278,7 +287,7 @@ contract AbstractStorage {
   A STORES action provides a set of storage locations and corresponding values to store at those locations
   true storage locations within this contract are first hashed with the application's execution id to prevent
   storage overlaps between applications sharing the contract
-  STORES actions follow a format of: [val_0][location_0]...[val_n][location_n]
+  STORES actions follow a format of: [location_0][val_0]...[location_n][val_n]
 
   @param _ptr: A pointer in memory to an application's returned payment request
   @param _ptr_bound: The upper bound on the value for _ptr before it is reading invalid data
@@ -298,8 +307,8 @@ contract AbstractStorage {
     while (_ptr <= _ptr_bound && n_stored < num_locations) {
       // Get storage location and value to store from the pointer
       assembly {
-        value := mload(_ptr)
-        location := mload(add(0x20, _ptr))
+        location := mload(_ptr)
+        value := mload(add(0x20, _ptr))
       }
       // Store the data to the location hashed with the exec id
       store(_exec_id, location, value);
@@ -410,30 +419,34 @@ contract AbstractStorage {
     }
   }
 
-  /// APPLICATION UPGRADING ///
+  // Used by the createInstance function to associate a target with an execution id
+  // The instance's associated address is stored at the hash of the execution id -
+  // This means that the instance is able to incorporate upgradability features and change
+  // its own target address
+  function setTarget(bytes32 _exec_id, address _target) internal {
+    assembly {
+      // Clear first 32 bytes, then place the exec id in the next slot in memory
+      mstore(0, 0)
+      mstore(0x20, _exec_id)
+      // Store the new target address for the exec id
+      sstore(keccak256(0, 0x40), _target)
+    }
+  }
 
-  /*
-  ** Application initializers may specify an address which is allowed to update
-  ** the logic addresses which may be used with the application. These addresses
-  ** could be as simple as someone's personal address, or as complicated as
-  ** voting contracts with safe upgrade mechanisms.
-  */
-
-  // The script exec contract can update itself
-  function changeScriptExec(bytes32 _exec_id, address _new_script_exec) public {
-    // Ensure that only the script exec contract can update itself
-    require(app_info[_exec_id].script_exec == msg.sender);
-
-    app_info[_exec_id].script_exec = _new_script_exec;
+  // Sets the execution id and sender address in special storage locations, so that
+  // they are able to be read by the target application
+  function setContext(bytes32 _exec_id, address _sender) internal {
+    // Ensure the exec id and sender are nonzero
+    assert(_exec_id != bytes32(0) && _sender != address(0));
+    exec_id = _exec_id;
+    sender = _sender;
   }
 
   // Stores data to a given location, with a key (exec id)
   function store(bytes32 _exec_id, bytes32 _location, bytes32 _data) internal {
     // Get true location to store data to - hash of location hashed with exec id
     _location = keccak256(_location, _exec_id);
-    assembly {
-      // Store data
-      sstore(_location, _data)
-    }
+    // Store data at location
+    assembly { sstore(_location, _data) }
   }
 }
