@@ -486,6 +486,35 @@ library Contract {
     }
   }
 
+  // Decreases the value at some field by a maximum amount, and sets it to 0 if there will be underflow
+  function byMaximum(bytes32 _val, uint _amt) conditions(validStoreVal, validStoreDest) internal pure {
+    // Check the expected function type - if it is VAL_DEC, set the new amount to the difference of
+    // _val and _amt, to a minimum of 0
+    if (expected() == NextFunction.VAL_DEC) {
+      if (uint(_val) > _amt)
+        _amt = 0;
+      else
+        _amt = uint(_val).sub(_amt);
+    } else {
+      revert('Expected VAL_DEC');
+    }
+
+    assembly {
+      // Get pointer to buffer length -
+      let ptr := add(0x20, mload(0xc0))
+      // Push storage value to the end of the buffer -
+      mstore(add(0x20, add(ptr, mload(ptr))), _amt)
+      // Increment buffer length - 0x20 plus the previous length
+      mstore(ptr, add(0x20, mload(ptr)))
+      // Set the expected next function - STORE_DEST
+      mstore(0x100, 2)
+      // If the free-memory pointer does not point beyond the buffer's current size, update it
+      if lt(mload(0x40), add(0x20, add(ptr, mload(ptr)))) {
+        mstore(0x40, add(0x20, add(ptr, mload(ptr))))
+      }
+    }
+  }
+
   // Begins creating an event log buffer - topics and data pushed will be emitted by
   // storage at the end of execution
   function emitting() conditions(validEmitBuff, isEmitting) internal pure {
