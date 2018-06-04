@@ -446,7 +446,7 @@ library Contract {
     if (expected() == NextFunction.VAL_INC)
       _amt = _amt.add(uint(_val));
     else if (expected() == NextFunction.VAL_DEC)
-      _amt = _amt.sub(uint(_val));
+      _amt = uint(_val).sub(_amt);
     else
       revert('Expected VAL_INC or VAL_DEC');
 
