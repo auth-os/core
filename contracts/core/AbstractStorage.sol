@@ -19,10 +19,6 @@ contract AbstractStorage {
   bytes4 internal constant PAYS = bytes4(keccak256('Pay(bytes32[])'));
   bytes4 internal constant THROWS = bytes4(keccak256('Error(string)'));
 
-  // Used as a nonzero 'invalid' value, which will represent the exec id in the case that the application should
-  // treat the input as an instance initialization
-  bytes32 internal constant INVALID = bytes32(0xDEAD);
-
   /// APPLICATION INSTANCE INITIALIZATION ///
 
   /*
@@ -44,7 +40,7 @@ contract AbstractStorage {
     assert(getTarget(new_exec_id) == address(0));
 
     // Set the exec id and sender addresses for the target application -
-    setContext(INVALID, _sender);
+    setContext(new_exec_id, _sender);
 
     // Execute application, create a new exec id, and commit the returned data to storage -
     require(address(_application).delegatecall(_calldata) == false, 'Unsafe execution');
@@ -145,49 +141,48 @@ contract AbstractStorage {
     uint _ptr;      // Will be a pointer to the data returned by the application call
     uint ptr_bound; // Will be the maximum value of the pointer possible (end of the memory stored in the pointer)
     (ptr_bound, _ptr) = getReturnedData();
-    // Ensure there are at least 32 bytes stored at the pointer
-    require(ptr_bound >= _ptr + 32, 'Malformed returndata - invalid size');
-    _ptr += 32;
+    // If the application reverted with an error, we can check directly for its selector -
+    if (getAction(_ptr) == THROWS) {
+      // Execute THROWS request
+      doThrow(_ptr);
+      // doThrow should revert, so we should never reach this point
+      assert(false);
+    }
+
+    // Ensure there are at least 64 bytes stored at the pointer
+    require(ptr_bound >= _ptr + 64, 'Malformed returndata - invalid size');
+    _ptr += 64;
 
     // Iterate over returned data and execute actions
     bytes4 action;
     while (_ptr <= ptr_bound && (action = getAction(_ptr)) != 0x0) {
-      if (action == THROWS) {
-        // If the action is THROWS and any other action has been executed, throw
-        require(n_emitted == 0 && n_paid == 0 && n_stored == 0, 'Malformed returndata - THROWS out of position');
-        // Execute THROWS request
-        doThrow(_ptr);
-        // doThrow should revert, so we should never reach this point
-        assert(false);
+      if (action == EMITS) {
+        // If the action is EMITS, and this action has already been executed, throw
+        require(n_emitted == 0, 'Duplicate action: EMITS');
+        // Otherwise, emit events and get amount of events emitted
+        // doEmit returns the pointer incremented to the end of the data portion of the action executed
+        (_ptr, n_emitted) = doEmit(_ptr, ptr_bound);
+        // If 0 events were emitted, returndata is malformed: throw
+        require(n_emitted != 0, 'Unfulfilled action: EMITS');
+      } else if (action == STORES) {
+        // If the action is STORES, and this action has already been executed, throw
+        require(n_stored == 0, 'Duplicate action: STORES');
+        // Otherwise, store data and get amount of slots written to
+        // doStore increments the pointer to the end of the data portion of the action executed
+        (_ptr, n_stored) = doStore(_ptr, ptr_bound, _exec_id);
+        // If no storage was performed, returndata is malformed: throw
+        require(n_stored != 0, 'Unfulfilled action: STORES');
+      } else if (action == PAYS) {
+        // If the action is PAYS, and this action has already been executed, throw
+        require(n_paid == 0, 'Duplicate action: PAYS');
+        // Otherwise, forward ETH and get amount of addresses forwarded to
+        // doPay increments the pointer to the end of the data portion of the action executed
+        (_ptr, n_paid) = doPay(_ptr, ptr_bound);
+        // If no destinations recieved ETH, returndata is malformed: throw
+        require(n_paid != 0, 'Unfulfilled action: PAYS');
       } else {
-        if (action == EMITS) {
-          // If the action is EMITS, and this action has already been executed, throw
-          require(n_emitted == 0, 'Duplicate action: EMITS');
-          // Otherwise, emit events and get amount of events emitted
-          // doEmit returns the pointer incremented to the end of the data portion of the action executed
-          (_ptr, n_emitted) = doEmit(_ptr, ptr_bound);
-          // If 0 events were emitted, returndata is malformed: throw
-          require(n_emitted != 0, 'Unfulfilled action: EMITS');
-        } else if (action == STORES) {
-          // If the action is STORES, and this action has already been executed, throw
-          require(n_stored == 0, 'Duplicate action: STORES');
-          // Otherwise, store data and get amount of slots written to
-          // doStore increments the pointer to the end of the data portion of the action executed
-          (_ptr, n_stored) = doStore(_ptr, ptr_bound, _exec_id);
-          // If no storage was performed, returndata is malformed: throw
-          require(n_stored != 0, 'Unfulfilled action: STORES');
-        } else if (action == PAYS) {
-          // If the action is PAYS, and this action has already been executed, throw
-          require(n_paid == 0, 'Duplicate action: PAYS');
-          // Otherwise, forward ETH and get amount of addresses forwarded to
-          // doPay increments the pointer to the end of the data portion of the action executed
-          (_ptr, n_paid) = doPay(_ptr, ptr_bound);
-          // If no destinations recieved ETH, returndata is malformed: throw
-          require(n_paid != 0, 'Unfulfilled action: PAYS');
-        } else {
-          // Unrecognized action requested. returndata is malformed: throw
-          revert('Malformed returndata - unknown action');
-        }
+        // Unrecognized action requested. returndata is malformed: throw
+        revert('Malformed returndata - unknown action');
       }
     }
     assert(n_emitted != 0 || n_paid != 0 || n_stored != 0);
@@ -209,10 +204,10 @@ contract AbstractStorage {
       }
       // Get memory location to which returndata will be copied
       _returndata_ptr := msize
-      // Copy returned data to pointer location, starting with length
-      returndatacopy(_returndata_ptr, 0x20, sub(returndatasize, 0x20))
+      // Copy returned data to pointer location
+      returndatacopy(_returndata_ptr, 0, returndatasize)
       // Get maximum memory location value for returndata
-      ptr_bounds := add(_returndata_ptr, sub(returndatasize, 0x20))
+      ptr_bounds := add(_returndata_ptr, returndatasize)
       // Set new free-memory pointer to point after the returndata in memory
       // Returndata is automatically 32-bytes padded
       mstore(0x40, add(0x20, ptr_bounds))
@@ -232,12 +227,7 @@ contract AbstractStorage {
   // Executes the THROWS action, reverting any returned data back to the caller
   function doThrow(uint _ptr) internal pure {
     assert(getAction(_ptr) == THROWS);
-    assembly {
-      // The data following the action requestor is a bytes array with the data to be reverted to caller
-      // The size of the error is located before the pointer -
-      let size := mload(sub(_ptr, 0x20))
-      revert(_ptr, size)
-    }
+    assembly { revert(_ptr, returndatasize) }
   }
 
   /*
