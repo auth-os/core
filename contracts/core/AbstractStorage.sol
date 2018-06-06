@@ -33,7 +33,7 @@ contract AbstractStorage {
   bytes4 internal constant THROWS = bytes4(keccak256('Error(string)'));
 
   // SELECTORS //
-  
+
   bytes4 internal constant REG_APP
       = bytes4(keccak256('registerApp(bytes32,address,bytes4[],address[])'));
   bytes4 internal constant REG_APP_VER
@@ -58,8 +58,9 @@ contract AbstractStorage {
   @param _application: The target application to which the calldata will be forwarded
   @param _calldata: The calldata to forward to the application
   @return new_exec_id: A new, unique execution id paired with the created instance of the application
+  @return version: The name of the version of the instance
   */
-  function createInstance(address _sender, bytes32 _app_name, address _provider, bytes32 _registry_id, bytes _calldata) external payable returns (bytes32 new_exec_id) {
+  function createInstance(address _sender, bytes32 _app_name, address _provider, bytes32 _registry_id, bytes _calldata) external payable returns (bytes32 new_exec_id, bytes32 version) {
     // Ensure valid input -
     require(_sender != 0 && _app_name != 0 && _provider != 0 && _registry_id != 0 && _calldata.length >= 4, 'invalid input');
 
@@ -70,7 +71,8 @@ contract AbstractStorage {
     assert(getIndex(new_exec_id) == address(0));
 
     // Set the allowed addresses and selectors for the new instance, from the script registry -
-    address index = setImplementation(new_exec_id, _app_name, _provider, _registry_id);
+    address index;
+    (index, version) = setImplementation(new_exec_id, _app_name, _provider, _registry_id);
 
     // Set the exec id and sender addresses for the target application -
     setContext(new_exec_id, _sender);
@@ -85,6 +87,10 @@ contract AbstractStorage {
 
     // If execution reaches this point, newly generated exec id should be valid -
     assert(new_exec_id != bytes32(0));
+
+    // Ensure that any additional balance is transferred back to the sender -
+    if (address(this).balance > 0)
+      address(msg.sender).transfer(address(this).balance);
   }
 
   /*
@@ -119,6 +125,10 @@ contract AbstractStorage {
 
     // Emit event -
     emit ApplicationExecution(_exec_id, target);
+
+    // Ensure that any additional balance is transferred back to the sender -
+    if (address(this).balance > 0)
+      address(msg.sender).transfer(address(this).balance);
   }
 
   /// APPLICATION RETURNDATA HANDLING ///
@@ -221,12 +231,12 @@ contract AbstractStorage {
   @param _provider: The address of the account that registered an application under the given name
   @param _registry_id: The exec id of the registry from which the information will be read
   */
-  function setImplementation(bytes32 _new_exec_id, bytes32 _app_name, address _provider, bytes32 _registry_id) internal returns (address index) {
+  function setImplementation(bytes32 _new_exec_id, bytes32 _app_name, address _provider, bytes32 _registry_id) internal returns (address index, bytes32 version) {
     // Get the index address for the registry app associated with the passed-in exec id
     index = getIndex(_registry_id);
     require(index != address(0) && index != address(this), 'Registry application not found');
     // Get the name of the latest version from the registry app at the given address
-    bytes32 version = RegistryInterface(index).getLatestVersion(
+    version = RegistryInterface(index).getLatestVersion(
       address(this), _registry_id, _provider, _app_name
     );
     // Ensure the version name is valid -
@@ -253,7 +263,7 @@ contract AbstractStorage {
       put(_new_exec_id, seed, bytes32(implementations[i]));
     }
 
-    return index;
+    return (index, version);
   }
 
   // Returns the index address of an application using a given exec id, or 0x0

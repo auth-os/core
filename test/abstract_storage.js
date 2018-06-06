@@ -2507,8 +2507,4 @@ contract('AbstractStorage', function (accounts) {
       })
     })
   })
-
-  // describe('#createInstance', async () => {
-  //
-  // })
 })
