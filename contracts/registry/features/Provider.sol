@@ -101,7 +101,7 @@ library Provider {
     }
 
     //Set previous version to 0
-    Contract.set(previousVersion(_app, _app).to(uint(0));
+    Contract.set(previousVersion(_app, _app)).to(uint(0));
 
     // End execution and commit state changes to storage -
     Contract.commit();
