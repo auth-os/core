@@ -66,8 +66,8 @@ contract ScriptExec {
   */
   function exec(bytes32 _exec_id, bytes _calldata) external payable returns (bool success) {
     // Call 'exec' in AbstractStorage, passing in the sender's address, the app exec id, and the calldata to forward -
-    require(StorageInterface(app_storage).exec(msg.sender, _exec_id, _calldata), 'Storage reverted');
-    //TODO ^ function not found
+    StorageInterface(app_storage).exec(msg.sender, _exec_id, _calldata);
+
     // Get returned data
     success = checkReturn();
     // If execution failed, revert -
@@ -104,7 +104,7 @@ contract ScriptExec {
   @return exec_id: The execution id (within the application's storage) of the created application instance
   @return version: The name of the version of the instance
   */
-  function createAppInstance(bytes32 _app_name, bytes memory _init_calldata) external returns (bytes32 exec_id, bytes32 version) {
+  function createAppInstance(bytes32 _app_name, bytes _init_calldata) external returns (bytes32 exec_id, bytes32 version) {
     require(_app_name != 0 && _init_calldata.length >= 4, 'invalid input');
     (exec_id, version) = StorageInterface(app_storage).createInstance(
       msg.sender, _app_name, provider, registry_exec_id, _init_calldata
@@ -145,13 +145,12 @@ contract ScriptExec {
   }
 
   /*
-  Returns a list of instances deployed by an account
+  Returns the number of instances an address has created
   @param _deployer: The address that deployed the instances
   @return uint: The number of instances deployed by the deployer
-  @return Instance[]: A list of structs representing the instances deployed
-  */ // TODO struct return
-  function getDeployed(address _deployer) public view returns (uint, Instance[] memory) {
-    return (deployed_instances[_deployer].length, deployed_instances[_deployer]);
+  */
+  function getDeployedLength(address _deployer) public view returns (uint) {
+    return deployed_instances[_deployer].length;
   }
 
   // The function selector for a simple registry 'registerApp' function
