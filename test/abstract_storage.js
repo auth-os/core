@@ -10,7 +10,6 @@ let RevertApp = artifacts.require('./mock/RevertApp')
 // Util
 let AppInitUtil = artifacts.require('./util/AppInitUtil')
 let AppMockUtil = artifacts.require('./util/AppMockUtil')
-let ViewBalance = artifacts.require('./util/ViewBalance')
 
 function getTime() {
   let block = web3.eth.getBlock('latest')
@@ -23,16 +22,6 @@ function zeroAddress() {
 
 function hexStrEquals(hex, expected) {
   return web3.toAscii(hex).substring(0, expected.length) == expected;
-}
-
-function sendBalanceTo(_from, _to) {
-  let bal = web3.eth.getBalance(_from).toNumber()
-  web3.eth.sendTransaction({ from: _from, to: _to, value: bal, gasPrice: 0 })
-}
-
-async function getBalance(contract, owner) {
-  let bal = await contract.viewOwnerBalance.call(owner).should.be.fulfilled
-  return bal.toNumber()
 }
 
 contract('AbstractStorage', function (accounts) {
@@ -48,10 +37,7 @@ contract('AbstractStorage', function (accounts) {
   let storageLocations = [web3.toHex('AA'), web3.toHex('BB')]
   let storageValues = ['CC', 'DD']
   // EmitsApp
-  let initHash = web3.sha3('ApplicationInitialized(bytes32,address,address,address)')
-  let finalHash = web3.sha3('ApplicationFinalization(bytes32,address)')
-  let execHash = web3.sha3('ApplicationExecution(bytes32,address)')
-  let payHash = web3.sha3('DeliveredPayment(bytes32,address,uint256)')
+  let initHash = web3.sha3('ApplicationInitialized(bytes32,address,address)')
   let emitTopics = ['aaaaa', 'bbbbbb', 'ccccc', 'ddddd']
   let emitData1 = 'tiny'
   let emitData2 = 'much much much much much much much much larger'
