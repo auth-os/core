@@ -1,6 +1,6 @@
 pragma solidity ^0.4.23;
 
-import "../../core/Contract.sol";
+import '../../core/Contract.sol';
 
 library Provider {
 
@@ -63,7 +63,7 @@ library Provider {
     if (_selectors.length != _implementations.length || _selectors.length == 0)
       revert("invalid input arrays");
 
-    //Start storing values
+    // Start storing values
     Contract.storing();
 
     // Store the app name in the list of registered app names
@@ -78,7 +78,7 @@ library Provider {
     // Store the app name at app_base
     Contract.set(appBase(_app)).to(_app);
 
-    //Set the first version to this app
+    // Set the first version to this app
     Contract.set(versionBase(_app, _app)).to(_app);
 
     // Push the app to its own version list as the first version
@@ -100,7 +100,7 @@ library Provider {
       Contract.set(bytes32(32 * (i + 1) + uint(versionAddresses(_app, _app)))).to(_implementations[i]);
     }
 
-    //Set previous version to 0
+    // Set previous version to 0
     Contract.set(previousVersion(_app, _app)).to(uint(0));
 
     // End execution and commit state changes to storage -
@@ -124,7 +124,7 @@ library Provider {
       _selectors.length == 0
     ) revert("Invalid input array lengths");
 
-    //Begin storing values
+    // Begin storing values
     Contract.storing();
 
     // Store the version name at version_base

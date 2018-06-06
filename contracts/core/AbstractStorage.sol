@@ -1,6 +1,6 @@
 pragma solidity ^0.4.23;
 
-import "./interfaces/RegistryInterface.sol";
+import '../interfaces/RegistryInterface.sol';
 
 contract AbstractStorage {
 

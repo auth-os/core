@@ -1,8 +1,8 @@
 pragma solidity ^0.4.23;
 
-import "../core/Contract.sol";
-import "../interfaces/GetterInterface.sol";
-import "../lib/ArrayUtils.sol";
+import '../core/Contract.sol';
+import '../interfaces/GetterInterface.sol';
+import '../lib/ArrayUtils.sol';
 
 library RegistryIdx {
 
