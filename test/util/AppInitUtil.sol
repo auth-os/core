@@ -12,7 +12,7 @@ contract AppInitUtil {
 
   function initEmits(bytes32) public pure returns (bytes memory) { return msg.data; }
 
-  function initPays(address, uint) public pure returns (bytes memory) { return msg.data; }
+  function initPays(address) public pure returns (bytes memory) { return msg.data; }
 
   function initStores(bytes32, bytes32) public pure returns (bytes memory) { return msg.data; }
 
