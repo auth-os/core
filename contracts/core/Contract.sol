@@ -1,6 +1,6 @@
 pragma solidity ^0.4.23;
 
-import "../lib/SafeMath.sol";
+import '../lib/SafeMath.sol';
 
 library Contract {
 
