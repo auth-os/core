@@ -32,7 +32,6 @@ contract('AbstractStorage', function (accounts) {
 
   let storage
   let exec = accounts[0]
-  let updater = accounts[1]
 
   // PayableApp
   let payees = [accounts[3], accounts[4]]
@@ -41,15 +40,11 @@ contract('AbstractStorage', function (accounts) {
   let storageLocations = [web3.toHex('AA'), web3.toHex('BB')]
   let storageValues = ['CC', 'DD']
   // EmitsApp
-  let initHash = web3.sha3('ApplicationInitialized(bytes32,address,address)')
   let execHash = web3.sha3('ApplicationExecution(bytes32,address)')
   let payHash = web3.sha3('DeliveredPayment(bytes32,address,uint256)')
   let emitTopics = ['aaaaa', 'bbbbbb', 'ccccc', 'ddddd']
   let emitData1 = 'tiny'
   let emitData2 = 'much much much much much much much much larger'
-  // RevertApp
-  let revertMessage = 'appreverted'
-  let throwMessage = 'this application threw'
 
   let otherAddr = accounts[accounts.length - 1]
 
@@ -74,9 +69,7 @@ contract('AbstractStorage', function (accounts) {
   let stdAppName = 'stdapp'
   let stdAppName2 = 'stdapp2'
   let version1 = '0.0.1'
-  let version2 = '0.0.2'
   let appSelectors
-  let appAllowed
 
   let stdAppCalldata
 
@@ -311,14 +304,9 @@ contract('AbstractStorage', function (accounts) {
 
     describe('StdApp (app stores data)', async () => {
 
-      let target
       let calldata
       let returnData
       let execEvents
-
-      beforeEach(async () => {
-        target = stdApp.address
-      })
 
       describe('storing to 0 slots', async () => {
 
@@ -346,12 +334,12 @@ contract('AbstractStorage', function (accounts) {
           calldata.should.not.eq('0x0')
 
           returnData = await storage.exec.call(
-            target, executionID, calldata,
+            exec, executionID, calldata,
             { from: exec }
           ).should.be.fulfilled
 
           execEvents = await storage.exec(
-            target, executionID, calldata,
+            exec, executionID, calldata,
             { from: exec }
           ).should.be.fulfilled.then((tx) => {
             return tx.logs
@@ -391,7 +379,7 @@ contract('AbstractStorage', function (accounts) {
 
           it('should match the targeted app address', async () => {
             let emittedAddr = execEvents[0].args['script_target']
-            emittedAddr.should.be.eq(target)
+            emittedAddr.should.be.eq(stdApp.address)
           })
         })
 
@@ -413,12 +401,12 @@ contract('AbstractStorage', function (accounts) {
           calldata.should.not.eq('0x0')
 
           returnData = await storage.exec.call(
-            target, executionID, calldata,
+            exec, executionID, calldata,
             { from: exec }
           ).should.be.fulfilled
 
           execEvents = await storage.exec(
-            target, executionID, calldata,
+            exec, executionID, calldata,
             { from: exec }
           ).should.be.fulfilled.then((tx) => {
             return tx.logs
@@ -458,7 +446,7 @@ contract('AbstractStorage', function (accounts) {
 
           it('should match the targeted app address', async () => {
             let emittedAddr = execEvents[0].args['script_target']
-            emittedAddr.should.be.eq(target)
+            emittedAddr.should.be.eq(stdApp.address)
           })
         })
 

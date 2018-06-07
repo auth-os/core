@@ -31,6 +31,10 @@ contract ScriptExec {
   // Maps an application name to the exec ids under which it is deployed -
   mapping (bytes32 => bytes32[]) public app_instances;
 
+  /// EVENTS ///
+
+  event AppInstanceCreated(address indexed creator, bytes32 indexed execution_id, bytes32 app_name, bytes32 version_name);
+
   // Modifier - The sender must be the contract administrator
   modifier onlyAdmin() {
     require(msg.sender == exec_admin);
@@ -47,6 +51,7 @@ contract ScriptExec {
   @param _provider: The address under which applications have been initialized
   */
   constructor (address _exec_admin, address _app_storage, address _provider) public {
+    require(_app_storage != 0, 'Invalid input');
     exec_admin = _exec_admin;
     app_storage = _app_storage;
     provider = _provider;
@@ -66,7 +71,7 @@ contract ScriptExec {
   */
   function exec(bytes32 _exec_id, bytes _calldata) external payable returns (bool success) {
     // Call 'exec' in AbstractStorage, passing in the sender's address, the app exec id, and the calldata to forward -
-    StorageInterface(app_storage).exec(msg.sender, _exec_id, _calldata);
+    StorageInterface(app_storage).exec.value(msg.value)(msg.sender, _exec_id, _calldata);
 
     // Get returned data
     success = checkReturn();
@@ -117,6 +122,8 @@ contract ScriptExec {
     );
     instance_info[exec_id] = inst;
     deployed_instances[msg.sender].push(inst);
+    // Emit event -
+    emit AppInstanceCreated(msg.sender, exec_id, _app_name, version);
   }
 
   /// ADMIN FUNCTIONS ///
@@ -133,8 +140,14 @@ contract ScriptExec {
   Allows the exec admin to set the provider from which applications will be initialized in the given registry exec id
   @param _provider: The address under which applications to initialize are registered
   */
-  function setProvder(address _provider) public onlyAdmin() {
+  function setProvider(address _provider) public onlyAdmin() {
     provider = _provider;
+  }
+
+  // Allows the admin to set a new admin address
+  function setAdmin(address _admin) public onlyAdmin() {
+    require(_admin != 0);
+    exec_admin = _admin;
   }
 
   /// STORAGE GETTERS ///
