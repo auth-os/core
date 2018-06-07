@@ -77,8 +77,6 @@ contract('ScriptExec', function (accounts) {
   let regUtil
   let regProvider
   let regIdx
-  let registrySelectors
-  let registryAllowed
 
   before(async () => {
     storage = await AbstractStorage.new().should.be.fulfilled
