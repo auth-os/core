@@ -129,6 +129,10 @@ contract('ScriptExec', function (accounts) {
 
   beforeEach(async () => {
     scriptExec = await ScriptExec.new(
+      { from: execAdmin }
+    ).should.be.fulfilled
+
+    scriptExec.configure(
       execAdmin, storage.address, provider,
       { from: execAdmin }
     ).should.be.fulfilled
@@ -142,6 +146,10 @@ contract('ScriptExec', function (accounts) {
 
       beforeEach(async () => {
         testExec = await ScriptExec.new(
+          { from: execAdmin }
+        ).should.be.fulfilled
+
+        testExec.configure(
           zeroAddress(), storage.address, provider,
           { from: execAdmin }
         ).should.be.fulfilled
@@ -164,6 +172,10 @@ contract('ScriptExec', function (accounts) {
 
       beforeEach(async () => {
         testExec = await ScriptExec.new(
+          { from: execAdmin }
+        ).should.be.fulfilled
+
+        testExec.configure(
           execAdmin, storage.address, provider,
           { from: execAdmin }
         ).should.be.fulfilled
