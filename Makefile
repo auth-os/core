@@ -20,9 +20,9 @@ flat:
 	mkdir -p flat
 
 	cp contracts/*.sol tmp/
+	cp contracts/interfaces/* tmp/
 	cp contracts/lib/* tmp/
-	cp contracts/registry/functions/*.sol tmp/
-	cp contracts/registry/functions/init/* tmp/
+	cp contracts/registry/features/*.sol tmp/
 	cp contracts/registry/*.sol tmp/
 	cp contracts/core/* tmp/
 

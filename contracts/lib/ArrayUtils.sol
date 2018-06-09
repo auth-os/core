@@ -2,21 +2,11 @@ pragma solidity ^0.4.23;
 
 library ArrayUtils {
 
-  function toUintArr(bytes32[] memory arr) internal pure returns (uint[] memory converted) {
-    assembly {
-      converted := arr
-    }
+  function toBytes4Arr(bytes32[] memory _arr) internal pure returns (bytes4[] memory _conv) {
+    assembly { _conv := _arr }
   }
 
-  function toIntArr(bytes32[] memory arr) internal pure returns (int[] memory converted) {
-    assembly {
-      converted := arr
-    }
-  }
-
-  function toAddressArr(bytes32[] memory arr) internal pure returns (address[] memory converted) {
-    assembly {
-      converted := arr
-    }
+  function toAddressArr(bytes32[] memory _arr) internal pure returns (address[] memory _conv) {
+    assembly { _conv := _arr }
   }
 }

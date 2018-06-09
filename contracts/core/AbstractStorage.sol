@@ -1,250 +1,135 @@
 pragma solidity ^0.4.23;
 
+import '../interfaces/RegistryInterface.sol';
+
 contract AbstractStorage {
 
-  struct Application {
-    bool is_paused;
-    bool is_active;
-    bool is_payable;
-    address updater;
-    address script_exec;
-    address init;
-  }
+  // Special storage locations - applications can read from 0x0 to get the execution id, and 0x20
+  // to get the sender from which the call originated
+  bytes32 private exec_id;
+  address private sender;
 
   // Keeps track of the number of applicaions initialized, so that each application has a unique execution id
   uint private nonce;
 
-  // Maps execution ids to application information
-  mapping (bytes32 => Application) public app_info;
-
-  // Maps execution ids to permissioned storage addresses, to index in allowed_addr_list (if nonzero, can store)
-  // Because uint value is 0 by default, this reference is 1-indexed (actual indices are minus 1)
-  mapping (bytes32 => mapping (address => uint)) public allowed_addresses;
-
-  // Maps execution ids to an array of allowed addresses
-  mapping (bytes32 => address[]) public allowed_addr_list;
-
-  /// CONSTANTS ///
-
-  // ACTION REQUESTORS //
-
-  bytes4 internal constant EMITS = bytes4(keccak256('emits:'));
-  bytes4 internal constant STORES = bytes4(keccak256('stores:'));
-  bytes4 internal constant PAYS = bytes4(keccak256('pays:'));
-  bytes4 internal constant THROWS = bytes4(keccak256('throws:'));
-
-  // OTHER //
-
-  bytes internal constant DEFAULT_EXCEPTION = "DefaultException";
-
   /// EVENTS ///
 
-  // GENERAL //
-
-  event ApplicationInitialized(bytes32 indexed execution_id, address indexed init_address, address script_exec, address updater);
-  event ApplicationFinalization(bytes32 indexed execution_id, address indexed init_address);
+  event ApplicationInitialized(bytes32 indexed execution_id, address indexed index, address script_exec);
   event ApplicationExecution(bytes32 indexed execution_id, address indexed script_target);
   event DeliveredPayment(bytes32 indexed execution_id, address indexed destination, uint amount);
 
-  // EXCEPTION HANDLING //
+  /// CONSTANTS ///
 
-  event ApplicationException(address indexed application_address, bytes32 indexed execution_id, bytes message); // Target execution address has emitted an exception, and reverted state
+  // STORAGE LOCATIONS //
 
-  // Modifier - ensures an application is not paused or inactive, and that the sender matches the script exec address
-  // If value was sent, ensures the application is marked as payable
-  modifier validState(bytes32 _exec_id) {
-    require(
-      app_info[_exec_id].is_paused == false
-      && app_info[_exec_id].is_active == true
-      && app_info[_exec_id].script_exec == msg.sender
-    );
+  bytes32 internal constant EXEC_PERMISSIONS = keccak256('script_exec_permissions');
+  bytes32 internal constant APP_IDX_ADDR = keccak256('index');
 
-    // If value was sent, ensure application is marked payable
-    if (msg.value > 0)
-      require(app_info[_exec_id].is_payable);
+  // ACTION REQUESTORS //
 
-    _;
+  bytes4 internal constant EMITS = bytes4(keccak256('Emit((bytes32[],bytes)[])'));
+  bytes4 internal constant STORES = bytes4(keccak256('Store(bytes32[])'));
+  bytes4 internal constant PAYS = bytes4(keccak256('Pay(bytes32[])'));
+  bytes4 internal constant THROWS = bytes4(keccak256('Error(string)'));
+
+  // SELECTORS //
+
+  bytes4 internal constant REG_APP
+      = bytes4(keccak256('registerApp(bytes32,address,bytes4[],address[])'));
+  bytes4 internal constant REG_APP_VER
+      = bytes4(keccak256('registerAppVersion(bytes32,bytes32,address,bytes4[],address[])'));
+
+  // Creates an instance of a registry application and returns the execution id
+  function createRegistry(address _registry_idx, address _implementation) external returns (bytes32) {
+    bytes32 new_exec_id = keccak256(++nonce);
+    put(new_exec_id, keccak256(msg.sender, EXEC_PERMISSIONS), bytes32(1));
+    put(new_exec_id, APP_IDX_ADDR, bytes32(_registry_idx));
+    put(new_exec_id, keccak256(REG_APP, 'implementation'), bytes32(_implementation));
+    put(new_exec_id, keccak256(REG_APP_VER, 'implementation'), bytes32(_implementation));
+    emit ApplicationInitialized(new_exec_id, _registry_idx, msg.sender);
+    return new_exec_id;
   }
 
-  // Modifier - ensures an application is paused, and that the sender is the app's updater address
-  modifier onlyUpdate(bytes32 _exec_id) {
-    require(app_info[_exec_id].is_paused && app_info[_exec_id].updater == msg.sender);
-    _;
-  }
-
-  /// APPLICATION EXECUTION ///
+  /// APPLICATION INSTANCE INITIALIZATION ///
 
   /*
-  ** Application execution follows a standard pattern:
-  ** Application libraries are forwarded passed-in calldata via staticcall (no
-  ** state changes). Application libraries must make use of 'read' and 'readMulti'
-  ** to read values from storage and execute logic on read values. Because application
-  ** libraries are stateless, they cannot emit events, store data, or forward Ether.
-  **
-  ** As such, applications must tell the storage contract which of these events should
-  ** occur upon successful execution so that the storage contract is able to handle them
-  ** for the application library. This is done through the data returned by the application
-  ** library. Returned data is formatted in such a way that the storage contract is able to
-  ** parse the data and execute various actions.
-  **
-  ** Actions allowed are: EMITS, PAYS, STORES, and THROWS. More information on these is provided
-  ** in the executeAppReturn function.
+  Executes an initialization function of an application, generating a new exec id that will be associated with that address
+
+  @param _sender: The sender of the transaction, as reported by the script exec contract
+  @param _application: The target application to which the calldata will be forwarded
+  @param _calldata: The calldata to forward to the application
+  @return new_exec_id: A new, unique execution id paired with the created instance of the application
+  @return version: The name of the version of the instance
   */
+  function createInstance(address _sender, bytes32 _app_name, address _provider, bytes32 _registry_id, bytes _calldata) external payable returns (bytes32 new_exec_id, bytes32 version) {
+    // Ensure valid input -
+    require(_sender != 0 && _app_name != 0 && _provider != 0 && _registry_id != 0 && _calldata.length >= 4, 'invalid input');
+
+    // Create new exec id by incrementing the nonce -
+    new_exec_id = keccak256(++nonce);
+
+    // Sanity check - verify that this exec id is not linked to an existing application -
+    assert(getIndex(new_exec_id) == address(0));
+
+    // Set the allowed addresses and selectors for the new instance, from the script registry -
+    address index;
+    (index, version) = setImplementation(new_exec_id, _app_name, _provider, _registry_id);
+
+    // Set the exec id and sender addresses for the target application -
+    setContext(new_exec_id, _sender);
+
+    // Execute application, create a new exec id, and commit the returned data to storage -
+    require(address(index).delegatecall(_calldata) == false, 'Unsafe execution');
+    // Get data returned from call revert and perform requested actions -
+    executeAppReturn(new_exec_id);
+
+    // Emit event
+    emit ApplicationInitialized(new_exec_id, index, msg.sender);
+
+    // If execution reaches this point, newly generated exec id should be valid -
+    assert(new_exec_id != bytes32(0));
+
+    // Ensure that any additional balance is transferred back to the sender -
+    if (address(this).balance > 0)
+      address(msg.sender).transfer(address(this).balance);
+  }
 
   /*
-  Executes an initialized application under a given execution id, with given logic target and calldata
+  Executes an initialized application associated with the given exec id, under the sender's address and with
+  the given calldata
 
-  @param _target: The logic address for the application to execute. Passed-in calldata is forwarded here as a static call, and the return value is parsed for executable actions.
-  @param _exec_id: The application execution id under which action requests for this application are made
-  @param _calldata: The calldata to forward to the application. Typically, this is created in the script exec contract and contains information about the original sender's address and execution id
-  @mod validState(_exec_id): Ensures the application is active and unpaused, and that the sender is the script exec contract. Also ensures that if wei was sent, the app is registered as payable
+  @param _sender: The address reported as the call sender by the script exec contract
+  @param _exec_id: The execution id corresponding to an instance of the application
+  @param _calldata: The calldata to forward to the application
   @return n_emitted: The number of events emitted on behalf of the application
   @return n_paid: The number of destinations ETH was forwarded to on behalf of the application
   @return n_stored: The number of storage slots written to on behalf of the application
   */
-  function exec(address _target, bytes32 _exec_id, bytes _calldata) public payable validState(_exec_id) returns (uint n_emitted, uint n_paid, uint n_stored) {
+  function exec(address _sender, bytes32 _exec_id, bytes _calldata) external payable returns (uint n_emitted, uint n_paid, uint n_stored) {
     // Ensure valid input and input size - minimum 4 bytes
-    require(_calldata.length >= 4 && _target != address(0) && _exec_id != bytes32(0));
+    require(_calldata.length >= 4 && _sender != address(0) && _exec_id != bytes32(0));
 
-    // Ensure sender is script executor for this exec id
-    require(msg.sender == app_info[_exec_id].script_exec);
+    // Get the target address associated with the given exec id
+    address target = getTarget(_exec_id, getSelector(_calldata));
+    require(target != address(0), 'Uninitialized application');
 
-    // Ensure app logic address has been approved for this exec id
-    require(allowed_addresses[_exec_id][_target] != 0);
+    // Set the exec id and sender addresses for the target application -
+    setContext(_exec_id, _sender);
 
-    // Script executor and passed-in request are valid. Execute application and store return to this application's storage
-    bool success;
-    assembly {
-      // Forward passed-in calldata to target contract
-      success := staticcall(gas, _target, add(0x20, _calldata), mload(_calldata), 0, 0)
-    }
-    // If the call to the application failed, emit an ApplicationException and return failure
-    if (!success) {
-      handleException(_target, _exec_id);
-      return(0, 0, 0);
-    } else {
-      (n_emitted, n_paid, n_stored) = executeAppReturn(_exec_id);
-    }
+    // Execute application and commit returned data to storage -
+    require(address(target).delegatecall(_calldata) == false, 'Unsafe execution');
+    (n_emitted, n_paid, n_stored) = executeAppReturn(_exec_id);
 
+    // If no events were emitted, no wei was forwarded, and no storage was changed, revert -
     if (n_emitted == 0 && n_paid == 0 && n_stored == 0)
       revert('No state change occured');
 
-    emit ApplicationExecution(_exec_id, _target);
+    // Emit event -
+    emit ApplicationExecution(_exec_id, target);
 
-    // If execution reaches this point, call should have succeeded -
-    assert(success);
-  }
-
-  /// APPLICATION INITIALIZATION ///
-
-  /*
-  ** Applications are initialized by a script execution address (typically, a
-  ** standard contract). The executor specifies a permissioned updater address,
-  ** as well as an 'init' address and a set of 'allowed' permissioned addresses
-  ** which can access app storage through exec calls made to this contract.
-  ** The 'init' address acts as the constructor to the application, and will
-  ** only be called once, with _init_calldata.
-  **
-  ** Script executor addresses, init addresses, and updater addresses cannot be
-  ** permissioned storage addresses.
-  */
-
-  /*
-  Initializes an application under a generated unique execution id. All storage requests for this application will use this execution context id.
-  Applications are paused and inactive by default, and can be un-paused (and activated) by the script exec contract. This allows for fine-tuned control
-  of allowed addresses prior to live functionality.
-
-  @param _updater: This address can add or remove addresses from the exec id's allowed address list. The updater address can also pause app execution. Can be 0.
-  @param _is_payable: Designates whether functions in these contracts should expect wei
-  @param _init: This address contains logic for the application's initialize function, which sets up initial variables like a constructor
-  @param _init_calldata: ABI-encoded calldata which will be forwarded to the init target address
-  @param _allowed: These addresses can be called through this contract's exec function, and can access storage
-  @return exec_id: The unique exec id to be used by this application
-  */
-  function initAppInstance(address _updater, bool _is_payable, address _init, bytes _init_calldata, address[] _allowed) public returns (bytes32 exec_id) {
-    exec_id = keccak256(++nonce, address(this));
-
-    uint size;
-    // Execute application init call
-    bool success;
-    assembly {
-      success := staticcall(gas, _init, add(0x20, _init_calldata), mload(_init_calldata), 0, 0)
-      size := returndatasize
-    }
-    // If the call failed, emit an error message and return
-    if (!success) {
-      handleException(_init, exec_id);
-      return bytes32(0);
-    } else if (size > 0) {
-      // If the call succeeded and returndatasize is nonzero, parse returned data for actions
-      executeAppReturn(exec_id);
-    }
-
-    // Set application information, and set app to paused and inactive
-    app_info[exec_id] = Application({
-      is_paused: true,
-      is_active: false,
-      is_payable: _is_payable,
-      updater: _updater,
-      script_exec: msg.sender,
-      init: _init
-    });
-
-    // Loop over given allowed addresses, and add to mapping
-    for (uint i = 0; i < _allowed.length; i++) {
-      // Allowed addresses cannot be script executor, _init address, or _updater address
-      require(msg.sender != _allowed[i] && _init != _allowed[i] && _updater != _allowed[i]);
-      // Allowed addresses cannot be added several times - skip this iteration
-      if (allowed_addresses[exec_id][_allowed[i]] != 0)
-        continue;
-      allowed_addresses[exec_id][_allowed[i]] = i + 1;
-      allowed_addr_list[exec_id].push(_allowed[i]);
-    }
-
-    // emit Event
-    emit ApplicationInitialized(exec_id, _init, msg.sender, _updater);
-    // Sanity check - ensure valid exec id
-    assert(exec_id != bytes32(0));
-  }
-
-  /*
-  Called by the an application's script exec contract: Activates an application and un-pauses it.
-
-  @param _exec_id: The unique execution id under which the application stores data
-  */
-  function finalizeAppInstance(bytes32 _exec_id) public {
-    require(_exec_id != 0);
-    // Ensure application is registered, inactive, and paused
-    require(
-      app_info[_exec_id].script_exec == msg.sender
-      && app_info[_exec_id].is_active == false
-      && app_info[_exec_id].is_paused == true
-    );
-
-    // Emit event
-    emit ApplicationFinalization(_exec_id, app_info[_exec_id].init);
-    // Set application status as active and unpaused
-    app_info[_exec_id].is_paused = false;
-    app_info[_exec_id].is_active = true;
-  }
-
-  /*
-  Initializes an application under a generated unique execution id, and finalizes it (disallows addition/removal of addresses). All storage requests for this application will use this execution context id.
-  Applications are paused and inactive by default, and can be un-paused (and activated) by the script exec contract. This allows for fine-tuned control
-  of allowed addresses prior to live functionality.
-
-  @param _updater: This address can add or remove addresses from the exec id's allowed address list. The updater address can also pause app execution. Can be 0.
-  @param _is_payable: Designates whether functions in these contracts should expect wei
-  @param _init: This address contains logic for the application's initialize function, which sets up initial variables like a constructor
-  @param _init_calldata: ABI-encoded calldata which will be forwarded to the init target address
-  @param _allowed: These addresses can be called through this contract's exec function, and can access storage
-  @return exec_id: The unique exec id to be used by this application
-  */
-  function initAndFinalize(address _updater, bool _is_payable, address _init, bytes _init_calldata, address[] _allowed) public returns (bytes32 exec_id) {
-    exec_id = initAppInstance(_updater, _is_payable, _init, _init_calldata, _allowed);
-    require(exec_id != bytes32(0));
-    finalizeAppInstance(exec_id);
-    assert(exec_id != bytes32(0));
+    // Ensure that any additional balance is transferred back to the sender -
+    if (address(this).balance > 0)
+      address(msg.sender).transfer(address(this).balance);
   }
 
   /// APPLICATION RETURNDATA HANDLING ///
@@ -289,53 +174,144 @@ contract AbstractStorage {
   function executeAppReturn(bytes32 _exec_id) internal returns (uint n_emitted, uint n_paid, uint n_stored) {
     uint _ptr;      // Will be a pointer to the data returned by the application call
     uint ptr_bound; // Will be the maximum value of the pointer possible (end of the memory stored in the pointer)
-    (ptr_bound, _ptr)= getReturnedData();
-    // Ensure there are at least 32 bytes stored at the pointer
-    require(ptr_bound >= _ptr + 32, 'Malformed returndata - invalid size');
-    _ptr += 32;
+    (ptr_bound, _ptr) = getReturnedData();
+    // If the application reverted with an error, we can check directly for its selector -
+    if (getAction(_ptr) == THROWS) {
+      // Execute THROWS request
+      doThrow(_ptr);
+      // doThrow should revert, so we should never reach this point
+      assert(false);
+    }
+
+    // Ensure there are at least 64 bytes stored at the pointer
+    require(ptr_bound >= _ptr + 64, 'Malformed returndata - invalid size');
+    _ptr += 64;
 
     // Iterate over returned data and execute actions
     bytes4 action;
     while (_ptr <= ptr_bound && (action = getAction(_ptr)) != 0x0) {
-      if (action == THROWS) {
-        // If the action is THROWS and any other action has been executed, throw
-        require(n_emitted == 0 && n_paid == 0 && n_stored == 0, 'Malformed returndata - THROWS out of position');
-        // Execute THROWS request
-        doThrow(_ptr);
-        // doThrow should revert, so we should never reach this point
-        assert(false);
+      if (action == EMITS) {
+        // If the action is EMITS, and this action has already been executed, throw
+        require(n_emitted == 0, 'Duplicate action: EMITS');
+        // Otherwise, emit events and get amount of events emitted
+        // doEmit returns the pointer incremented to the end of the data portion of the action executed
+        (_ptr, n_emitted) = doEmit(_ptr, ptr_bound);
+        // If 0 events were emitted, returndata is malformed: throw
+        require(n_emitted != 0, 'Unfulfilled action: EMITS');
+      } else if (action == STORES) {
+        // If the action is STORES, and this action has already been executed, throw
+        require(n_stored == 0, 'Duplicate action: STORES');
+        // Otherwise, store data and get amount of slots written to
+        // doStore increments the pointer to the end of the data portion of the action executed
+        (_ptr, n_stored) = doStore(_ptr, ptr_bound, _exec_id);
+        // If no storage was performed, returndata is malformed: throw
+        require(n_stored != 0, 'Unfulfilled action: STORES');
+      } else if (action == PAYS) {
+        // If the action is PAYS, and this action has already been executed, throw
+        require(n_paid == 0, 'Duplicate action: PAYS');
+        // Otherwise, forward ETH and get amount of addresses forwarded to
+        // doPay increments the pointer to the end of the data portion of the action executed
+        (_ptr, n_paid) = doPay(_exec_id, _ptr, ptr_bound);
+        // If no destinations recieved ETH, returndata is malformed: throw
+        require(n_paid != 0, 'Unfulfilled action: PAYS');
       } else {
-        if (action == EMITS) {
-          // If the action is EMITS, and this action has already been executed, throw
-          require(n_emitted == 0, 'Duplicate action: EMITS');
-          // Otherwise, emit events and get amount of events emitted
-          // doEmit returns the pointer incremented to the end of the data portion of the action executed
-          (_ptr, n_emitted) = doEmit(_ptr, ptr_bound);
-          // If 0 events were emitted, returndata is malformed: throw
-          require(n_emitted != 0, 'Unfulfilled action: EMITS');
-        } else if (action == STORES) {
-          // If the action is STORES, and this action has already been executed, throw
-          require(n_stored == 0, 'Duplicate action: STORES');
-          // Otherwise, store data and get amount of slots written to
-          // doStore increments the pointer to the end of the data portion of the action executed
-          (_ptr, n_stored) = doStore(_ptr, ptr_bound, _exec_id);
-          // If no storage was performed, returndata is malformed: throw
-          require(n_stored != 0, 'Unfulfilled action: STORES');
-        } else if (action == PAYS) {
-          // If the action is PAYS, and this action has already been executed, throw
-          require(n_paid == 0, 'Duplicate action: PAYS');
-          // Otherwise, forward ETH and get amount of addresses forwarded to
-          // doPay increments the pointer to the end of the data portion of the action executed
-          (_ptr, n_paid) = doPay(_ptr, ptr_bound, _exec_id);
-          // If no destinations recieved ETH, returndata is malformed: throw
-          require(n_paid != 0, 'Unfulfilled action: PAYS');
-        } else {
-          // Unrecognized action requested. returndata is malformed: throw
-          revert('Malformed returndata - unknown action');
-        }
+        // Unrecognized action requested. returndata is malformed: throw
+        revert('Malformed returndata - unknown action');
       }
     }
     assert(n_emitted != 0 || n_paid != 0 || n_stored != 0);
+  }
+
+  /// HELPERS ///
+
+  /*
+  Reads application information from the script registry, and sets up permissions for the new instance's various functions
+
+  @param _new_exec_id: The execution id being created, for which permissions will be registered
+  @param _app_name: The name of the new application instance - corresponds to an application registered by the provider under that name
+  @param _provider: The address of the account that registered an application under the given name
+  @param _registry_id: The exec id of the registry from which the information will be read
+  */
+  function setImplementation(bytes32 _new_exec_id, bytes32 _app_name, address _provider, bytes32 _registry_id) internal returns (address index, bytes32 version) {
+    // Get the index address for the registry app associated with the passed-in exec id
+    index = getIndex(_registry_id);
+    require(index != address(0) && index != address(this), 'Registry application not found');
+    // Get the name of the latest version from the registry app at the given address
+    version = RegistryInterface(index).getLatestVersion(
+      address(this), _registry_id, _provider, _app_name
+    );
+    // Ensure the version name is valid -
+    require(version != bytes32(0), 'Invalid version name');
+
+    // Get the allowed selectors and addresses for the new instance from the registry app
+    bytes4[] memory selectors;
+    address[] memory implementations;
+    (index, selectors, implementations) = RegistryInterface(index).getVersionImplementation(
+      address(this), _registry_id, _provider, _app_name, version
+    );
+    // Ensure a valid index address for the new instance -
+    require(index != address(0), 'Invalid index address');
+    // Ensure a nonzero number of allowed selectors and implementing addresses -
+    require(selectors.length == implementations.length && selectors.length != 0, 'Invalid implementation length');
+
+    // Set the index address for the new instance -
+    bytes32 seed = APP_IDX_ADDR;
+    put(_new_exec_id, seed, bytes32(index));
+    // Loop over implementing addresses, and map each function selector to its corresponding address for the new instance
+    for (uint i = 0; i < selectors.length; i++) {
+      require(selectors[i] != 0 && implementations[i] != 0, 'invalid input - expected nonzero implementation');
+      seed = keccak256(selectors[i], 'implementation');
+      put(_new_exec_id, seed, bytes32(implementations[i]));
+    }
+
+    return (index, version);
+  }
+
+  // Returns the index address of an application using a given exec id, or 0x0
+  // if the instance does not exist
+  function getIndex(bytes32 _exec_id) public view returns (address) {
+    bytes32 seed = APP_IDX_ADDR;
+    function (bytes32, bytes32) view returns (address) getter;
+    assembly { getter := readMap }
+    return getter(_exec_id, seed);
+  }
+
+  // Returns the address to which calldata with the given selector will be routed
+  function getTarget(bytes32 _exec_id, bytes4 _selector) public view returns (address) {
+    bytes32 seed = keccak256(_selector, 'implementation');
+    function (bytes32, bytes32) view returns (address) getter;
+    assembly { getter := readMap }
+    return getter(_exec_id, seed);
+  }
+
+  struct Map { mapping(bytes32 => bytes32) inner; }
+
+  // Receives a storage pointer and returns the value mapped to the seed at that pointer
+  function readMap(Map storage _map, bytes32 _seed) internal view returns (bytes32) {
+    return _map.inner[_seed];
+  }
+
+  // Maps the seed to the value within the execution id's storage
+  function put(bytes32 _exec_id, bytes32 _seed, bytes32 _val) internal {
+    function (bytes32, bytes32, bytes32) puts;
+    assembly { puts := putMap }
+    puts(_exec_id, _seed, _val);
+  }
+
+  // Receives a storage pointer and maps the seed to the value at that pointer
+  function putMap(Map storage _map, bytes32 _seed, bytes32 _val) internal {
+    _map.inner[_seed] = _val;
+  }
+
+  /// APPLICATION EXECUTION ///
+
+  function getSelector(bytes memory _calldata) internal pure returns (bytes4 sel) {
+    assembly {
+      sel := and(
+        mload(add(0x20, _calldata)),
+        0xffffffff00000000000000000000000000000000000000000000000000000000
+      )
+    }
   }
 
   /*
@@ -354,10 +330,10 @@ contract AbstractStorage {
       }
       // Get memory location to which returndata will be copied
       _returndata_ptr := msize
-      // Copy returned data to pointer location, starting with length
-      returndatacopy(_returndata_ptr, 0x20, sub(returndatasize, 0x20))
+      // Copy returned data to pointer location
+      returndatacopy(_returndata_ptr, 0, returndatasize)
       // Get maximum memory location value for returndata
-      ptr_bounds := add(_returndata_ptr, sub(returndatasize, 0x20))
+      ptr_bounds := add(_returndata_ptr, returndatasize)
       // Set new free-memory pointer to point after the returndata in memory
       // Returndata is automatically 32-bytes padded
       mstore(0x40, add(0x20, ptr_bounds))
@@ -371,21 +347,13 @@ contract AbstractStorage {
   @return length: The value stored at that pointer
   */
   function getLength(uint _ptr) internal pure returns (uint length) {
-    assembly {
-      length := mload(_ptr)
-    }
+    assembly { length := mload(_ptr) }
   }
 
   // Executes the THROWS action, reverting any returned data back to the caller
   function doThrow(uint _ptr) internal pure {
     assert(getAction(_ptr) == THROWS);
-    _ptr += 4;
-    assembly {
-      // The data following the action requestor is a bytes array with the data to be reverted to caller
-      // The first 32 bytes is the size of the data -
-      let size := mload(_ptr)
-      revert(add(0x20, _ptr), size)
-    }
+    assembly { revert(_ptr, returndatasize) }
   }
 
   /*
@@ -396,11 +364,10 @@ contract AbstractStorage {
 
   @param _ptr: A pointer in memory to an application's returned payment request
   @param _ptr_bound: The upper bound on the value for _ptr before it is reading invalid data
-  @param _exec_id: The execution id of the application which triggered the payment
   @return ptr: An updated pointer, pointing to the end of the PAYS action request in memory
   @return n_paid: The number of destinations paid out to from the returned PAYS request
   */
-  function doPay(uint _ptr, uint _ptr_bound, bytes32 _exec_id) internal returns (uint ptr, uint n_paid) {
+  function doPay(bytes32 _exec_id, uint _ptr, uint _ptr_bound) internal returns (uint ptr, uint n_paid) {
     // Ensure ETH was sent with the call
     require(msg.value > 0);
     assert(getAction(_ptr) == PAYS);
@@ -438,7 +405,7 @@ contract AbstractStorage {
   A STORES action provides a set of storage locations and corresponding values to store at those locations
   true storage locations within this contract are first hashed with the application's execution id to prevent
   storage overlaps between applications sharing the contract
-  STORES actions follow a format of: [val_0][location_0]...[val_n][location_n]
+  STORES actions follow a format of: [location_0][val_0]...[location_n][val_n]
 
   @param _ptr: A pointer in memory to an application's returned payment request
   @param _ptr_bound: The upper bound on the value for _ptr before it is reading invalid data
@@ -458,8 +425,8 @@ contract AbstractStorage {
     while (_ptr <= _ptr_bound && n_stored < num_locations) {
       // Get storage location and value to store from the pointer
       assembly {
-        value := mload(_ptr)
-        location := mload(add(0x20, _ptr))
+        location := mload(_ptr)
+        value := mload(add(0x20, _ptr))
       }
       // Store the data to the location hashed with the exec id
       store(_exec_id, location, value);
@@ -570,195 +537,47 @@ contract AbstractStorage {
     }
   }
 
-  /// APPLICATION UPGRADING ///
-
-  /*
-  ** Application initializers may specify an address which is allowed to update
-  ** the logic addresses which may be used with the application. These addresses
-  ** could be as simple as someone's personal address, or as complicated as
-  ** voting contracts with safe upgrade mechanisms.
-  */
-
-  // The script exec contract can update itself
-  function changeScriptExec(bytes32 _exec_id, address _new_script_exec) public {
-    // Ensure that only the script exec contract can update itself
-    require(app_info[_exec_id].script_exec == msg.sender);
-
-    app_info[_exec_id].script_exec = _new_script_exec;
-  }
-
-  // The updater address may change an application's init address
-  function changeInitAddr(bytes32 _exec_id, address _new_init) public onlyUpdate(_exec_id) {
-    app_info[_exec_id].init = _new_init;
-  }
-
-  // Allows the designated updater address to pause an application
-  function pauseAppInstance(bytes32 _exec_id) public {
-    // Ensure sender is updater address, and app is active
-    require(app_info[_exec_id].updater == msg.sender && app_info[_exec_id].is_active == true);
-
-    // Set paused status
-    app_info[_exec_id].is_paused = true;
-  }
-
-  // Allows the designated updater address to unpause an application
-  function unpauseAppInstance(bytes32 _exec_id) public {
-    // Ensure sender is updater address, and app is active
-    require(app_info[_exec_id].updater == msg.sender && app_info[_exec_id].is_active == true);
-
-    // Set unpaused status
-    app_info[_exec_id].is_paused = false;
-  }
-
-  // Allows the designated updater address to update the application by removing allowed addresses
-  function removeAllowed(bytes32 _exec_id, address[] _to_remove) public onlyUpdate(_exec_id) {
-    // Loop over input addresses and delete their permissions for the given exec id
-    for (uint i = 0; i < _to_remove.length; i++) {
-      // Get the index of the address to remove
-      uint remove_ind = allowed_addresses[_exec_id][_to_remove[i]];
-      // If the index to remove is 0, this address does not exist in the application's allowed addresses. Skip this iteration
-      if (remove_ind == 0)
-        continue;
-
-      // Otherwise, decrement remove_ind (allowed_addresses is 1-indexed)
-      remove_ind--;
-      // Remove address reference in allowed_addresses
-      delete allowed_addresses[_exec_id][_to_remove[i]];
-
-      // Get allowed address array length
-      uint allowed_addr_length = allowed_addr_list[_exec_id].length;
-
-      // The index to remove should never be out of bounds
-      assert(remove_ind < allowed_addr_length);
-
-      // If the allowed address list has length 1, simply delete the array reference and continue
-      if (allowed_addr_length == 1) {
-        delete allowed_addr_list[_exec_id];
-        continue;
-      }
-
-      // If the index to remove is not the final index, grab the final element and swap
-      if (remove_ind + 1 != allowed_addr_length) {
-        address last_index = allowed_addr_list[_exec_id][allowed_addr_length - 1];
-        allowed_addr_list[_exec_id][remove_ind] = last_index;
-        // Update last_index mapping
-        allowed_addresses[_exec_id][last_index] = remove_ind + 1;
-      }
-
-      // Decrease the array's length
-      allowed_addr_list[_exec_id].length--;
-    }
-  }
-
-  // Allows the designated updater address to update the application by adding allowed addresses
-  function addAllowed(bytes32 _exec_id, address[] _to_add) public onlyUpdate(_exec_id) {
-    // Loop over input addresses and add permissions for each address
-    for (uint i = 0; i < _to_add.length; i++) {
-      // Ensure the address to allow is not the script exec id, the updater, or the init address
-      require(
-        _to_add[i] != app_info[_exec_id].script_exec
-        && _to_add[i] != app_info[_exec_id].init
-        && _to_add[i] != msg.sender // Updater address
-      );
-
-      // Addresses cannot be added several times - skip this iteration
-      if (allowed_addresses[_exec_id][_to_add[i]] != 0)
-        continue;
-
-      // Otherwise, push the new address to the allowed address list, and update its index
-      allowed_addr_list[_exec_id].push(_to_add[i]);
-      allowed_addresses[_exec_id][_to_add[i]] = allowed_addr_list[_exec_id].length;
-    }
-  }
-
-  /*
-  Handles an exception thrown by a deployed application - if the application provided a message, return the message
-  If ether was sent, return the ether to the sender
-
-  @param _application: The address which triggered the exception
-  @param _execution_id: The execution id specified by the sender
-  */
-  function handleException(address _application, bytes32 _execution_id) internal {
-    bytes memory message;
-    assembly {
-      // Copy returned data into the bytes array
-      message := msize
-      mstore(message, returndatasize)
-      returndatacopy(add(0x20, message), 0, returndatasize)
-      // Update free-memory pointer
-      mstore(0x40, add(add(0x20, mload(message)), message))
-    }
-    // If no returndata exists, use a default message
-    if (message.length == 0)
-      message = DEFAULT_EXCEPTION;
-
-    // Emit ApplicationException event with the message
-    emit ApplicationException(_application, _execution_id, message);
-    // If ether was sent, send it back with returnToSender
-    if (msg.value > 0)
-      address(msg.sender).transfer(msg.value);
+  // Sets the execution id and sender address in special storage locations, so that
+  // they are able to be read by the target application
+  function setContext(bytes32 _exec_id, address _sender) internal {
+    // Ensure the exec id and sender are nonzero
+    assert(_exec_id != bytes32(0) && _sender != address(0));
+    exec_id = _exec_id;
+    sender = _sender;
   }
 
   // Stores data to a given location, with a key (exec id)
   function store(bytes32 _exec_id, bytes32 _location, bytes32 _data) internal {
     // Get true location to store data to - hash of location hashed with exec id
-    _location = keccak256(keccak256(_location), _exec_id);
-    assembly {
-      // Store data
-      sstore(_location, _data)
-    }
-  }
-
-  /// GETTERS ///
-
-  // Returns the addresses with permissioned storage access under the given execution id
-  function getExecAllowed(bytes32 _exec_id) public view returns (address[] allowed) {
-    allowed = allowed_addr_list[_exec_id];
+    _location = keccak256(_location, _exec_id);
+    // Store data at location
+    assembly { sstore(_location, _data) }
   }
 
   // STORAGE READS //
 
   /*
   Returns data stored at a given location
-
   @param _location: The address to get data from
   @return data: The data stored at the location after hashing
   */
   function read(bytes32 _exec_id, bytes32 _location) public view returns (bytes32 data_read) {
-    bytes32 location = keccak256(keccak256(_location), _exec_id);
-    assembly {
-      data_read := sload(location)
-    }
+    _location = keccak256(_location, _exec_id);
+    assembly { data_read := sload(_location) }
   }
 
   /*
   Returns data stored in several nonconsecutive locations
-
   @param _locations: A dynamic array of storage locations to read from
   @return data_read: The corresponding data stored in the requested locations
   */
   function readMulti(bytes32 _exec_id, bytes32[] _locations) public view returns (bytes32[] data_read) {
     data_read = new bytes32[](_locations.length);
-    assembly {
-      // Get free-memory pointer for a hash location
-      let hash_loc := mload(0x40)
-      // Store the exec id in the second slot of the hash pointer
-      mstore(add(0x20, hash_loc), _exec_id)
-
-      // Loop over input and store in return data
-      for { let offset := 0x20 } lt(offset, add(0x20, mul(0x20, mload(_locations)))) { offset := add(0x20, offset) } {
-        // Get storage location from hash of location in input array
-        mstore(hash_loc, keccak256(add(offset, _locations), 0x20))
-        // Hash exec id and location hash to get storage location
-        let storage_location := keccak256(hash_loc, 0x40)
-        // Copy data from storage to return array
-        mstore(add(offset, data_read), sload(storage_location))
-      }
+    for (uint i = 0; i < _locations.length; i++) {
+      bytes32 location = keccak256(_locations[i], _exec_id);
+      bytes32 val;
+      assembly { val := sload(location) }
+      data_read[i] = val;
     }
-  }
-
-  // Ensure no funds are stuck in this address
-  function withdraw() public {
-    address(msg.sender).transfer(address(this).balance);
   }
 }
