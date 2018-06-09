@@ -18,10 +18,6 @@ contract RegistryExec is ScriptExec {
 
   event RegistryInstanceCreated(address indexed creator, bytes32 indexed execution_id, address index, address implementation);
 
-  constructor(address _exec_admin, address _app_storage, address _provider)
-    ScriptExec(_exec_admin, _app_storage, _provider) public
-  {}
-
   /// REGISTRY FUNCTIONS ///
 
   /*
