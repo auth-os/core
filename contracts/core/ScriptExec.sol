@@ -44,13 +44,14 @@ contract ScriptExec {
   // Payable function - for abstract storage refunds
   function () public payable { }
 
+
   /*
-  Initializes various defaults for a script exec contract
+  Configure various defaults for a script exec contract
   @param _exec_admin: A privileged address, able to set the target provider and registry exec id
   @param _app_storage: The address to which applications will be stored
   @param _provider: The address under which applications have been initialized
   */
-  constructor (address _exec_admin, address _app_storage, address _provider) public {
+  function configure(address _exec_admin, address _app_storage, address _provider) public {
     require(_app_storage != 0, 'Invalid input');
     exec_admin = _exec_admin;
     app_storage = _app_storage;
