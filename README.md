@@ -1,8 +1,14 @@
 ![auth_os](https://uploads-ssl.webflow.com/59fdc220cd54e70001a36846/5ac504590012b0bc9d789ab8_auth_os%20Logo%20Blue.png)
 
-# auth_os core: 
+# auth_os core:
 
-This package contains a set of contracts, libraries, and interfaces used in the development of auth_os applications. auth_os utilizes a unique application architecture to facilitate the building of contracts that are truly modular, as well as interoperable. 
+This package contains a set of contracts, libraries, and interfaces used in the development of auth_os applications. auth_os utilizes a unique application architecture to facilitate the building of contracts that are truly modular, as well as interoperable.
+
+### Install:
+
+`npm install authos-solidity`
+
+### About:
 
 auth_os combines a traditional 'upgrade by proxy' architecture with a new method for defining storage locations within an application - 'abstract storage'. This combination allows applications to be completely upgradable: application logic, storage targets for data, and data types can all be upgraded without fear of overwriting previously-defined values. This is accomplished in abstract storage through the use of relative storage locations, which emulate Solidity mappings save for the fact that these locations are able to define their own 'starting seed' for storage.
 
@@ -18,21 +24,21 @@ The drawback of this is that changing the size of the data stored in `a` in a co
 // DO NOT USE IN PRODUCTION
 library B {
   bytes32 constant NUM_OWNERS = keccak256("owner_list");
-  
+
   // Get the number of owners`
-  function getNumOwners() public view returns (uint num) { 
+  function getNumOwners() public view returns (uint num) {
     bytes32 owners = NUM_OWNERS;
-    assembly { num := sload(owners) } 
+    assembly { num := sload(owners) }
   }
 }
 
 library C {
   bytes32 constant OWNER_LIST = keccak256("owner_list");
-  
+
   // Returns the location of the list index
   function ownerAt(uint _idx) internal pure returns (bytes32)
     { return bytes32(32 + (32 * _idx) + uint(OWNER_LIST)); }
-  
+
   // Get the list of owners
   function getOwners() public view returns (address[] owners) {
     uint len;
@@ -54,7 +60,7 @@ Extending this concept, it is possible to implement a protocol through which unr
 
 Enforcing this behavior is simple - the basic premise is that the application, following execution, will return a formatted request to storage, which will ensure that each location to which data must be stored is first hashed with the application's unique `execution_id`. What is not so simple is: allowing for this open instantiation of applications within storage and enforcing this behavior, while remaining fairly efficient. Applications can be instantiated by anyone - and as a result must be treated with the utmost caution. Applications may attempt to overwrite data stored in other applications: it is imperative that the storage contract have safeguards in place to ensure that this is not possible.
 
-The safeguards set in place depend primarily on the method of 'running' these instantiated applications. Initially, the storage contract used a `staticcall` to call the target application, while ensuring that no state change would occur as a result of running this external code. While this method works very well to ensure that executed applications are unable to call back into storage, or change the state of other apps, there is an unfortunate drawback in efficiency. Because `staticcall` does not use the calling contract's context, the executed application cannot read directly from storage and must rely on expensive external calls to read from storage. `AbstractStorage` exposes two functions for this - `read` and `readMulti`, which hash a location (or locations) with the passed-in `execution_id`, read the resulting data from storage, and return to the calling contract. Upon completion of execution, an application should have some list of storage locations along with data to commit to those locations. Instead of simply storing this data locally (not possible, as the app is a library and cannot change its state), the application `return`s a formatted request to storage, which parses and *safely* executes the instructions contained in this request. The parser is still being used, and its current current implementation can be found here: https://github.com/auth-os/core/blob/dev/contracts/core/AbstractStorage.sol#L174. 
+The safeguards set in place depend primarily on the method of 'running' these instantiated applications. Initially, the storage contract used a `staticcall` to call the target application, while ensuring that no state change would occur as a result of running this external code. While this method works very well to ensure that executed applications are unable to call back into storage, or change the state of other apps, there is an unfortunate drawback in efficiency. Because `staticcall` does not use the calling contract's context, the executed application cannot read directly from storage and must rely on expensive external calls to read from storage. `AbstractStorage` exposes two functions for this - `read` and `readMulti`, which hash a location (or locations) with the passed-in `execution_id`, read the resulting data from storage, and return to the calling contract. Upon completion of execution, an application should have some list of storage locations along with data to commit to those locations. Instead of simply storing this data locally (not possible, as the app is a library and cannot change its state), the application `return`s a formatted request to storage, which parses and *safely* executes the instructions contained in this request. The parser is still being used, and its current current implementation can be found here: https://github.com/auth-os/core/blob/dev/contracts/core/AbstractStorage.sol#L174.
 
 The obvious downside of these applications is the quickly-building cost of reading large amounts of data from storage. The implementing code required building buffers in runtime memory, which would be formatted to correctly request `read`s from storage. This, too, is a downside, as it requires building via a library that implements memory buffers - which is neither clean, nor simple to use.
 
