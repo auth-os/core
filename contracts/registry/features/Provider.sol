@@ -7,49 +7,40 @@ library Provider {
   using Contract for *;
 
   // Returns the location of a provider's list of registered applications in storage
-  function registeredApps() internal pure returns (bytes32 location) {
-    location = keccak256(bytes32(Contract.sender()), 'app_list');
-  }
+  function registeredApps() internal pure returns (bytes32)
+    { return keccak256(bytes32(Contract.sender()), 'app_list'); }
 
   // Returns the location of a registered app's name under a provider
-  function appBase(bytes32 _app) internal pure returns (bytes32 location) {
-    location = keccak256(_app, keccak256(bytes32(Contract.sender()), 'app_base'));
-  }
+  function appBase(bytes32 _app) internal pure returns (bytes32)
+    { return keccak256(_app, keccak256(bytes32(Contract.sender()), 'app_base')); }
 
   // Returns the location of an app's list of versions
-  function appVersionList(bytes32 _app) internal pure returns (bytes32 location) {
-    location = keccak256('versions', appBase(_app));
-  }
+  function appVersionList(bytes32 _app) internal pure returns (bytes32)
+    { return keccak256('versions', appBase(_app)); }
 
   // Returns the location of a version's name
-  function versionBase(bytes32 _app, bytes32 _version) internal pure returns (bytes32 location) {
-    location = keccak256(_version, 'version', appBase(_app));
-  }
+  function versionBase(bytes32 _app, bytes32 _version) internal pure returns (bytes32)
+    { return keccak256(_version, 'version', appBase(_app)); }
 
   // Returns the location of a registered app's index address under a provider
-  function versionIndex(bytes32 _app, bytes32 _version) internal pure returns (bytes32 location) {
-    location = keccak256('index', versionBase(_app, _version));
-  }
+  function versionIndex(bytes32 _app, bytes32 _version) internal pure returns (bytes32)
+    { return keccak256('index', versionBase(_app, _version)); }
 
   // Returns the location of an app's function selectors, registered under a provider
-  function versionSelectors(bytes32 _app, bytes32 _version) internal pure returns (bytes32 location) {
-    location = keccak256('selectors', versionBase(_app, _version));
-  }
+  function versionSelectors(bytes32 _app, bytes32 _version) internal pure returns (bytes32)
+    { return keccak256('selectors', versionBase(_app, _version)); }
 
   // Returns the location of an app's implementing addresses, registered under a provider
-  function versionAddresses(bytes32 _app, bytes32 _version) internal pure returns (bytes32 location) {
-    location = keccak256('addresses', versionBase(_app, _version));
-  }
+  function versionAddresses(bytes32 _app, bytes32 _version) internal pure returns (bytes32)
+    { return keccak256('addresses', versionBase(_app, _version)); }
 
   // Returns the location of the version before the current version
-  function previousVersion(bytes32 _app, bytes32 _version) internal pure returns (bytes32 location) {
-    location = keccak256("previous version", versionBase(_app, _version));
-  }
+  function previousVersion(bytes32 _app, bytes32 _version) internal pure returns (bytes32)
+    { return keccak256("previous version", versionBase(_app, _version)); }
 
   // Returns storage location of appversion list at a specific index
-  function appVersionListAt(bytes32 _app, uint _index) internal pure returns (bytes32 location) {
-    location = bytes32((32 * _index) + uint(appVersionList(_app)));
-  }
+  function appVersionListAt(bytes32 _app, uint _index) internal pure returns (bytes32)
+    { return bytes32((32 * _index) + uint(appVersionList(_app))); }
 
   // Registers an application under a given name for the sender
   function registerApp(bytes32 _app, address _index, bytes4[] _selectors, address[] _implementations) external view {
@@ -154,5 +145,4 @@ library Provider {
     // End execution and commit state changes to storage -
     Contract.commit();
   }
-
 }

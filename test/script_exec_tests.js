@@ -52,6 +52,7 @@ contract('ScriptExec', function (accounts) {
   // EmitsApp
   let execHash = web3.sha3('ApplicationExecution(bytes32,address)')
   let payHash = web3.sha3('DeliveredPayment(bytes32,address,uint256)')
+  let exceptHash = web3.sha3('StorageException(bytes32,string)')
   let emitTopics = ['aaaaa', 'bbbbbb', 'ccccc', 'ddddd']
 
   let appInit
@@ -248,12 +249,28 @@ contract('ScriptExec', function (accounts) {
       context('exec id is 0', async () => {
 
         let invalidExecID = web3.toHex(0)
+        let invalidEvents
+        let invalidReturn
 
-        it('should throw', async () => {
-          await scriptExec.exec(
+        beforeEach(async () => {
+          invalidReturn = await scriptExec.exec.call(
+            invalidExecID, stdAppCalldata[0], { from: sender }
+          ).should.be.fulfilled
+          invalidEvents = await scriptExec.exec(
             invalidExecID, stdAppCalldata[0],
             { from: sender }
-          ).should.not.be.fulfilled
+          ).should.be.fulfilled.then((tx) => {
+            return tx.logs
+          })
+        })
+
+        it('should emit a StorageException event', async () => {
+          invalidEvents.length.should.be.eq(1)
+          invalidEvents[0].event.should.be.eq('StorageException')
+        })
+
+        it('should return false', async () => {
+          invalidReturn.should.be.eq(false)
         })
       })
     })
@@ -270,51 +287,96 @@ contract('ScriptExec', function (accounts) {
       describe('function did not exist', async () => {
 
         let invalidCalldata
+        let invalidEvents
+        let invalidReturn
 
         beforeEach(async () => {
           invalidCalldata = await appMockUtil.rev0.call()
           invalidCalldata.should.not.eq('0x0')
-        })
 
-        it('should throw', async () => {
-          await scriptExec.exec(
+          invalidReturn = await scriptExec.exec.call(
             executionID, invalidCalldata,
             { from: sender }
-          ).should.not.be.fulfilled
+          ).should.be.fulfilled
+          invalidEvents = await scriptExec.exec(
+            executionID, invalidCalldata,
+            { from: sender }
+          ).should.be.fulfilled.then((tx) => {
+            return tx.logs
+          })
+        })
+
+        it('should emit a StorageException event', async () => {
+          invalidEvents.length.should.be.eq(1)
+          invalidEvents[0].event.should.be.eq('StorageException')
+        })
+
+        it('should return false', async () => {
+          invalidReturn.should.be.eq(false)
         })
       })
 
       describe('reverts with no message', async () => {
 
-        let revertCalldata
+        let invalidCalldata
+        let invalidEvents
+        let invalidReturn
 
         beforeEach(async () => {
-          revertCalldata = await appMockUtil.rev1.call()
-          revertCalldata.should.not.eq('0x0')
+          invalidCalldata = await appMockUtil.rev1.call()
+          invalidCalldata.should.not.eq('0x0')
+
+          invalidReturn = await scriptExec.exec.call(
+            executionID, invalidCalldata,
+            { from: sender }
+          ).should.be.fulfilled
+          invalidEvents = await scriptExec.exec(
+            executionID, invalidCalldata,
+            { from: sender }
+          ).should.be.fulfilled.then((tx) => {
+            return tx.logs
+          })
         })
 
-        it('should throw', async () => {
-          await scriptExec.exec(
-            executionID, revertCalldata,
-            { from: sender }
-          ).should.not.be.fulfilled
+        it('should emit a StorageException event', async () => {
+          invalidEvents.length.should.be.eq(1)
+          invalidEvents[0].event.should.be.eq('StorageException')
+        })
+
+        it('should return false', async () => {
+          invalidReturn.should.be.eq(false)
         })
       })
 
       describe('reverts with message', async () => {
 
-        let revertCalldata
+        let invalidCalldata
+        let invalidEvents
+        let invalidReturn
 
         beforeEach(async () => {
-          revertCalldata = await appMockUtil.rev2.call()
-          revertCalldata.should.not.eq('0x0')
+          invalidCalldata = await appMockUtil.rev2.call()
+          invalidCalldata.should.not.eq('0x0')
+
+          invalidReturn = await scriptExec.exec.call(
+            executionID, invalidCalldata,
+            { from: sender }
+          ).should.be.fulfilled
+          invalidEvents = await scriptExec.exec(
+            executionID, invalidCalldata,
+            { from: sender }
+          ).should.be.fulfilled.then((tx) => {
+            return tx.logs
+          })
         })
 
-        it('should throw', async () => {
-          await scriptExec.exec(
-            executionID, revertCalldata,
-            { from: sender }
-          ).should.not.be.fulfilled
+        it('should emit a StorageException event', async () => {
+          invalidEvents.length.should.be.eq(1)
+          invalidEvents[0].event.should.be.eq('StorageException')
+        })
+
+        it('should return false', async () => {
+          invalidReturn.should.be.eq(false)
         })
       })
     })
@@ -325,31 +387,63 @@ contract('ScriptExec', function (accounts) {
 
       describe('app attempts to pay storage contract', async () => {
 
+        let invalidEvents
+        let invalidReturn
+
         beforeEach(async () => {
           invalidCalldata = await appMockUtil.inv1.call()
           invalidCalldata.should.not.eq('0x0')
+
+          invalidReturn = await scriptExec.exec.call(
+            executionID, invalidCalldata,
+            { from: sender }
+          ).should.be.fulfilled
+          invalidEvents = await scriptExec.exec(
+            executionID, invalidCalldata,
+            { from: sender }
+          ).should.be.fulfilled.then((tx) => {
+            return tx.logs
+          })
         })
 
-        it('should throw', async () => {
-          await scriptExec.exec(
-            executionID, invalidCalldata,
-            { from: sender, value: payouts[0] }
-          ).should.not.be.fulfilled
+        it('should emit a StorageException event', async () => {
+          invalidEvents.length.should.be.eq(1)
+          invalidEvents[0].event.should.be.eq('StorageException')
+        })
+
+        it('should return false', async () => {
+          invalidReturn.should.be.eq(false)
         })
       })
 
       describe('app does not change state', async () => {
 
+        let invalidEvents
+        let invalidReturn
+
         beforeEach(async () => {
           invalidCalldata = await appMockUtil.inv2.call()
           invalidCalldata.should.not.eq('0x0')
-        })
 
-        it('should throw', async () => {
-          await scriptExec.exec(
+          invalidReturn = await scriptExec.exec.call(
             executionID, invalidCalldata,
             { from: sender }
-          ).should.not.be.fulfilled
+          ).should.be.fulfilled
+          invalidEvents = await scriptExec.exec(
+            executionID, invalidCalldata,
+            { from: sender }
+          ).should.be.fulfilled.then((tx) => {
+            return tx.logs
+          })
+        })
+
+        it('should emit a StorageException event', async () => {
+          invalidEvents.length.should.be.eq(1)
+          invalidEvents[0].event.should.be.eq('StorageException')
+        })
+
+        it('should return false', async () => {
+          invalidReturn.should.be.eq(false)
         })
       })
     })
@@ -362,19 +456,32 @@ contract('ScriptExec', function (accounts) {
       describe('storing to 0 slots', async () => {
 
         let invalidCalldata
+        let invalidEvents
+        let invalidReturn
 
         beforeEach(async () => {
-          expectedStatus = false
-
           invalidCalldata = await appMockUtil.std0.call()
           invalidCalldata.should.not.eq('0x0')
-        })
 
-        it('should throw', async () => {
-          await scriptExec.exec(
+          invalidReturn = await scriptExec.exec.call(
             executionID, invalidCalldata,
             { from: sender }
-          ).should.not.be.fulfilled
+          ).should.be.fulfilled
+          invalidEvents = await scriptExec.exec(
+            executionID, invalidCalldata,
+            { from: sender }
+          ).should.be.fulfilled.then((tx) => {
+            return tx.logs
+          })
+        })
+
+        it('should emit a StorageException event', async () => {
+          invalidEvents.length.should.be.eq(1)
+          invalidEvents[0].event.should.be.eq('StorageException')
+        })
+
+        it('should return false', async () => {
+          invalidReturn.should.be.eq(false)
         })
       })
 
@@ -548,17 +655,32 @@ contract('ScriptExec', function (accounts) {
       describe('pays out to 0 addresses', async () => {
 
         let invalidCalldata
+        let invalidEvents
+        let invalidReturn
 
         beforeEach(async () => {
           invalidCalldata = await appMockUtil.pay0.call()
           invalidCalldata.should.not.eq('0x0')
-        })
 
-        it('should throw', async () => {
-          await scriptExec.exec(
+          invalidReturn = await scriptExec.exec.call(
             executionID, invalidCalldata,
             { from: sender, value: payouts[0] }
-          ).should.not.be.fulfilled
+          ).should.be.fulfilled
+          invalidEvents = await scriptExec.exec(
+            executionID, invalidCalldata,
+            { from: sender, value: payouts[0] }
+          ).should.be.fulfilled.then((tx) => {
+            return tx.logs
+          })
+        })
+
+        it('should emit a StorageException event', async () => {
+          invalidEvents.length.should.be.eq(1)
+          invalidEvents[0].event.should.be.eq('StorageException')
+        })
+
+        it('should return false', async () => {
+          invalidReturn.should.be.eq(false)
         })
       })
 
@@ -812,17 +934,32 @@ contract('ScriptExec', function (accounts) {
       describe('emitting 0 events', async () => {
 
         let invalidCalldata
+        let invalidEvents
+        let invalidReturn
 
         beforeEach(async () => {
           invalidCalldata = await appMockUtil.emit0.call()
           invalidCalldata.should.not.eq('0x0')
-        })
 
-        it('should throw', async () => {
-          await scriptExec.exec(
+          invalidReturn = await scriptExec.exec.call(
             executionID, invalidCalldata,
             { from: sender }
-          ).should.not.be.fulfilled
+          ).should.be.fulfilled
+          invalidEvents = await scriptExec.exec(
+            executionID, invalidCalldata,
+            { from: sender }
+          ).should.be.fulfilled.then((tx) => {
+            return tx.logs
+          })
+        })
+
+        it('should emit a StorageException event', async () => {
+          invalidEvents.length.should.be.eq(1)
+          invalidEvents[0].event.should.be.eq('StorageException')
+        })
+
+        it('should return false', async () => {
+          invalidReturn.should.be.eq(false)
         })
       })
 
@@ -1318,17 +1455,32 @@ contract('ScriptExec', function (accounts) {
       describe('2 actions (EMITS 1, THROWS)', async () => {
 
         let invalidCalldata
+        let invalidEvents
+        let invalidReturn
 
         beforeEach(async () => {
           invalidCalldata = await appMockUtil.req0.call(emitTopics[0])
           invalidCalldata.should.not.eq('0x0')
-        })
 
-        it('should throw', async () => {
-          await scriptExec.exec(
+          invalidReturn = await scriptExec.exec.call(
             executionID, invalidCalldata,
             { from: sender }
-          ).should.not.be.fulfilled
+          ).should.be.fulfilled
+          invalidEvents = await scriptExec.exec(
+            executionID, invalidCalldata,
+            { from: sender }
+          ).should.be.fulfilled.then((tx) => {
+            return tx.logs
+          })
+        })
+
+        it('should emit a StorageException event', async () => {
+          invalidEvents.length.should.be.eq(1)
+          invalidEvents[0].event.should.be.eq('StorageException')
+        })
+
+        it('should return false', async () => {
+          invalidReturn.should.be.eq(false)
         })
       })
 
@@ -1678,19 +1830,34 @@ contract('ScriptExec', function (accounts) {
       describe('3 actions (PAYS 2, EMITS 1, THROWS)', async () => {
 
         let invalidCalldata
+        let invalidEvents
+        let invalidReturn
 
         beforeEach(async () => {
           invalidCalldata = await appMockUtil.reqs0.call(
             payees[0], payees[1], emitTopics[0], stdAppName
           )
           invalidCalldata.should.not.eq('0x0')
-        })
 
-        it('should throw', async () => {
-          await scriptExec.exec(
+          invalidReturn = await scriptExec.exec.call(
             executionID, invalidCalldata,
             { from: sender, value: payouts[0] }
-          ).should.not.be.fulfilled
+          ).should.be.fulfilled
+          invalidEvents = await scriptExec.exec(
+            executionID, invalidCalldata,
+            { from: sender, value: payouts[0] }
+          ).should.be.fulfilled.then((tx) => {
+            return tx.logs
+          })
+        })
+
+        it('should emit a StorageException event', async () => {
+          invalidEvents.length.should.be.eq(1)
+          invalidEvents[0].event.should.be.eq('StorageException')
+        })
+
+        it('should return false', async () => {
+          invalidReturn.should.be.eq(false)
         })
       })
 

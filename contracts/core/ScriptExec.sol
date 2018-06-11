@@ -34,6 +34,7 @@ contract ScriptExec {
   /// EVENTS ///
 
   event AppInstanceCreated(address indexed creator, bytes32 indexed execution_id, bytes32 app_name, bytes32 version_name);
+  event StorageException(bytes32 indexed execution_id, string message);
 
   // Modifier - The sender must be the contract administrator
   modifier onlyAdmin() {
@@ -63,6 +64,8 @@ contract ScriptExec {
 
   /// APPLICATION EXECUTION ///
 
+  bytes4 internal constant EXEC_SEL = bytes4(keccak256('exec(address,bytes32,bytes)'));
+
   /*
   Executes an application using its execution id and storage address.
 
@@ -72,15 +75,56 @@ contract ScriptExec {
   */
   function exec(bytes32 _exec_id, bytes _calldata) external payable returns (bool success) {
     // Call 'exec' in AbstractStorage, passing in the sender's address, the app exec id, and the calldata to forward -
-    StorageInterface(app_storage).exec.value(msg.value)(msg.sender, _exec_id, _calldata);
+    if (address(app_storage).call.value(msg.value)(abi.encodeWithSelector(
+      EXEC_SEL, msg.sender, _exec_id, _calldata
+    )) == false) {
+      // Call failed - emit error message from storage and return 'false'
+      checkErrors(_exec_id);
+      // Return unspent wei to sender
+      address(msg.sender).transfer(address(this).balance);
+      return false;
+    }
 
     // Get returned data
     success = checkReturn();
-    // If execution failed, revert -
+    // If execution failed,
     require(success, 'Execution failed');
 
     // Transfer any returned wei back to the sender
     address(msg.sender).transfer(address(this).balance);
+  }
+
+  bytes4 internal constant ERR = bytes4(keccak256('Error(string)'));
+
+  // Return the bytes4 action requestor stored at the pointer, and cleans the remaining bytes
+  function getAction(uint _ptr) internal pure returns (bytes4 action) {
+    assembly {
+      // Get the first 4 bytes stored at the pointer, and clean the rest of the bytes remaining
+      action := and(mload(_ptr), 0xffffffff00000000000000000000000000000000000000000000000000000000)
+    }
+  }
+
+  // Checks to see if an error message was returned with the failed call, and emits it if so -
+  function checkErrors(bytes32 _exec_id) internal {
+    // If the returned data begins with selector 'Error(string)', get the contained message -
+    string memory message;
+    bytes4 err_sel = ERR;
+    assembly {
+      // Get pointer to free memory, place returned data at pointer, and update free memory pointer
+      let ptr := mload(0x40)
+      returndatacopy(ptr, 0, returndatasize)
+      mstore(0x40, add(ptr, returndatasize))
+
+      // Check value at pointer for equality with Error selector -
+      if eq(mload(ptr), and(err_sel, 0xffffffff00000000000000000000000000000000000000000000000000000000)) {
+        message := add(0x24, ptr)
+      }
+    }
+    // If no returned message exists, emit a default error message. Otherwise, emit the error message
+    if (bytes(message).length == 0)
+      emit StorageException(_exec_id, "No error recieved");
+    else
+      emit StorageException(_exec_id, message);
   }
 
   // Checks data returned by an application and returns whether or not the execution changed state
