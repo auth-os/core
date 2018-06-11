@@ -1,118 +1,85 @@
 ![auth_os](https://uploads-ssl.webflow.com/59fdc220cd54e70001a36846/5ac504590012b0bc9d789ab8_auth_os%20Logo%20Blue.png)
 
-### Description:
+# auth_os core: 
 
-**auth_os** is an on-chain framework for developing, managing, and interacting with applications on the EVM securely. Applications are modular, upgradable, and extensible by design: using abstract storage of application data, application logic libraries define standard interfaces through which storage is accessed. The entire system is designed around a philosophy of building the 'most general, most abstract' approach to application development and use - allowing for unparalleled flexibility and interoperability of live applications.
+This package contains a set of contracts, libraries, and interfaces used in the development of auth_os applications. auth_os utilizes a unique application architecture to facilitate the building of contracts that are truly modular, as well as interoperable. 
 
-This repository contains the auth_os kernel: a script execution proxy, an abstract storage contract, and a script registry application. These three components make up the backbone of the entire auth_os system.
+auth_os combines a traditional 'upgrade by proxy' architecture with a new method for defining storage locations within an application - 'abstract storage'. This combination allows applications to be completely upgradable: application logic, storage targets for data, and data types can all be upgraded without fear of overwriting previously-defined values. This is accomplished in abstract storage through the use of relative storage locations, which emulate Solidity mappings save for the fact that these locations are able to define their own 'starting seed' for storage.
 
-### Explanation - Contracts and Functions:
-
-##### General Structure:
-
-Applications consist of 3 parts - a script execution proxy, an abstract storage contract, and a set of logic libraries. Logic libraries are accessed through abstract storage by the script execution proxy, and contain all of the logic necesary for an application to function. The abstract storage contract serves as a hub for these logic libraries, routing execution requests from an application instance's script execution contract, in the context of a unique execution id. Whereas most smart contract applications use addresses to distinguish one application instance from another, auth_os applications each have a per-storage-contract unique execution id, which serves as its unique identifer. The reason for this is simple - because of unique capabilities of abstract storage, *multiple application instances may share a single storage contract.* In fact, theoretically every application running on auth_os could share the same storage contract. This is made possible through the execution ids; when an application stores information, it is stored to a location (provided by the application), hashed with the instance's execution id (safely enforced by the storage contract). Because the liklihood of a hash collision is so low, it is possible for every application on the network to share a single storage contract.
-
-This unique structure also means that, often, deploying an instance of an application does not require the deployment of a contract (i.e. use of the `create` opcode). Applications are essentially just a set of logic libraries - so once they are deployed (and built to specification), anyone can create an instance of an existing application by simply generating a new execution id for any given set of existing libraries. For example - if one user creates a token application with logic libraries at addresses A, B, and C, every user can take addresses A, B, and C, and create a new application instance in the same storage contract - generating a new, unique execution id in the process. In place of a constructor, applications have unique, single-use `init()` functions, which allow the caller to set up initial variables just as they would in a constructor. These instances will not conflict in any way - meaning that instead of deploying the same, tired ERC20 implementation to several addresses, a single ERC20 implementation can be deployed once and re-used indefinitely without contributing to blockchain bloat.
-
-The paradigm this creates is one where applications are used and re-used by many people, ensuring that the most prevalent applications are looked at by several parties, as opposed to a single body. In time, the hope is that a system like this will create an environment where vulnerabilities and bugs are caught quickly - and that in the event of a live bug, a large, surrounding community exists, capable of coming to a consensus about the best possible solution.
-
-##### Script Registry:
-
-Application definitions (implementing functions, addresses, descriptions, and other metadata) are typically stored in the script registry, which is itself an application on auth_os. The script registry implements the functions required for a developer to register applications and versions, add implementing details, and finalize releases. Upgrades are meant to be pulled, not pushed - each application is initialized with an updater address, to which various functionality may be assigned. Whether applications are upgraqded in an entirely centralized manner, with one party in control, or upgraded as a part of a DAO-type organization is entirely up to the person who initializes the instance. Over time, there will likely be several options for upgradability and extensibility available at deploy-time.
-
-##### Application Lifecycle - Registration, Implementation, and Release:
-
-(Reference: /contracts/registry/functions/)
-
-When using a script registry contract to store or read information on already-deployed applications, there are a few steps to take from registration to release. An application is initially registered by a 'provider.' The provider is simply an id generated from the address of the person who registered the application. Applications are registered under the provider, and only the provider may add versions, implementations, etc. The InitRegistry contract contains several useful getters for reading application and version information.
-
-An application is first registered in `AppConsole.sol`, using `registerApp`. The provider simply defines an application name, storage address, and description, which is placed in registry storage, or, the calling contract - these functions are executed through an abstract storage contract, or (more often) by proxy through `ScriptExec`.
-
-Following application registration, a provider may register a named version under that application, using `VersionConsole.sol`. Versions are placed in a list within application storage. Registering a version simply sets the version's name, version storage address (optional - leave empty to use default application storage address), and a version's description. Versions define implementations - using `ImplementationConsole.sol`, a provider may add implemented functions, addresses where those functions are implemented, and descriptions of functions. A provider may add as much or as little implementation detail as they like, until the version is 'finalized.' Finalizing a version is done through `VersionConsole.finalizeVersion`, and locks version information storage. This version is now considered 'stable,' and cannot be altered further.
-
-##### Application Lifecycle - Initialization and Usage:
-
-Applications are initialized through the `ScriptExec` contract - by specifying the registry storage address to pull app implementation and initialization details from, anyone can deploy an application by simply specifying the registry execution id under which applications are registered. `ScriptExec.sol` currently handles many aspects of initalization, use, upgrading, and migration - but will be opened to more general-use functionality in the future.
-
-Upon initializing an application, the specified storage address returns the app's unique execution id, through which application storage requests are made. The `ScriptExec` contract, application storage contract, and execution id form a key together: ensuring applications are only input data which is permitted by the `ScriptExec` contract, and that applications are only governed by logic addresses which are permitted by the storage contract.
-
-Upon initialization of the application, the application can be used by calling the `ScriptExec.exec` function and targeting the desired address to forward the request to.
-
-##### Testing:
-
-Several of these contracts have been deployed to Ropsten, to allow for open testing. Below is a list of the verified contracts being used:
-
-Core:
-1. RegistryStorage: https://ropsten.etherscan.io/address/0xb1d914e7c55f16c2bacac11af6b3e011aee38caf#code
-2. ScriptExec: https://ropsten.etherscan.io/address/0x41e37c2d17cf8aa00ae22827ecd10dd017ae52b4#code
-3. InitRegistry: https://ropsten.etherscan.io/address/0xbc25d8c026ef18ca00bfa328a2c03c54af3c3e95#code
-4. AppConsole: https://ropsten.etherscan.io/address/0x9ca096ea086e6c27d3b69d1f8ba4278502815fa1#code
-5. VersionConsole: https://ropsten.etherscan.io/address/0xa609f05557d458727c90603adad436041915a0ca#code
-6. ImplementationConsole: https://ropsten.etherscan.io/address/0x80a136184e1d65b0d975cc874a48e746eae041b7#code
-
-MintedCappedCrowdsale: (Referencing auth-os/applications/TokenWizard/MintedCappedCrowdsale)
-1. InitCrowdsale: https://ropsten.etherscan.io/address/0x4feec2b6944e510eef031d96330cb70f9051c440#code
-2. CrowdsaleConsole: https://ropsten.etherscan.io/address/0xf8d0a48ce98bbee75e7568b3ada3efa1b6324c9c#code
-3. TokenConsole: https://ropsten.etherscan.io/address/0x1271b0587e1216579f4fd0fc088ff5cdb4f904ef#code
-4. CrowdsaleBuyTokens: https://ropsten.etherscan.io/address/0xec424a2a841a6c77d270fd91bd885ccb06392be5#code
-5. TokenTransfer: https://ropsten.etherscan.io/address/0x415f6e76616a4d7c24d59f1c70687a381d48d022#code
-6. TokenTransferFrom: https://ropsten.etherscan.io/address/0xc96f0b7508a35bea00a9edfc6ecf11ee31693a67#code
-7. TokenApprove: https://ropsten.etherscan.io/address/0xbb3d0d9c0630e7d7b81d30758b2d940ede81ab93#code
-
-DutchCrowdsale: (Referencing auth-os/applications/TokenWizard/DutchCrowdsale)
-1. InitCrowdsale: https://ropsten.etherscan.io/address/0xbe9c4888a51761f6c5a7d3803106edab7c96196e#code
-2. CrowdsaleConsole: https://ropsten.etherscan.io/address/0xb469710858cf3330d8d4ce8886bda2db24c46e20#code
-3. TokenConsole: https://ropsten.etherscan.io/address/0xdd434cc4ae76beedc71c232fb399cacf262eed63#code
-4. CrowdsaleBuyTokens: https://ropsten.etherscan.io/address/0x8519215210f8ac2c034eb6afc6a6766db4f97a6a#code
-5. TokenTransfer: https://ropsten.etherscan.io/address/0x2cb3897e1b7eff0dec33365d0f5c864004bec326#code
-6. TokenTransferFrom: https://ropsten.etherscan.io/address/0xefe7acdd5e28a9fc35854bdc7c91a2d2c419f5b0#code
-7. TokenApprove: https://ropsten.etherscan.io/address/0x95971b6ff4a5a076c6b74a2b53ec8a3db96f91d5#code
-
-The 'default' variables in ScriptExec.sol can be examined for information on the registry's execution id, as well as the storage address of the registry. 
-
-###### Deployment -> Use of Script Registry and Crowdsale contracts:
-
-A. Initial Deployment (storage contract, registry contracts, application contracts):
-  1. We first deploy all contracts, except the Script Exec contract. The Script Exec contract is built in such a way that it depends on already-deployed contracts, as well as the Script Registry contracts being initialized and in use.
-  2. First round of deployment - `RegistryStorage`, `InitRegistry`, `AppConsole`, `VersionConsole`, `ImplementationConsole`, `InitCrowdsale`, `CrowdsaleConsole`, `TokenConsole`, `CrowdsaleBuyTokens`, `TokenTransfer`, `TokenTransferFrom`, `TokenApprove`
+For example, defining a state variable creates, for that contract, a fixed point referencing a location in storage:
+```Solidity
+contract A {
+  uint public a; // Will always reference storage slot 0
+  uint public b; // Will always reference storage slot 1
+}
+```
+The drawback of this is that changing the size of the data stored in `a` in a consecutive version will likely overwrite the value stored at `b`. In order to avoid this limitation, auth_os applications declare their data fields to be located at some hash, which is fed some unique, identifying seed. Any files referencing that seed will be able to read and interact with the same data as other files, though they may choose to interpret it in a different way. As an example:
+```Solidity
+// DO NOT USE IN PRODUCTION
+library B {
+  bytes32 constant NUM_OWNERS = keccak256("owner_list");
   
-B. Initialization of Script Registry and registration/implementation of crowdsale contracts:
-  1. We now need to initialize the script registry contracts, so that the `ScriptExec` contract is able to read information about the crowdsale we want to deploy. This is called from your personal address, as ScriptExec currently does not support initializing the registry contracts (it tries to look up initialization information on the registry contracts, but the registry contracts are not yet initialized themselves!)
-  2. Call: `RegistryStorage.initAndFinalize`
-    - I set myself as the updater, so that I'm able to swap out faulty contracts if need be
-    - is_payable should be false for the registry contracts
-    - init is the address for `InitRegistry`, and `init_calldata` should be the calldata for `InitRegistry.init` (only 4 bytes - no params)
-    - allowed addresses - `AppConsole`, `VersionConsole`, `ImplementationConsole`
-  3. RegistryStorage should return an exec id - this will be the `default_registry_exec_id` used with the `ScriptExec` contract. It is also the exec id used by you to register application information in the script registry app. You will directly be using `RegistryStorage.exec` for this.
-  4. Time to register the crowdsale application - get the appropriate calldata for `AppConsole.registerApp`, and pass that through `RegistryStorage.exec` (of course, using the `AppConsole` address as the target). This sets up an unimplemented (but named) application in the script registry app. You can view information on it through these `InitRegsitry` functions:
-    - `getProviderInfo`, `getProviderInfoFromAddress`, `getAppInfo`, `getAppVersions` (should be 0)
-    - In the live contracts, the crowdsale app is called "MintedCappedCrowdsale"
-  5. Next, we want to create the first version of our application - get the calldata for `VersionConsole.registerVersion`, and pass that through `RegistryStorage.exec` (using `VersionConsole` as the target). This sets up the first version of our app, which I called 'v1.0'. Information on this version can be viewed through these InitRegistry functions:
-    - `getVersionInfo`, `getAppVersions`
-  6. Now we need to specify where and which logic contracts belong to the app. Get calldata for `ImplementationConsole.addFunctions`, and pass it through the `ScriptExec` contract. For each function, provide the address where it can be called. It is also possible to add descriptions for each function, through `ImplementationConsole.describeFunction`. Use these functions for information:
-    - `getVersionImplementation`, `getImplementationInfo`
-    - The live crowdsale application was implemented in 3 'addFunction' batches - first, the token and purchase contracts, then the `TokenConsole` functions and address, and finally the `CrowdsaleConsole` functions and address.
-  7. Finally - we want to finalize our version, marking it as the latest, 'stable' version. This finalization allows the `ScriptExec` contract to view the app we just registered. Call `VersionConsole.finalizeVersion` through the storage exec function.
-    - View init information: `getVersionInitInfo`, `getAppLatestInfo`
-    
-C. Deployment of `ScriptExec`, and initialization of crowdsale app:
-  1. We now have the registry storage address, an exec id we've been using with the registry, and the id of the the provider that registered the apps we want to initialize (the hash of the address that called all the `RegistryStorage.exec` functions). Put the appropriate informatino in the constructor, and deploy
-  2. To initialize our application - get the calldata you want for the crowdsale, from `InitCrowdsale.init`. Pass that, and the app's name (MintedCappedCrowdsale), as well as 'true' for is_payable, into `ScriptExec.initAppInstance`. You should get back an exec id - this it the crowdsale's exec id, to be used only through the `ScriptExec` contract
-  
-D. Initialization of MintedCappedCrowdsale:
-  1. MintedCappedCrowdsale's `InitCrowdsale.init` function was already called during the previous step. However, we can now do a few things to finish the job and get an up-and-running crowdsale app. First, we need to initialize the crowdsale token. Get the calldata for `CrowdsaleConsole.initCrowdsaleToken`, and pass that through `ScriptExec.exec`, with `CrowdsaleConsole` as the target address.
-    - You can view info on the created token in `InitCrowdsale`: `getCrowdsaleInfo`, `getCrowdsaleStartTime`, `getCurrentTierInfo`, `getCrowdsaleTier`, `getTokenInfo`
-  2. We can now call `CrowdsaleConsole.initializeCrowdsale`, or we can do any of the following:
-    - Add whitelisted tiers and users (`CrowdsaleConsole.createCrowdsaleTiers` and `CrowdsaleConsole.whitelistMulti`)
-    - Update tier duration (must be before tier begins) (`CrowdsaleConsole.updateTierDuration`)
-    - Set, update, or delete reserved tokens: (`TokenConsole.updateMultipleReservedTokens`, `removeReservedTokens`)
-  3. Finally - call `CrowdsaleConsole.initializeCrowdsale`. This will open the app for purchasing (once the start time is reached)
-  
-E. Buying tokens:
-  1. Buying tokens is done through the `CrowdsaleBuyTokens.buy` function. It takes simply the `context` array, which should be the crowdsale app's exec id, the sender's address, and the amount of wei sent. Passing this into `ScriptExec.exec` and sending the correct amount of wei should net the sender tokens (if there are some to be sold)
-  
-F. Finalization of crowdsale and ditribution of reserved tokens:
-  1. The owner can finalize the crowdsale at any point - by calling `CrowdsaleConsole.finalizeCrowdsale` (through `ScriptExec.exec`). Finalization unlocks tokens for transfer, and allows reserved tokens to be distributed.
-  2. Reserved tokens are distributed through `TokenConsole.distributeReservedTokens`. The function takes an 'amount' of destinations you want to cycle through and distribute to - so that batching is possible in the event of several destinations.
+  // Get the number of owners`
+  function getNumOwners() public view returns (uint num) { 
+    bytes32 owners = NUM_OWNERS;
+    assembly { num := sload(owners) } 
+  }
+}
 
-That's it! Typically, of course, only C.2. and onwards will need to be done - everything else is already there.
+library C {
+  bytes32 constant OWNER_LIST = keccak256("owner_list");
+  
+  // Returns the location of the list index
+  function ownerAt(uint _idx) internal pure returns (bytes32)
+    { return bytes32(32 + (32 * _idx) + uint(OWNER_LIST)); }
+  
+  // Get the list of owners
+  function getOwners() public view returns (address[] owners) {
+    uint len;
+    bytes32 list = OWNER_LIST;
+    assembly { len := sload(list) }
+    owners = new address[](len);
+    for (uint i = 0; i < owners.length; i++) {
+      bytes32 loc = ownerAt(i);
+      address owner;
+      assembly { owner := sload(loc) }
+      owners[i] = owner;
+    }
+  }
+}
+```
+In the above files, `B.getNumOwners()` will interpret the value stored at `NUM_OWNERS` as a simple `uint`. This is in contrast to `C.getOwners()`, which interprets the value stored there as a list, and returns the entire list to the caller. This concept allows for the implementation of complex types not supported in standard Solidity - the only prerequisite is to build the functions that interpret these locations in storage correctly. As a result of using this structure, applications can be sure that any upgrade they make will be overwrite-safe - as the hashed locations will take care of any potential overlaps between an applications fields.
+
+Extending this concept, it is possible to implement a protocol through which unrelated applications can store their data in the same contract (same address) while still being able to deterministically read from these locations, as well as direct storage to write to these locations. Plainly, if abstract storage assigns a unique `id` to each instance of each application created within itself, we know that if storage location hashing is able to be enforced, applications can share the same storage contract without the risk of malicious (or unintentional) data overwrites.
+
+Enforcing this behavior is simple - the basic premise is that the application, following execution, will return a formatted request to storage, which will ensure that each location to which data must be stored is first hashed with the application's unique `execution_id`. What is not so simple is: allowing for this open instantiation of applications within storage and enforcing this behavior, while remaining fairly efficient. Applications can be instantiated by anyone - and as a result must be treated with the utmost caution. Applications may attempt to overwrite data stored in other applications: it is imperative that the storage contract have safeguards in place to ensure that this is not possible.
+
+The safeguards set in place depend primarily on the method of 'running' these instantiated applications. Initially, the storage contract used a `staticcall` to call the target application, while ensuring that no state change would occur as a result of running this external code. While this method works very well to ensure that executed applications are unable to call back into storage, or change the state of other apps, there is an unfortunate drawback in efficiency. Because `staticcall` does not use the calling contract's context, the executed application cannot read directly from storage and must rely on expensive external calls to read from storage. `AbstractStorage` exposes two functions for this - `read` and `readMulti`, which hash a location (or locations) with the passed-in `execution_id`, read the resulting data from storage, and return to the calling contract. Upon completion of execution, an application should have some list of storage locations along with data to commit to those locations. Instead of simply storing this data locally (not possible, as the app is a library and cannot change its state), the application `return`s a formatted request to storage, which parses and *safely* executes the instructions contained in this request. The parser is still being used, and its current current implementation can be found here: https://github.com/auth-os/core/blob/dev/contracts/core/AbstractStorage.sol#L174. 
+
+The obvious downside of these applications is the quickly-building cost of reading large amounts of data from storage. The implementing code required building buffers in runtime memory, which would be formatted to correctly request `read`s from storage. This, too, is a downside, as it requires building via a library that implements memory buffers - which is neither clean, nor simple to use.
+
+Instead of using `staticcall` to execute applications, it would be much more efficient to use `delegatecall`. `delegatecall` allows external code to be executed in the context of the calling contract. In essence, executed applications would be able to read from state locally, without the overhead of an external call. While this operation drastically improves the efficiency of these applications, `delegatecall` poses its own risks. A contract called with `delegatecall` has near-complete autonomy over the calling contract's state. It can `sstore` to arbitrary locations and execute external code with unexpected effects. For example, a `delegatecall`ed application could execute the `selfdestruct` opcode, destroying the storage contract and removing the accumulated state of all of its hosted app instances. Clearly, `delegatecall` is dangerous - but if we could enforce a method by which a `delegatecall`ed application could not affect state, the efficiency increase would make this implementation a clear winner.
+
+As it turns out, the same way that previously-described `staticcall`ed applications would return requests to store (and perform other actions) to storage following execution, a `delegatecall`ed application can incorporate the same mechanism by simply `revert`ing the same request to storage. `revert` can return data in exactly the same way `return` can - with the added effect that any state changes that took place during the call's execution, are reversed/removed. To add to this, the calling contract (`AbstractStorage`) can verify that this revert takes place - `delegatecall` will push a `0` (`false`) to the stack in the event that the call failed, and a `1` (`true`) on success. If storage sees that an application did not `revert` following execution, it is then able to `revert`, itself - ensuring that no unexpected state changes took place. If the storage contract observes a `revert` from its executed application, it can be sure that no malicious state change occured, and safely parse and execute its returned data.
+
+### Benefits of upgrade by proxy + abstract storage + forced-revert delegatecall:
+
+1. Applications should be able to be created in a way that makes re-using code not only trivial, but core to the implementation of the platform. Developers and users should have access to widely-used, templated contracts which can be simply, safely extended (without regard for changes in storage footprint).
+2. Applications are built on a framework that is inherently receptive to upgradability - whether the application defines its own implementation of an upgrade protocol, or delegates this responsibility to some DAO or other authoritative body, upgradability itself should not be limited by types, storage footprint, locations, or anything else.
+3. There is potential for serious interoperability between applications. Applications share the same storage contract - enabling other applications to directly view their data (with some pre-requisite knowledge of some interface or storage footprint). Before, this would require not only that the 'read target' define an explicit `get` function for the data being accessed, but also the gas overhead of an external call. Eliminating these requirements allows applications to read data stored by other applications in a vastly-more efficient and effective manner than before.
+- It is interesting to note that combining the `execution_id`s of two or more applications results in a set of locations that can be stored to, that is unique to that combination of `execution_id`s. Using an XOR, this combination becomes commutative and associative (`a^b == b^a` and `a^(b^c) == (a^b)^c`) - meaning that it should be fairly straightforward for applications to come to some agreement about the locations and protocols governing these shared storage locations. It may be possible for applications to implement their own versions of inheritance within storage, whereby applications can instantiate a set of 'child' applications which all share some set of locations in storage, and where the protocol for reading/writing to these locations (i.e. the protocol for inter-application-communication) would be defined and enforced by the parent application.
+- One interesting potential use-case is the creation of application-specific DAOs, where a set of similar applications would form their own 'DAO'. For example, perhaps every `ERC20` application together formed a DAO through which the `ERC20` standard itself could be upgraded or changed - then automatically carry out this upgrade, all without the pain of various 'custom' implementations lagging behind or not being supported.
+
+### Downsides:
+
+1. Currently, applications are not quite as readable as standard Solidity: https://github.com/auth-os/core/blob/dev/contracts/registry/features/Provider.sol#L55, as they must define and push to runtime memory buffers which hold formatted requests that will be parsed by storage (buffers were removed when reading data, but still exist when needing to `revert` data back to storage).
+- They are also not as easy to write. Developers would do well to keep a careful eye on the order in which these buffers are added to - allocating memory unexpectedly (for example, declaring or returning a `struct`) could likely result in the allocated memory being overwritten as the buffer expands. Currently, there are a few basic checks in place to ensure that execution follows at least a very basic standard pattern, but this will need to be improved upon significantly if the system is to be usable by most developers.
+- Some of the problems with readability lie with Solidity itself: lack of truly-usable memory and storage pointer types, as well as no real model for library inheritance, and no real 'generic' types means that in order to abstract auth_os' application implementations to a level where readability, writeability, and auditability find a happy balance, helper libraries chock full of assembly and low-level compiler manipulation must be incorporated (`Contract.sol`). Many of the aforementioned features are being actively worked on, but the current solutions for these problems are lacking.
+2. `AbstractStorage` could be a single point of failure for several applications. While this is a very valid concern, this is exacerbated in a large amount by the current implementation of `AbstractStorage`. It incorporates an overly-complicated `bytes` parser which handles an application's output. While the current implementation is a large step up from the previous implementation (the last change abstracted a large portion of `AbstractStorage` and now allows applications to define many of these checks, requirements, and functions for themselves. This is a small step, but a step in the right direction - the implementation of `AbstractStorage` really deserves to be defined in hand-written bytecode - for maximum efficiency, and minimum complexity. Restricting functionality to a very small set of actions and treating `AbstractStorage` more as general I/O would hopefully simplify the implementation enough to be sure of security (especially with review from many developers).
+- Still, the idea of a single point of failure is a large one to simply dismiss. Further work will be required to narrow down the functionality of `AbstractStorage` enough to consider
+
+### Conclusion:
+
+The combination of abstract storage, upgrade-by-proxy, and forced-revert delegatecall has the potential to define the kernel for a wide variety of truly modular applications. Applications built using this framework have the potential to be the most interoperable, extensible, and upgradable applications currently being built. There is still much to be learned as far as specific use-cases for this unique structure, but the potential it affords is too large to ignore.
+
+With further development of Solidity, further protocol upgrades, and further second-layer solutions put in place, I believe that a version of this framework could serve as a cornerstone upon which many other upgradable, extensible, and inter-operable applications are built.
