@@ -5,6 +5,8 @@ mochawesome-reports/
 node_modules/
 tmp/
 
+npm-debug.log
+
 package.json  # using npm-shrinkwrap to pin truffle's solc version
 
 convert_bytes.py*
