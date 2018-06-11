@@ -1,0 +1,44 @@
+{
+  "name": "authos-solidity",
+  "version": "1.0.0",
+  "description": "Core contract library for auth-os",
+  "files": [
+    "contracts",
+    "Makefile",
+    "test"
+  ],
+  "dependencies": {},
+  "devDependencies": {},
+  "scripts": {
+    "test": "make test",
+    "abi": "make abi",
+    "clean": "make clean",
+    "compile": "make compile",
+    "flat": "make flat"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/auth-os/core.git"
+  },
+  "keywords": [
+    "authos",
+    "ethereum",
+    "solidity",
+    "evm",
+    "smartcontracts",
+    "kernel",
+    "interoperability",
+    "extensibility"
+  ],
+  "author": "Alexander Wade <alex@authio.org>",
+  "co-author": "Kyle Thomas <kyle@provide.services>",
+  "contributors": [
+    "Alex Towle <alext@authio.org>",
+    "Nikhil Sakhamuri <nikhils@authio.org>"
+  ],
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/auth-os/core/issues"
+  },
+  "homepage": "https://github.com/auth-os/core#readme"
+}
