@@ -491,7 +491,7 @@ library Contract {
     // Check the expected function type - if it is VAL_DEC, set the new amount to the difference of
     // _val and _amt, to a minimum of 0
     if (expected() == NextFunction.VAL_DEC) {
-      if (uint(_val) > _amt)
+      if (_amt > uint(_val))
         _amt = 0;
       else
         _amt = uint(_val).sub(_amt);
