@@ -2,11 +2,17 @@
 
 # auth_os core:
 
+**This project has not been audited - please do not use this in production!**
+
 This package contains a set of contracts, libraries, and interfaces used in the development of auth_os applications. auth_os utilizes a unique application architecture to facilitate the building of contracts that are truly modular, as well as interoperable.
 
 ### Install:
 
 `npm install authos-solidity`
+
+### Using auth_os applications:
+
+When using auth_os applications, it is important to note that for each transaction made within auth_os, at least 1 `revert` instruction will be executed. When using sites like etherscan, it may appear that several calls are failing - the differentiator between a successful and failed call is whether or not `AbstractStorage` reverted. In this case, `ScriptExec` and variants will emit a `StorageException` event with a message describing the error that occured. In the event of successful execution, `AbstractStorage` will emit an `ApplicationExecution` event.
 
 ### About:
 
