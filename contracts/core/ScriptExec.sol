@@ -182,6 +182,8 @@ contract ScriptExec {
   function updateAppInstance(bytes32 execID) external returns (bool success) {
     require(execID != 0 && msg.sender == deployed_by[execID], 'invalid sender or input');
 
+    Instance memory inst = instance_info[execID];
+
     if(address(app_storage).call(
       abi.encodeWithSelector(EXEC_SEL, msg.sender, execID, abi.encodeWithSelector(
       UPDATE_INST_SEL, inst.app_name, registry_exec_id, provider 
