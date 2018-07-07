@@ -171,6 +171,54 @@ contract ScriptExec {
     emit AppInstanceCreated(msg.sender, exec_id, _app_name, version);
   }
 
+  bytes4 internal constant UPDATE_INST_SEL = bytes4(keccak256('updateInstance(bytes32,bytes32,address)'));
+
+  /* 
+  Updates an application's implementations, selectors, and index address. Uses default app provider and registry app.
+  Uses latest app version by default. 
+  @param - execID: The execution id of the application instance to be updated
+  @returns - The success of the call to the application's updateInstance function
+  */   
+  function updateAppInstance(bytes32 execID) external returns (bool success) {
+    require(execID != 0 && msg.sender == deployed_by[execID], 'invalid sender or input');
+
+    if(address(app_storage).call(
+      abi.encodeWithSelector(EXEC_SEL, msg.sender, execID, abi.encodeWithSelector(
+      UPDATE_INST_SEL, inst.app_name, registry_exec_id, provider 
+    ))) == false) {
+      // Call failed - emit error message from storage and return 'false'
+      checkErrors(execID);
+      return false;
+    }
+    // Get returned data
+    success = checkReturn();
+    // If execution failed,
+    require(success, 'Execution failed');
+  }
+  
+  bytes4 internal constant UPDATE_EXEC_SEL = bytes4(keccak256('updateExec(bytes32)'));
+
+  /* 
+  Updates an application's script executor from this Script Exec to a new address. 
+  @param - execID: The execution id of the application instance to be updated
+  @returns - The success of the call to the application's updateInstance function
+  */   
+  function updateAppExec(bytes32 execID, address newExec) external returns (bool success) {
+    require(execID != 0 && msg.sender == deployed_by[execID] && address(this) != newExec, 'invalid sender or input');
+
+    if(address(app_storage).call(
+      abi.encodeWithSelector(EXEC_SEL, msg.sender, execID, abi.encodeWithSelector(UPDATE_EXEC_SEL, newExec))
+    ) == false) {
+      // Call failed - emit error message from storage and return 'false'
+      checkErrors(execID);
+      return false;
+    }
+    // Get returned data
+    success = checkReturn();
+    // If execution failed,
+    require(success, 'Execution failed');
+  }
+
   /// ADMIN FUNCTIONS ///
 
   /*
@@ -219,8 +267,8 @@ contract ScriptExec {
   @return indx: The index address for the registry application - contains getters for the Registry, as well as its init funciton
   @return implementation: The address implementing the registry's functions
   */
-  function getRegistryImplementation() public view returns (address indx, address implementation) {
-    indx = StorageInterface(app_storage).getIndex(registry_exec_id);
+  function getRegistryImplementation() public view returns (address index, address implementation) {
+    index = StorageInterface(app_storage).getIndex(registry_exec_id);
     implementation = StorageInterface(app_storage).getTarget(registry_exec_id, REGISTER_APP_SEL);
   }
 
@@ -239,4 +287,5 @@ contract ScriptExec {
       app_storage, app.current_registry_exec_id, app.current_provider, app.app_name, app.version_name
     );
   }
+
 }
