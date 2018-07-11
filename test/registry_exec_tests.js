@@ -507,4 +507,73 @@ contract('RegistryExec', function (accounts) {
       })
     })
   })
+
+  describe('#updateExec', async () => {
+
+    let registryExecID
+
+    beforeEach(async () => {
+      let events = await scriptExec.createRegistryInstance(
+        regIdx.address, regProvider.address, { from: execAdmin }
+      ).should.be.fulfilled.then((tx) => {
+        return tx.logs
+      })
+      events.should.not.eq(null)
+      events.length.should.be.eq(1)
+      events[0].event.should.be.eq('RegistryInstanceCreated')
+      registryExecID = events[0].args['execution_id']
+    })
+
+    describe('invalid input', async () => {
+
+      context('sender is not deployer', async () => {
+
+        it('should throw', async () => {
+          await scriptExec.updateAppExec(
+            registryExecID, execAdmin, 
+            { from: update }
+          ).should.not.be.fulfilled
+        })
+
+      })
+
+      context('execID is zero', async () => {
+        it('should throw', async () => {
+          await scriptExec.updateAppExec(
+            '0x0000000000000000000000000000000000000000000000000000000000000000', execAdmin, 
+            { from: execAdmin }
+          ).should.not.be.fulfilled
+        })
+
+      })
+
+      context('replacement is address zero', async () => {
+
+        it('should throw', async () => {
+          await scriptExec.updateAppExec(
+            registryExecID,  '0x0000000000000000000000000000000000000000000000000000', 
+            { from: execAdmin }
+          ).should.not.be.fulfilled
+        })
+
+      })
+
+      context('replacement is this ScriptExec', async () => {
+        it('should throw', async () => {
+          await scriptExec.updateAppExec(
+            registryExecID, scriptExec.address, 
+            { from: execAdmin }
+          ).should.not.be.fulfilled
+        })
+
+      })
+
+    })
+
+  })
+
+  describe('valid update', async () => {
+
+  })
+
 })
