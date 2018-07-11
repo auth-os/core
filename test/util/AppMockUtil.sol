@@ -3,7 +3,7 @@ pragma solidity ^0.4.23;
 contract AppMockUtil {
 
   function getSelectors() public pure returns (bytes4[] memory selectors) {
-    selectors = new bytes4[](25);
+    selectors = new bytes4[](27);
     // pay
     selectors[0] = this.pay0.selector;
     selectors[1] = this.pay1.selector;
@@ -35,6 +35,9 @@ contract AppMockUtil {
     selectors[22] = this.rev0.selector;
     selectors[23] = this.rev1.selector;
     selectors[24] = this.rev2.selector;
+    // update
+    selectors[25] = this.updateInstance.selector;
+    selectors[26] = this.updateExec.selector;
   }
 
   /// PAYABLE APP ///
@@ -85,4 +88,9 @@ contract AppMockUtil {
   function rev0() external pure returns (bytes) { return msg.data; }
   function rev1() external pure returns (bytes) { return msg.data; }
   function rev2() external pure returns (bytes) { return msg.data; }
+
+  /// UPDATES ///
+
+  function updateInstance(bytes32, bytes32, bytes32) external pure returns (bytes) { return msg.data; }
+  function updateExec(address) external pure returns (bytes) { return msg.data; }
 }
