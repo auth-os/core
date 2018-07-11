@@ -38,6 +38,10 @@ contract AbstractStorage {
       = bytes4(keccak256('registerApp(bytes32,address,bytes4[],address[])'));
   bytes4 internal constant REG_APP_VER
       = bytes4(keccak256('registerAppVersion(bytes32,bytes32,address,bytes4[],address[])'));
+  bytes4 internal constant UPDATE_EXEC_SEL 
+      = bytes4(keccak256('updateExec(address)'));
+  bytes4 internal constant UPDATE_INST_SEL
+      = bytes4(keccak256('updateInstance(bytes32,bytes32,address)'));
 
   // Creates an instance of a registry application and returns the execution id
   function createRegistry(address _registry_idx, address _implementation) external returns (bytes32) {
@@ -46,6 +50,8 @@ contract AbstractStorage {
     put(new_exec_id, APP_IDX_ADDR, bytes32(_registry_idx));
     put(new_exec_id, keccak256(REG_APP, 'implementation'), bytes32(_implementation));
     put(new_exec_id, keccak256(REG_APP_VER, 'implementation'), bytes32(_implementation));
+    put(new_exec_id, keccak256(UPDATE_INST_SEL, 'implementation'), bytes32(_implementation));
+    put(new_exec_id, keccak256(UPDATE_EXEC_SEL, 'implementation'), bytes32(_implementation));
     emit ApplicationInitialized(new_exec_id, _registry_idx, msg.sender);
     return new_exec_id;
   }
