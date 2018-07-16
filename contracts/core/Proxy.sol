@@ -59,4 +59,14 @@ contract Proxy {
     else
       emit StorageException(app_exec_id, message);
   }
+
+  // Returns the first 4 bytes of calldata
+  function getSelector(bytes memory _calldata) internal pure returns (bytes4 selector) {
+    assembly {
+      selector := and(
+        mload(add(0x20, _calldata)),
+        0xffffffff00000000000000000000000000000000000000000000000000000000
+      )
+    }
+  }
 }

@@ -73,26 +73,7 @@ contract ScriptExec {
   @param _calldata: The calldata to forward to the application
   @return success: Whether execution succeeded or not
   */
-  function exec(bytes32 _exec_id, bytes _calldata) external payable returns (bool success) {
-    // Call 'exec' in AbstractStorage, passing in the sender's address, the app exec id, and the calldata to forward -
-    if (address(app_storage).call.value(msg.value)(abi.encodeWithSelector(
-      EXEC_SEL, msg.sender, _exec_id, _calldata
-    )) == false) {
-      // Call failed - emit error message from storage and return 'false'
-      checkErrors(_exec_id);
-      // Return unspent wei to sender
-      address(msg.sender).transfer(address(this).balance);
-      return false;
-    }
-
-    // Get returned data
-    success = checkReturn();
-    // If execution failed,
-    require(success, 'Execution failed');
-
-    // Transfer any returned wei back to the sender
-    address(msg.sender).transfer(address(this).balance);
-  }
+  function exec(bytes32 _exec_id, bytes _calldata) external payable returns (bool success);
 
   bytes4 internal constant ERR = bytes4(keccak256('Error(string)'));
 
