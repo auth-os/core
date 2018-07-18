@@ -1,6 +1,6 @@
 pragma solidity ^0.4.23;
 
-import "../interfaces/IHub.sol";
+import "./IHub.sol";
 
 contract Hub is IHub {
 
