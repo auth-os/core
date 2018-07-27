@@ -2,7 +2,7 @@ pragma solidity ^0.4.23;
 pragma experimental ABIEncoderV2;
 
 import "./IHub.sol";
-import CommandsLib.CommandIterator as CommandIterator from "./CommandsLib.sol";
+import "./CommandsLib.sol";
 
 /**
  * @title Hub
@@ -49,18 +49,18 @@ contract Hub is IHub {
     exec_id = _exec_id;
 
     // Execute application and retrieve commands from its returned data
-    CommandIterator memory iter = target.safeDelegateCall(_calldata);
+    CommandsLib.CommandIterator memory iter = target.safeDelegateCall(_calldata);
 
     // Execute each command returned
     while (iter.hasNext()) {
       // Get 4-byte action from command
-      bytes4 type = iter.getSelector();
+      bytes4 action = iter.getAction();
 
-      if (type == STORE)
+      if (action == STORE)
         doStore(iter.toStoreFormat(), _exec_id);          // Store data in this application
-      else if (type == SAFE_EXECUTE)
+      else if (action == SAFE_EXECUTE)
         data.join(doExec(iter.toExecFormat()));           // Have the current application execute another application
-      else if (type == RETURN_DATA)
+      else if (action == RETURN_DATA)
         data.append(iter.toReturnFormat());               // Add to the data to be returned
       else
         revert("Invalid Command");                        // Invalid command - revert
@@ -93,7 +93,7 @@ contract Hub is IHub {
    */
   function store(bytes32 _exec_id, bytes32 _location, bytes32 _value) internal {
     // Obtain the actual location to store _value at
-    bytes32 loc = keccak256(_location, _exec_id);
+    bytes32 loc = keccak256(abi.encodePacked(_location, _exec_id));
     // Store _value at this hashed location
     assembly { sstore(loc, _value) }
   }

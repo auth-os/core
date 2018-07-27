@@ -1,4 +1,4 @@
-pramga solidity ^0.4.23;
+pragma solidity ^0.4.23;
 
 /**
  * @title CommandsLib
@@ -69,14 +69,15 @@ library CommandsLib {
    */
   function toStoreFormat(CommandIterator memory _iter) internal pure returns (bytes32[2][] memory store_command) {
     // Ensure data is not malformed - must be divisible by 64 bytes
-    require(_iter.commands[cur].length % 64 == 0, "Expected store request");
+    require(_iter.commands[_iter.cur].length % 64 == 0, "Expected store request");
 
     // Get a pointer to the length of the command and set store_command to point to it
     uint cmd_ptr = getPointer(_iter);
-    assembly { store_command := cmd_ptr }
-
-    // Correct length - divide by 64
-    store_command.length /= 64;
+    assembly {
+      store_command := cmd_ptr
+      // Correct length - divide by 64
+      mstore(store_command, div(mload(store_command), 64))
+    }
   }
 
   /**
@@ -100,6 +101,15 @@ library CommandsLib {
   }
 
   /**
+   * @dev Interprets the data stored at the current index as a bytes array and return it
+   * @param _iter The iterator struct
+   * @return bytes The bytes of data to be returned
+   */
+  function toReturnFormat(CommandIterator memory _iter) internal pure returns (bytes memory) {
+    return _iter.commands[_iter.cur];
+  }
+
+  /**
    * @dev Gets a pointer to the command bytes at the current index
    * @param _iter The iterator struct
    * @return ptr A pointer to the command
@@ -118,5 +128,14 @@ library CommandsLib {
    */
   function getSelector(bytes memory _data) internal pure returns (bytes4 selector) {
     assembly { selector := mload(add(0x20, _data)) }
+  }
+
+  /**
+   * @dev Returns the first 4 bytes of the current command
+   * @param _iter The iterator struct
+   * @return bytes4 The first 4 bytes of the current command
+   */
+  function getAction(CommandIterator memory _iter) internal pure returns (bytes4) {
+    return getSelector(_iter.commands[_iter.cur]);
   }
 }
