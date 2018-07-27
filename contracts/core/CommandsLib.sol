@@ -19,7 +19,7 @@ library CommandsLib {
    * @param _calldata The data to send to the target address
    * @return iter A struct representing the data reverted by the target application
    */
-  function safeDelegateCall(address _target, bytes memory _calldata) internal view returns (CommandIterator memory iter) {
+  function safeDelegateCall(address _target, bytes memory _calldata) internal returns (CommandIterator memory iter) {
     // Safely delegatecall to the target
     require(_target.delegatecall(_calldata) == false, "Unsafe Execution");
 
@@ -30,7 +30,7 @@ library CommandsLib {
 
   /**
    * @dev Copies returndata into CommandIterator bytes array
-   * @param iter A struct representing data reverted by the called application
+   * @param _iter A struct representing data reverted by the called application
    */
   function setReturnData(CommandIterator memory _iter) internal pure {
     assembly {
