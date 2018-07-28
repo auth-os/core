@@ -1,4 +1,4 @@
-pragma solidity ^0.4.23;
+pragma solidity ^0.4.24;
 pragma experimental ABIEncoderV2;
 
 import "./IHub.sol";
@@ -26,6 +26,7 @@ contract Hub is IHub {
   bytes4 internal constant STORE = bytes4(keccak256("Store(bytes32[2][])")); // Store data
   bytes4 internal constant SAFE_EXECUTE = bytes4(keccak256("Execute(bytes32,bytes32,bytes)")); // Execute another app
   bytes4 internal constant RETURN_DATA = bytes4(keccak256("Return(bytes)")); // Return data
+  bytes4 internal constant EXT_CALL = bytes4(keccak256("Call(address,uint256,uint256,bytes)")); // External call
 
   function createInstance(bytes32 _sender, bytes _calldata) external payable returns (bytes[] memory data);
 
