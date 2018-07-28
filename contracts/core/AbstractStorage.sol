@@ -38,7 +38,7 @@ contract AbstractStorage {
       = bytes4(keccak256('registerApp(bytes32,address,bytes4[],address[])'));
   bytes4 internal constant REG_APP_VER
       = bytes4(keccak256('registerAppVersion(bytes32,bytes32,address,bytes4[],address[])'));
-  bytes4 internal constant UPDATE_EXEC_SEL 
+  bytes4 internal constant UPDATE_EXEC_SEL
       = bytes4(keccak256('updateExec(address)'));
   bytes4 internal constant UPDATE_INST_SEL
       = bytes4(keccak256('updateInstance(bytes32,bytes32,address)'));
@@ -62,7 +62,9 @@ contract AbstractStorage {
   Executes an initialization function of an application, generating a new exec id that will be associated with that address
 
   @param _sender: The sender of the transaction, as reported by the script exec contract
-  @param _application: The target application to which the calldata will be forwarded
+  @param _app_name: The name of the application which will be instantiated
+  @param _provider: The provider under which the application is registered
+  @param _registry_id: The execution id of the registry app
   @param _calldata: The calldata to forward to the application
   @return new_exec_id: A new, unique execution id paired with the created instance of the application
   @return version: The name of the version of the instance
@@ -413,11 +415,11 @@ contract AbstractStorage {
   storage overlaps between applications sharing the contract
   STORES actions follow a format of: [location_0][val_0]...[location_n][val_n]
 
-  @param _ptr: A pointer in memory to an application's returned payment request
+  @param _ptr: A pointer in memory to an application's returned storage request
   @param _ptr_bound: The upper bound on the value for _ptr before it is reading invalid data
   @param _exec_id: The execution id under which storage is located
   @return ptr: An updated pointer, pointing to the end of the STORES action request in memory
-  @return n_paid: The number of storage locations written to from the returned PAYS request
+  @return n_stored: The number of storage locations written to from the returned STORES request
   */
   function doStore(uint _ptr, uint _ptr_bound, bytes32 _exec_id) internal returns (uint ptr, uint n_stored) {
     assert(getAction(_ptr) == STORES && _exec_id != bytes32(0));
@@ -452,10 +454,10 @@ contract AbstractStorage {
     -The topics array is a bytes32 array of maximum length 4 and minimum 0
     -The final data parameter is a simple bytes array, and is emitted as a non-indexed parameter
 
-  @param _ptr: A pointer in memory to an application's returned payment request
+  @param _ptr: A pointer in memory to an application's returned emit request
   @param _ptr_bound: The upper bound on the value for _ptr before it is reading invalid data
   @return ptr: An updated pointer, pointing to the end of the EMITS action request in memory
-  @return n_paid: The number of events logged from the returned EMITS request
+  @return n_emitted: The number of events logged from the returned EMITS request
   */
   function doEmit(uint _ptr, uint _ptr_bound) internal returns (uint ptr, uint n_emitted) {
     assert(getAction(_ptr) == EMITS);
@@ -580,10 +582,7 @@ contract AbstractStorage {
   function readMulti(bytes32 _exec_id, bytes32[] _locations) public view returns (bytes32[] data_read) {
     data_read = new bytes32[](_locations.length);
     for (uint i = 0; i < _locations.length; i++) {
-      bytes32 location = keccak256(_locations[i], _exec_id);
-      bytes32 val;
-      assembly { val := sload(location) }
-      data_read[i] = val;
+      data_read[i] = read(_exec_id, _locations[i]);
     }
   }
 }
