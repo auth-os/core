@@ -1,6 +1,7 @@
 pragma solidity ^0.4.24;
 pragma experimental ABIEncoderV2;
 
+import "./ListLib.sol";
 import "./IHub.sol";
 import "./CommandsLib.sol";
 
@@ -11,6 +12,7 @@ import "./CommandsLib.sol";
 contract Hub is IHub {
 
   using CommandsLib for *;
+  using ListLib for *;
 
   /// STATE VARS ///
   bytes32 private exec_id;
