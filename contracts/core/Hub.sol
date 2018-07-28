@@ -35,9 +35,9 @@ contract Hub is IHub {
    * @param _exec_as The address or execution id by which the application will be executed
    * @param _exec_id The execution id of the application to execute
    * @param _calldata The calldata to forward to the application
-   * @return data The data specified by the application to be returned to the caller
+   * @return bytes[] The data specified by the application to be returned to the caller
    */
-  function exec(bytes32 _exec_as, bytes32 _exec_id, bytes memory _calldata) public payable returns (bytes[] memory data) {
+  function exec(bytes32 _exec_as, bytes32 _exec_id, bytes memory _calldata) public payable returns (bytes[] memory) {
     // Input validation
     require(_exec_id != 0 && _calldata.length >= 4, "Input invalid");
     // Get execution target from calldata function selector
@@ -52,6 +52,9 @@ contract Hub is IHub {
     // Execute application and retrieve commands from its returned data
     CommandsLib.CommandIterator memory iter = target.safeDelegateCall(_calldata);
 
+    // Declare singly-linked list for returndata
+    ListLib.LinkedList memory list;
+
     // Execute each command returned
     while (iter.hasNext()) {
       // Get 4-byte action from command
@@ -60,9 +63,9 @@ contract Hub is IHub {
       if (action == STORE)
         doStore(iter.toStoreFormat(), _exec_id);          // Store data in this application
       else if (action == SAFE_EXECUTE)
-        data.join(doExec(iter.toExecFormat()));           // Have the current application execute another application
+        list.join(doExec(iter.toExecFormat()));           // Have the current application execute another application
       else if (action == RETURN_DATA)
-        data.append(iter.toReturnFormat());               // Add to the data to be returned
+        list.append(iter.toReturnFormat());               // Add to the data to be returned
       else
         revert("Invalid Command");                        // Invalid command - revert
 
@@ -72,7 +75,7 @@ contract Hub is IHub {
     // Transfer Hub balance to caller (Ether should not be in this contract)
     msg.sender.transfer(address(this).balance);
     // Return data to caller and end execution
-    return data;
+    return list.toArray();
   }
 
   /**
