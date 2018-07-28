@@ -1,5 +1,10 @@
 pragma solidity ^0.4.24;
 
+/**
+ * @title ListLib
+ * @dev Implements a simple, efficient LinkedList in memory to which bytes and
+ * bytes[] can be appended
+ */
 library ListLib {
 
   struct LinkedList {
@@ -13,6 +18,80 @@ library ListLib {
     uint next;
   }
 
+  /**
+   * @dev Adds the elements of a bytes[] to the tail of the LinkedList
+   * @param _list The LinkedList struct
+   * @param _array The array which will be added to the LinkedList
+   */
+  function join(LinkedList memory _list, bytes[] memory _array) internal pure {
+    // Allocate memory for a new node and set its data field to the array
+    Node memory new_node;
+    new_node.data = _array;
+    // If the size of the list is zero, operate on the head. Otherwise, operate on the tail of the list
+    if (_list.size == 0) {
+      // Set the list's size to be equal to the length of the array
+      _list.size = _array.length;
+      // Set the new node as the head and tail of the list
+      _list.head = new_node;
+      _list.tail = new_node;
+    } else {
+      // Add the length of _array to the list's size
+      _list.size += _array.length;
+      // Set the list's tail to point to the new node
+      _list.tail.next = toPtr(new_node);
+      // Make the new node the tail of the list
+      _list.tail = new_node;
+    }
+  }
+
+  /**
+   * @dev Adds the bytes array to the LinkedList
+   * @param _list The LinkedList struct
+   * @param _array The array which will be appended to the LinkedList
+   */
+  function append(LinkedList memory _list, bytes memory _array) internal pure {
+    // Create a bytes[] of length 1 to hold _array
+    bytes[] memory arr = new bytes[](1);
+    arr[0] = _array;
+    // Allocate memory for a new node and set its data field to the array
+    Node memory new_node;
+    new_node.data = arr;
+    // If the size of the list is zero, operate on the head. Otherwise, operate on the tail of the list
+    if (_list.size == 0) {
+      // Set the list's size to 1
+      _list.size = 1;
+      // Set the new node as the head and tail of the list
+      _list.head = new_node;
+      _list.tail = new_node;
+    } else {
+      // Increment the list's size
+      _list.size++;
+      // Set the list's tail to point to the new node
+      _list.tail.next = toPtr(new_node);
+      // Make the new node the tail of the list
+      _list.tail = new_node;
+    }
+  }
+
+  /**
+   * @dev Joins the data field of each Node in the LinkedList and returns it as a bytes[]
+   * @param _list The LinkedList struct
+   * @return array A bytes[] comprising of the data of each Node in the LinkedList
+   */
+  function toArray(LinkedList memory _list) internal pure returns (bytes[] memory array) {
+    // Allocate memory for the return array
+    array = new bytes[](_list.size);
+    // Get a pointer representing the current Node
+    uint cur = toPtr(_list.head);
+    uint node_len;
+    // Iterate over each Node and add its data to the return array
+    for (uint i = 0; i < _list.size; cur = next(cur)) {
+      node_len = getLength(cur);
+      for (uint j = 0; j < node_len; j++) {
+        array[i++] = getData(cur, j);
+      }
+    }
+  }
 
   /**
    * @dev Converts a Node struct into a pointer
@@ -23,93 +102,10 @@ library ListLib {
     assembly { ptr := _node }
   }
 
-  
   /**
-   * @dev Adds the elements of a bytes[] to the LinkedList
-   * @param _list The LinkedList struct
-   * @param _array The array which will be added to the LinkedList
-   */
-  /*
-  function join(LinkedList memory _list, bytes[] memory _array) internal pure {
-    // If the size of the list is zero, operate on the head. Otherwise, operate on the tail of the list.
-    if (_list.size == 0) {
-      // Set the list struct's size to be equal to the length of _array.
-      _list.size = _array.length;
-      // Construct a Node struct in memory with _array and a next pointer of zero.
-      Node memory head = Node({ data: _array, next: 0 });
-      // Set the head pointer equal to the location in memory of the head struct.
-      _list.head = toPtr(head);
-      // Set the tail pointer equal to the head pointer -- used so that the head's next pointer is set correctly.
-      _list.tail = toPtr(head);
-    } else {
-      // Add the length of _array to the list struct's size.
-      _list.size += _array.length;
-      // Convert the list struct's tail pointer into a Node struct.
-      Node memory tail = toNode(_list.tail);
-      // Construct a Node struct in memory with _array and a next pointer of zero.
-      Node memory new_tail = Node({ data: _array, next: 0 }); 
-      // Set the next pointer of the tail struct to be the location in memory of the new tail struct.
-      tail.next = toPtr(new_tail); 
-      // Set the list struct's tail pointer to be the location in memory of the new tail struct.
-      _list.tail = toPtr(new_tail);
-    }
-  }
-
-  */
-
-  /**
-   * @dev Adds the bytes array to the LinkedList
-   * @param _list The LinkedList struct
-   * @param _array The array which will be appended to the LinkedList
-   */
-  function append(LinkedList memory _list, bytes memory _array) internal pure {
-    // Initialize a bytes[] called arr with length one in memory.
-    bytes[] memory arr = new bytes[](1);
-    // Set the first entry of arr to be equal to _array.
-    arr[0] = _array;
-    // Construct a Node struct in memory with arr and a next pointer of zero.
-    Node memory new_node; 
-    new_node.data = arr;
-    // If the size of the list is zero, operate on the head. Otherwise, operate on the tail of the list.
-    if (_list.size == 0) {
-      // Set the list struct's size to 1.
-      _list.size = 1; 
-      // Set the head pointer equal to the location in memory of the head struct.
-      _list.head = new_node;
-      // Set the tail pointer equal to the head pointer -- used so that the head's next pointer is set correctly.
-      _list.tail = new_node;
-    } else {
-      // Increment the list struct's size.
-      _list.size++;
-      // Set the next pointer of the tail struct to be the location in memory of the new tail struct.
-      _list.tail.next = toPtr(new_node);
-      // Set the list struct's tail pointer to be the location in memory of the new tail struct.
-      _list.tail = new_node;
-    }
-  }
-
-  /**
-   * @dev Converts the LinkedList to a bytes[] and returns it
-   * @param _list The LinkedList struct
-   * @return array A bytes[] comprising of all of the nodes of the LinkedList
-   */
-  function toArray(LinkedList memory _list) internal pure returns (bytes[] memory array) {
-    // Allocate memory for the return array.
-    array = new bytes[](_list.size); 
-    // Loop through the data structure and add pointers to the return array.
-    uint cur = toPtr(_list.head);
-    // Add all of the bytes stored in the list data structure to the return array.
-    for (uint i = 0; i < _list.size; cur = next(cur)) {
-      for (uint j = 0; j < getLength(cur); j++) {
-        array[i++] = getData(cur, j);
-      }
-    }
-  }
-
-  /**
-   * @dev Sets the current node to its next node 
+   * @dev Sets the current node to its next node
    * @param _curr The current Node
-   * @return next_node The next node 
+   * @return next_node The next node
    */
   function next(uint _curr) internal pure returns (uint next_node) {
     assembly { next_node := mload(add(_curr, 0x20)) }
@@ -118,8 +114,8 @@ library ListLib {
   /**
    * @dev Gets the length of the data bytes[] of the _curr node
    * @param _curr The pointer to the current node
-   * @return length The length of the data bytes[] of the _curr node  
-   */ 
+   * @return length The length of the data bytes[] of the _curr node
+   */
   function getLength(uint _curr) internal pure returns (uint length) {
     assembly { length := mload(mload(_curr)) }
   }
@@ -131,11 +127,8 @@ library ListLib {
    * @return data The bytes held at _index of the data field of curr
    */
   function getData(uint _curr, uint _index) internal pure returns (bytes memory data) {
-    require(_index < getLength(_curr), "Invalid index");
-    // Calculate the offset of the desired bytes and loading its pointer 
-    _index = (_index * 32) + 32; 
+    // Calculate the offset of the desired bytes and load its pointer
+    _index = (_index * 32) + 32;
     assembly { data := mload(add(_index, mload(_curr))) }
   }
-
 }
-

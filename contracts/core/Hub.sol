@@ -1,8 +1,8 @@
 pragma solidity ^0.4.24;
 pragma experimental ABIEncoderV2;
 
-import "./ListLib.sol";
 import "./IHub.sol";
+import "./ListLib.sol";
 import "./CommandsLib.sol";
 
 /**
