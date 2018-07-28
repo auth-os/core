@@ -26,28 +26,11 @@ library Contract {
   // be reverted to abstract storage to store data, emit events, and forward
   // wei on behalf of the application.
   function authorize(address _script_exec) internal view {
-    // No memory should have been allocated yet - expect the free memory pointer
-    // to point to 0x80 - and throw if it does not
-    require(freeMem() == 0x80, "Memory allocated prior to execution");
-    // Next, set up memory for execution
-    bytes32 perms = EXEC_PERMISSIONS;
-    assembly {
-      mstore(0x80, sload(0))     // Execution id, read from storage
-      mstore(0xa0, sload(1))     // Original sender address, read from storage
-      mstore(0xc0, 0)            // Pointer to storage buffer
-      mstore(0xe0, 0)            // Bytes4 value of the current action requestor being used
-      mstore(0x100, 0)           // Enum representing the next type of function to be called (when pushing to buffer)
-      mstore(0x120, 0)           // Number of storage slots written to in buffer
-      mstore(0x140, 0)           // Number of events pushed to buffer
-      mstore(0x160, 0)           // Number of payment destinations pushed to buffer
-
-      // Update free memory pointer -
-      mstore(0x40, 0x180)
-    }
-    // Ensure that the sender and execution id returned from storage are nonzero -
-    assert(execID() != bytes32(0) && sender() != address(0));
+    // Initialize memory
+    initialize();
 
     // Check that the sender is authorized as a script exec contract for this exec id
+    bytes32 perms = EXEC_PERMISSIONS;
     bool authorized;
     assembly {
       // Place the script exec address at 0, and the exec permissions seed after it
@@ -335,11 +318,9 @@ library Contract {
       mstore(0x100, 2)
       // Set a pointer to the length of the current request within the buffer
       mstore(sub(ptr, 0x20), add(ptr, mload(ptr)))
-      // If the free-memory pointer does not point beyond the buffer's current size, update it
-      if lt(mload(0x40), add(0x20, add(ptr, mload(ptr)))) {
-        mstore(0x40, add(0x20, add(ptr, mload(ptr))))
-      }
     }
+    // Update free memory pointer
+    setFreeMem();
   }
 
   // Sets a passed in location to a value passed in via 'to'
@@ -360,11 +341,9 @@ library Contract {
       )
       // Update number of storage slots pushed to -
       mstore(0x120, add(1, mload(0x120)))
-      // If the free-memory pointer does not point beyond the buffer's current size, update it
-      if lt(mload(0x40), add(0x20, add(ptr, mload(ptr)))) {
-        mstore(0x40, add(0x20, add(ptr, mload(ptr))))
-      }
     }
+    // Update free memory pointer
+    setFreeMem();
     return _field;
   }
 
@@ -379,11 +358,9 @@ library Contract {
       mstore(ptr, add(0x20, mload(ptr)))
       // Set the expected next function - STORE_DEST
       mstore(0x100, 2)
-      // If the free-memory pointer does not point beyond the buffer's current size, update it
-      if lt(mload(0x40), add(0x20, add(ptr, mload(ptr)))) {
-        mstore(0x40, add(0x20, add(ptr, mload(ptr))))
-      }
     }
+    // Update free memory pointer
+    setFreeMem();
   }
 
   // Sets a previously-passed-in destination in storage to the value
@@ -424,11 +401,9 @@ library Contract {
       )
       // Update number of storage slots pushed to -
       mstore(0x120, add(1, mload(0x120)))
-      // If the free-memory pointer does not point beyond the buffer's current size, update it
-      if lt(mload(0x40), add(0x20, add(ptr, mload(ptr)))) {
-        mstore(0x40, add(0x20, add(ptr, mload(ptr))))
-      }
     }
+    // Update free memory pointer
+    setFreeMem();
     return val;
   }
 
@@ -452,11 +427,9 @@ library Contract {
       )
       // Update number of storage slots pushed to -
       mstore(0x120, add(1, mload(0x120)))
-      // If the free-memory pointer does not point beyond the buffer's current size, update it
-      if lt(mload(0x40), add(0x20, add(ptr, mload(ptr)))) {
-        mstore(0x40, add(0x20, add(ptr, mload(ptr))))
-      }
     }
+    // Update free memory pointer
+    setFreeMem();
     return val;
   }
 
@@ -479,11 +452,9 @@ library Contract {
       mstore(ptr, add(0x20, mload(ptr)))
       // Set the expected next function - STORE_DEST
       mstore(0x100, 2)
-      // If the free-memory pointer does not point beyond the buffer's current size, update it
-      if lt(mload(0x40), add(0x20, add(ptr, mload(ptr)))) {
-        mstore(0x40, add(0x20, add(ptr, mload(ptr))))
-      }
     }
+    // Update free memory pointer
+    setFreeMem();
   }
 
   // Decreases the value at some field by a maximum amount, and sets it to 0 if there will be underflow
@@ -491,7 +462,7 @@ library Contract {
     // Check the expected function type - if it is VAL_DEC, set the new amount to the difference of
     // _val and _amt, to a minimum of 0
     if (expected() == NextFunction.VAL_DEC) {
-      if (_amt > uint(_val))
+      if (_amt >= uint(_val))
         _amt = 0;
       else
         _amt = uint(_val).sub(_amt);
@@ -508,11 +479,9 @@ library Contract {
       mstore(ptr, add(0x20, mload(ptr)))
       // Set the expected next function - STORE_DEST
       mstore(0x100, 2)
-      // If the free-memory pointer does not point beyond the buffer's current size, update it
-      if lt(mload(0x40), add(0x20, add(ptr, mload(ptr)))) {
-        mstore(0x40, add(0x20, add(ptr, mload(ptr))))
-      }
     }
+    // Update free memory pointer
+    setFreeMem();
   }
 
   // Begins creating an event log buffer - topics and data pushed will be emitted by
@@ -535,11 +504,9 @@ library Contract {
       mstore(0x100, 6)
       // Set a pointer to the length of the current request within the buffer
       mstore(sub(ptr, 0x20), add(ptr, mload(ptr)))
-      // If the free-memory pointer does not point beyond the buffer's current size, update it
-      if lt(mload(0x40), add(0x20, add(ptr, mload(ptr)))) {
-        mstore(0x40, add(0x20, add(ptr, mload(ptr))))
-      }
     }
+    // Update free memory pointer
+    setFreeMem();
   }
 
   function log(bytes32 _data) conditions(validEvent, validEvent) internal pure {
@@ -570,11 +537,9 @@ library Contract {
       )
       // Update number of events pushed to buffer -
       mstore(0x140, add(1, mload(0x140)))
-      // If the free-memory pointer does not point beyond the buffer's current size, update it
-      if lt(mload(0x40), add(0x20, add(ptr, mload(ptr)))) {
-        mstore(0x40, add(0x20, add(ptr, mload(ptr))))
-      }
     }
+    // Update free memory pointer
+    setFreeMem();
   }
 
   function log(bytes32[1] memory _topics, bytes32 _data) conditions(validEvent, validEvent) internal pure {
@@ -607,11 +572,9 @@ library Contract {
       )
       // Update number of events pushed to buffer -
       mstore(0x140, add(1, mload(0x140)))
-      // If the free-memory pointer does not point beyond the buffer's current size, update it
-      if lt(mload(0x40), add(0x20, add(ptr, mload(ptr)))) {
-        mstore(0x40, add(0x20, add(ptr, mload(ptr))))
-      }
     }
+    // Update free memory pointer
+    setFreeMem();
   }
 
   function log(bytes32[2] memory _topics, bytes32 _data) conditions(validEvent, validEvent) internal pure {
@@ -645,11 +608,9 @@ library Contract {
       )
       // Update number of events pushed to buffer -
       mstore(0x140, add(1, mload(0x140)))
-      // If the free-memory pointer does not point beyond the buffer's current size, update it
-      if lt(mload(0x40), add(0x20, add(ptr, mload(ptr)))) {
-        mstore(0x40, add(0x20, add(ptr, mload(ptr))))
-      }
     }
+    // Update free memory pointer
+    setFreeMem();
   }
 
   function log(bytes32[3] memory _topics, bytes32 _data) conditions(validEvent, validEvent) internal pure {
@@ -684,11 +645,9 @@ library Contract {
       )
       // Update number of events pushed to buffer -
       mstore(0x140, add(1, mload(0x140)))
-      // If the free-memory pointer does not point beyond the buffer's current size, update it
-      if lt(mload(0x40), add(0x20, add(ptr, mload(ptr)))) {
-        mstore(0x40, add(0x20, add(ptr, mload(ptr))))
-      }
     }
+    // Update free memory pointer
+    setFreeMem();
   }
 
   function log(bytes32[4] memory _topics, bytes32 _data) conditions(validEvent, validEvent) internal pure {
@@ -724,11 +683,9 @@ library Contract {
       )
       // Update number of events pushed to buffer -
       mstore(0x140, add(1, mload(0x140)))
-      // If the free-memory pointer does not point beyond the buffer's current size, update it
-      if lt(mload(0x40), add(0x20, add(ptr, mload(ptr)))) {
-        mstore(0x40, add(0x20, add(ptr, mload(ptr))))
-      }
     }
+    // Update free memory pointer
+    setFreeMem();
   }
 
   // Begins creating a storage buffer - destinations entered will be forwarded wei
@@ -751,11 +708,9 @@ library Contract {
       mstore(0x100, 8)
       // Set a pointer to the length of the current request within the buffer
       mstore(sub(ptr, 0x20), add(ptr, mload(ptr)))
-      // If the free-memory pointer does not point beyond the buffer's current size, update it
-      if lt(mload(0x40), add(0x20, add(ptr, mload(ptr)))) {
-        mstore(0x40, add(0x20, add(ptr, mload(ptr))))
-      }
     }
+    // Update free memory pointer
+    setFreeMem();
   }
 
   // Pushes an amount of wei to forward to the buffer
@@ -776,11 +731,9 @@ library Contract {
       )
       // Update number of payment destinations to be pushed to -
       mstore(0x160, add(1, mload(0x160)))
-      // If the free-memory pointer does not point beyond the buffer's current size, update it
-      if lt(mload(0x40), add(0x20, add(ptr, mload(ptr)))) {
-        mstore(0x40, add(0x20, add(ptr, mload(ptr))))
-      }
     }
+    // Update free memory pointer
+    setFreeMem();
     return _amount;
   }
 
@@ -795,11 +748,14 @@ library Contract {
       mstore(ptr, add(0x20, mload(ptr)))
       // Set the expected next function - PAY_AMT
       mstore(0x100, 8)
-      // If the free-memory pointer does not point beyond the buffer's current size, update it
-      if lt(mload(0x40), add(0x20, add(ptr, mload(ptr)))) {
-        mstore(0x40, add(0x20, add(ptr, mload(ptr))))
-      }
     }
+    // Update free memory pointer
+    setFreeMem();
+  }
+
+  // Sets the free memory pointer to point beyond all accessed memory
+  function setFreeMem() private pure {
+    assembly { mstore(0x40, msize) }
   }
 
   // Returns the enum representing the next expected function to be called -
