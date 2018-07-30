@@ -63,6 +63,7 @@ library CommandsLib {
   }
 
   /**
+   * FIXME - might be possible to force a read outside of returndata
    * @dev Interprets the data stored at the index as a bytes32[2][] and returns it
    * @param _iter The iterator struct
    * @return store_command A bytes32[2][] containing location-value pairs that was reverted by the application
@@ -81,22 +82,42 @@ library CommandsLib {
   }
 
   /**
+   * FIXME - might be possible to force a read outside of returndata
    * @dev Interprets the data stored at the current index as the parameters for the exec function
    * @param _iter The iterator struct
-   * @return exec_as The address or execution id that will be executing another application
    * @return exec_id The execution id of the app to execute
-   * @return _calldata The calldata to send to the application
+   * @return calldata The calldata to send to the application
    */
-  function toExecFormat(CommandIterator memory _iter) internal pure returns (bytes32 exec_as, bytes32 exec_id, bytes memory _calldata) {
+  function toExecFormat(CommandIterator memory _iter) internal pure returns (bytes32 exec_id, bytes memory calldata) {
     // Ensure the returned data has sufficient length
     require(_iter.commands[_iter.cur].length > 100, "Expected exec request");
 
     // Get a pointer to the length of the command
     uint cmd_ptr = getPointer(_iter);
     assembly {
-      exec_as := mload(add(0x20, cmd_ptr)) // Get exec_as from command
       exec_id := mload(add(0x40, cmd_ptr)) // Get exec_id from command
-      _calldata := add(0x60, cmd_ptr)      // Get calldata from command
+      calldata := add(0x60, cmd_ptr)       // Get calldata from command
+    }
+  }
+
+  /**
+   * FIXME - might be possible to force a read outside of returndata
+   * @dev Interprets the data stored at the current index as the parameters for the doExtCall function
+   * @param _iter The iterator struct
+   * @return target The address to which the external call will be sent
+   * @return amt_gas The amount of gas to send with the call
+   * @return value The amount of wei to send with the call
+   * @return exec_calldata The calldata to send with the call
+   */
+  function toExtCallFormat(CommandIterator memory _iter) internal pure
+  returns (address target, uint amt_gas, uint value, bytes memory exec_calldata) {
+    // Get a pointer to the length of the command
+    uint cmd_ptr = getPointer(_iter);
+    assembly {
+      target := mload(add(0x40, cmd_ptr))
+      amt_gas := mload(add(0x60, cmd_ptr))
+      value := mload(add(0x80, cmd_ptr))
+      exec_calldata := add(0xa0, cmd_ptr)
     }
   }
 

@@ -14,23 +14,26 @@ contract Hub is IHub {
   using CommandsLib for *;
   using ListLib for *;
 
-  /// STATE VARS ///
-  bytes32 private exec_id;
-  bytes32 private exec_as;
-  uint private nonce;
+  /* Public Functions */
 
-  /// PERMISSIONS ///
+  /**
+   * @dev Creates an exec_id then exeuctes calldata via that exec id
+   * @param _exec_as The address or execution id by which the application will be executed
+   * @param _target The address which holds the app logic
+   * @param _calldata The calldata to forward to the application
+   * @return bytes[] The data specified by the application to be returned to the caller
+   */
+  function createInstance(bytes32 _exec_as, address _target, bytes _calldata) external payable returns (bytes[] memory){
+    // Input validation
+    require(_target != 0 && _calldata.length >= 4, "Input invalid");
+    // Calculate new execution id
+    bytes32 new_exec_id = keccak256(abi.encodePacked(++nonce, address(this)));
+    // Emits the Initialize event
+    emit Initialize(_exec_as, new_exec_id);
 
-  // mapping (bytes32 => mapping (bytes4 => address))
-  bytes32 internal constant IMPLEMENTATIONS = keccak256("implementation");
-
-  /// ACTION REQUESTORS ///
-  bytes4 internal constant STORE = bytes4(keccak256("Store(bytes32[2][])")); // Store data
-  bytes4 internal constant SAFE_EXECUTE = bytes4(keccak256("Execute(bytes32,bytes32,bytes)")); // Execute another app
-  bytes4 internal constant RETURN_DATA = bytes4(keccak256("Return(bytes)")); // Return data
-  bytes4 internal constant EXT_CALL = bytes4(keccak256("Call(address,uint256,uint256,bytes)")); // External call
-
-  function createInstance(bytes32 _sender, bytes _calldata) external payable returns (bytes[] memory data);
+    // Call the internal exec function
+    return execProtected(_exec_as, new_exec_id, _target, _calldata);
+  }
 
   /**
    * @dev Executes an application and handles the returned commands
@@ -47,12 +50,33 @@ contract Hub is IHub {
     // Ensure valid target for execution
     require(target != 0, "Application does not implement requested function");
 
-    // Update the internal variables so the application has access to them
+    // Call the internal exec function
+    return execProtected(_exec_as, _exec_id, target, _calldata);
+  }
+
+  function read(bytes32 _exec_id, bytes32 _location) public view returns (bytes32 data);
+
+  function readMulti(bytes32 _exec_id, bytes32[] memory _locations) public view returns (bytes32[] memory data);
+
+  function execRead(bytes32 _read_as, bytes32 _exec_id, bytes memory _calldata) public view returns (bytes[] memory data);
+
+  /* Internal Functions */
+
+  /**
+   * @dev Internal exec function. Contains the logic for executing an application
+   * @param _exec_as The address or execution id by which the application is being executed
+   * @param _exec_id The execution id of the application to execute
+   * @param _target The target address to execute for the application
+   * @param _calldata The calldata to forward to the application
+   * @return bytes[] The data returned by the application call or calls
+   */
+  function execProtected(bytes32 _exec_as, bytes32 _exec_id, address _target, bytes memory _calldata) internal returns (bytes[] memory) {
+    // Set state variables
     exec_as = _exec_as;
     exec_id = _exec_id;
 
     // Execute application and retrieve commands from its returned data
-    CommandsLib.CommandIterator memory iter = target.safeDelegateCall(_calldata);
+    CommandsLib.CommandIterator memory iter = _target.safeDelegateCall(_calldata);
 
     // Declare singly-linked list for returndata
     ListLib.LinkedList memory list;
@@ -62,14 +86,22 @@ contract Hub is IHub {
       // Get 4-byte action from command
       bytes4 action = iter.getAction();
 
-      if (action == STORE)
-        doStore(iter.toStoreFormat(), _exec_id);          // Store data in this application
-      else if (action == SAFE_EXECUTE)
-        list.join(doExec(iter.toExecFormat()));           // Have the current application execute another application
-      else if (action == RETURN_DATA)
-        list.append(iter.toReturnFormat());               // Add to the data to be returned
-      else
-        revert("Invalid Command");                        // Invalid command - revert
+      // TODO implement ERROR handling
+      if (action == STORE) {
+        doStore(iter.toStoreFormat(), _exec_id);
+      } else if (action == SAFE_EXECUTE) {
+        (bytes32 target_exec_id, bytes memory exec_calldata)
+            = iter.toExecFormat();
+        list.join(doExec(_exec_id, target_exec_id, exec_calldata));
+      } else if (action == EXT_CALL) {
+        (address target, uint amt_gas, uint value, bytes memory ext_calldata)
+            = iter.toExtCallFormat();
+        doExtCall(target, amt_gas, value, ext_calldata);
+      } else if (action == RETURN_DATA) {
+        list.append(iter.toReturnFormat());
+      } else {
+        revert("Invalid Command");
+      }
 
       // Move Iterator pointer to the next command
       iter.next();
@@ -92,6 +124,28 @@ contract Hub is IHub {
   }
 
   /**
+   * @dev Executes a callback into another application as the current application
+   * @param _exec_as The executor of the application
+   * @param _exec_id The execution id of the application which will be called
+   * @param _calldata The calldata to forward to the application
+   * @return bytes[] The data returned by the executed application
+   */
+  function doExec(bytes32 _exec_as, bytes32 _exec_id, bytes memory _calldata) internal returns (bytes[] memory) {
+    return exec(_exec_as, _exec_id, _calldata);
+  }
+
+  /**
+   * @dev Allow an application to perform an external call. Enforces success and ignores return
+   * @param _target The target address to call
+   * @param _gas The amount of gas to send with the call
+   * @param _value The amount of ETH to send with the call
+   * @param _calldata The data to send with the call
+   */
+  function doExtCall(address _target, uint _gas, uint _value, bytes memory _calldata) internal {
+    require(_target.call.value(_value).gas(_gas)(_calldata), "External call failed");
+  }
+
+  /**
    * @dev Stores a value at a specific location under the given execution id
    * @param _exec_id The execution id of the application
    * @param _location The location to store at
@@ -105,16 +159,12 @@ contract Hub is IHub {
   }
 
   /**
-   * @dev Executes a callback into another application as the current application
-   * @param _exec_as The executor of the application
-   * @param _exec_id The execution id of the application which will be called
-   * @param _calldata The calldata to forward to the application
-   * @return bytes[] The data returned by the executed application
+   * @dev Gets the target address for an exec id and function selector
+   * @param _exec_id  The exec id
+   * @param _selector The function _selector
+   * @return address The address of the appliciation logic
    */
-  function doExec(bytes32 _exec_as, bytes32 _exec_id, bytes memory _calldata) internal returns (bytes[] memory) {
-    return exec(_exec_as, _exec_id, _calldata);
+  function getTarget(bytes32 _exec_id, bytes4 _selector) internal view returns (address) {
+    return address(read(_exec_id, keccak256(abi.encodePacked(_selector, IMPLEMENTATIONS))));
   }
-
-  /// INTERNAL FUNCTIONS ///
-  function getTarget(bytes32 _exec_id, bytes4 _selector) internal returns (address target);
 }
