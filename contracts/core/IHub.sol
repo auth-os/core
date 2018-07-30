@@ -1,6 +1,10 @@
 pragma solidity ^0.4.24;
 pragma experimental ABIEncoderV2;
 
+/**
+ * @title IHub
+ * @dev Interface for Hub storage contract
+ */
 contract IHub {
   /// STATE VARS ///
   bytes32 exec_id;
