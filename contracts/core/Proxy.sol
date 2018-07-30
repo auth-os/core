@@ -23,7 +23,9 @@ contract Proxy {
   event StorageException(bytes32 indexed execution_id, string message);
 
   // For storage refunds
-  function () external payable { }
+  function () external payable {
+    require(msg.sender == address(app_storage));
+  }
 
   // Constructor - sets proxy admin, as well as initial variables
   constructor (address _storage, bytes32 _registry_exec_id, address _provider, bytes32 _app_name) public {
