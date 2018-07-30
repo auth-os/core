@@ -52,7 +52,7 @@ contract ScriptExec {
   @param _provider: The address under which applications have been initialized
   */
   function configure(address _exec_admin, address _app_storage, address _provider) public {
-    require(app_storage != 0, "ScriptExec already configured");
+    require(app_storage == 0, "ScriptExec already configured");
     require(_app_storage != 0, 'Invalid input');
     exec_admin = _exec_admin;
     app_storage = _app_storage;

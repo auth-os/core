@@ -63,7 +63,6 @@ contract ScriptExecMock {
   // Payable function - for abstract storage refunds
   function () public payable { }
 
-
   /*
   Configure various defaults for a script exec contract
   @param _exec_admin: A privileged address, able to set the target provider and registry exec id
@@ -71,6 +70,7 @@ contract ScriptExecMock {
   @param _provider: The address under which applications have been initialized
   */
   function configure(address _exec_admin, address _app_storage, address _provider) public {
+    require(app_storage == 0, "ScriptExec already configured");
     require(_app_storage != 0, 'Invalid input');
     exec_admin = _exec_admin;
     app_storage = _app_storage;
@@ -91,26 +91,7 @@ contract ScriptExecMock {
   @param _calldata: The calldata to forward to the application
   @return success: Whether execution succeeded or not
   */
-  function exec(bytes32 _exec_id, bytes _calldata) external payable returns (bool success) {
-    // Call 'exec' in AbstractStorage, passing in the sender's address, the app exec id, and the calldata to forward -
-    if (address(app_storage).call.value(msg.value)(abi.encodeWithSelector(
-      EXEC_SEL, msg.sender, _exec_id, _calldata
-    )) == false) {
-      // Call failed - emit error message from storage and return 'false'
-      checkErrors(_exec_id);
-      // Return unspent wei to sender
-      address(msg.sender).transfer(address(this).balance);
-      return false;
-    }
-
-    // Get returned data
-    success = checkReturn();
-    // If execution failed,
-    require(success, 'Execution failed');
-
-    // Transfer any returned wei back to the sender
-    address(msg.sender).transfer(address(this).balance);
-  }
+  function exec(bytes32 _exec_id, bytes _calldata) external payable returns (bool success);
 
   bytes4 internal constant ERR = bytes4(keccak256('Error(string)'));
 
@@ -275,6 +256,58 @@ contract RegistryExecMock is ScriptExecMock {
 
   event RegistryInstanceCreated(address indexed creator, bytes32 indexed execution_id, address index, address implementation);
 
+  /// APPLICATION EXECUTION ///
+
+  bytes4 internal constant EXEC_SEL = bytes4(keccak256('exec(address,bytes32,bytes)'));
+
+  /*
+  Executes an application using its execution id and storage address.
+
+  @param _exec_id: The instance exec id, which will route the calldata to the appropriate destination
+  @param _calldata: The calldata to forward to the application
+  @return success: Whether execution succeeded or not
+  */
+  function exec(bytes32 _exec_id, bytes _calldata) external payable returns (bool success) {
+    // Get function selector from calldata -
+    bytes4 sel = getSelector(_calldata);
+    // Ensure no registry functions are being called -
+    require(
+      sel != this.registerApp.selector &&
+      sel != this.registerAppVersion.selector &&
+      sel != UPDATE_INST_SEL &&
+      sel != UPDATE_EXEC_SEL
+    );
+
+    // Call 'exec' in AbstractStorage, passing in the sender's address, the app exec id, and the calldata to forward -
+    if (address(app_storage).call.value(msg.value)(abi.encodeWithSelector(
+      EXEC_SEL, msg.sender, _exec_id, _calldata
+    )) == false) {
+      // Call failed - emit error message from storage and return 'false'
+      checkErrors(_exec_id);
+      // Return unspent wei to sender
+      address(msg.sender).transfer(address(this).balance);
+      return false;
+    }
+
+    // Get returned data
+    success = checkReturn();
+    // If execution failed,
+    require(success, 'Execution failed');
+
+    // Transfer any returned wei back to the sender
+    address(msg.sender).transfer(address(this).balance);
+  }
+
+  // Returns the first 4 bytes of calldata
+  function getSelector(bytes memory _calldata) internal pure returns (bytes4 selector) {
+    assembly {
+      selector := and(
+        mload(add(0x20, _calldata)),
+        0xffffffff00000000000000000000000000000000000000000000000000000000
+      )
+    }
+  }
+
   /// REGISTRY FUNCTIONS ///
 
   /*
@@ -358,7 +391,7 @@ contract RegistryExecMock is ScriptExecMock {
   }
 
   // Update instance selectors, index, and addresses
-  /* bytes4 internal constant UPDATE_INST_SEL = bytes4(keccak256('updateInstance(address,bytes32,bytes32,bytes32)')); */
+  bytes4 internal constant UPDATE_INST_SEL = bytes4(keccak256('updateInstance(bytes32,bytes32,bytes32)'));
 
   /*
   Updates an application's implementations, selectors, and index address. Uses default app provider and registry app.
@@ -367,7 +400,7 @@ contract RegistryExecMock is ScriptExecMock {
   @param _exec_id: The execution id of the application instance to be updated
   @return success: The success of the call to the application's updateInstance function
   */
-  /* function updateAppInstance(bytes32 _exec_id) external returns (bool success) {
+  function updateAppInstance(bytes32 _exec_id) external returns (bool success) {
     // Validate input. Only the original deployer can update an application -
     require(_exec_id != 0 && msg.sender == deployed_by[_exec_id], 'invalid sender or input');
 
@@ -378,10 +411,9 @@ contract RegistryExecMock is ScriptExecMock {
     // the calldata to update the application -
     if(address(app_storage).call(
       abi.encodeWithSelector(EXEC_SEL,            // 'exec' selector
-        msg.sender,                               // sender address
+        inst.current_provider,                    // application provider address
         _exec_id,                                 // execution id to update
         abi.encodeWithSelector(UPDATE_INST_SEL,   // calldata for Registry updateInstance function
-          inst.current_provider,                  // provider when the instance was instantiated
           inst.app_name,                          // name of the applcation used by the instance
           inst.version_name,                      // name of the current version of the application
           inst.current_registry_exec_id           // registry exec id when the instance was instantiated
@@ -396,7 +428,21 @@ contract RegistryExecMock is ScriptExecMock {
     success = checkReturn();
     // If execution failed, revert state and return an error message -
     require(success, 'Execution failed');
-  } */
+
+    // If execution was successful, the version was updated. Get the latest version
+    // and set the exec id instance info -
+    address registry_idx = StorageInterface(app_storage).getIndex(inst.current_registry_exec_id);
+    bytes32 latest_version  = RegistryInterface(registry_idx).getLatestVersion(
+      app_storage,
+      inst.current_registry_exec_id,
+      inst.current_provider,
+      inst.app_name
+    );
+    // Ensure nonzero latest version -
+    require(latest_version != 0, 'invalid latest version');
+    // Set current version -
+    instance_info[_exec_id].version_name = latest_version;
+  }
 
   // Update instance script exec contract
   bytes4 internal constant UPDATE_EXEC_SEL = bytes4(keccak256('updateExec(address)'));
@@ -409,9 +455,6 @@ contract RegistryExecMock is ScriptExecMock {
   @returns success: The success of the call to the application's updateExec function
   */
   function updateAppExec(bytes32 _exec_id, address _new_exec_addr) external returns (bool success) {
-    // Validate input. Only the original deployer can migrate the script exec address -
-    require(_exec_id != 0 && address(this) != _new_exec_addr && _new_exec_addr != 0, 'invalid input');
-
     // Call 'exec' in AbstractStorage, passing in the sender's address, the execution id, and
     // the calldata to migrate the script exec address -
     if(address(app_storage).call(

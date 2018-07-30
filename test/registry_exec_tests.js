@@ -139,7 +139,7 @@ contract('RegistryExec', function (accounts) {
       { from: execAdmin, gasPrice: 0 }
     ).should.be.fulfilled
 
-    scriptExec.configure(
+    await scriptExec.configure(
       execAdmin, storage.address, execAdmin,
       { from: execAdmin }
     ).should.be.fulfilled
@@ -153,10 +153,10 @@ contract('RegistryExec', function (accounts) {
 
       beforeEach(async () => {
         testExec = await ScriptExec.new(
-          { from: execAdmin }
+          { from: execAdmin, gasPrice: 0 }
         ).should.be.fulfilled
 
-        testExec.configure(
+        await testExec.configure(
           execAdmin, storage.address, provider,
           { from: execAdmin }
         ).should.be.fulfilled
@@ -182,7 +182,7 @@ contract('RegistryExec', function (accounts) {
           { from: execAdmin }
         ).should.be.fulfilled
 
-        testExec.configure(
+        await testExec.configure(
           execAdmin, storage.address, provider,
           { from: execAdmin }
         ).should.be.fulfilled
@@ -2892,7 +2892,7 @@ contract('RegistryExec', function (accounts) {
       beforeEach(async () => {
         newScriptExec = await ScriptExecMock.new({ from: execAdmin }).should.be.fulfilled
 
-        newScriptExec.configure(
+        await newScriptExec.configure(
           execAdmin, storage.address, provider,
           { from: execAdmin }
         ).should.be.fulfilled
