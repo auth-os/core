@@ -24,5 +24,4 @@ contract IHub {
   /// VIEW FUNCTIONS ///
   function read(bytes32 _exec_id, bytes32 _location) public view returns (bytes32 data);
   function readMulti(bytes32 _exec_id, bytes32[] memory _locations) public view returns (bytes32[] memory data);
-  function execRead(bytes32 _read_as, bytes32 _exec_id, bytes memory _calldata) public view returns (bytes[] memory data);
 }

@@ -54,11 +54,28 @@ contract Hub is IHub {
     return execProtected(_exec_as, _exec_id, target, _calldata);
   }
 
-  function read(bytes32 _exec_id, bytes32 _location) public view returns (bytes32 data);
+  /**
+   * @dev Read from storage within an execution id
+   * @param _exec_id The execution id from which the data will be read
+   * @param _location The location to read data from
+   * @return data The data read at the location in the exec id
+   */
+  function read(bytes32 _exec_id, bytes32 _location) public view returns (bytes32 data) {
+    bytes32 location = keccak256(abi.encodePacked(_location, _exec_id));
+    assembly{ data := sload(location) }
+  }
 
-  function readMulti(bytes32 _exec_id, bytes32[] memory _locations) public view returns (bytes32[] memory data);
-
-  function execRead(bytes32 _read_as, bytes32 _exec_id, bytes memory _calldata) public view returns (bytes[] memory data);
+  /**
+   * @dev Read from storage within an execution id
+   * @param _exec_id The execution id from which the data will be read
+   * @param _locations The locations to read data from
+   * @return data The data read at the locations in the exec id
+   */
+  function readMulti(bytes32 _exec_id, bytes32[] memory _locations) public view returns (bytes32[] memory data) {
+    data = new bytes32[](_locations.length);
+    for (uint i = 0; i < data.length; i++)
+      data[i] = read(_exec_id, _locations[i]);
+  }
 
   /* Internal Functions */
 
@@ -106,8 +123,9 @@ contract Hub is IHub {
       // Move Iterator pointer to the next command
       iter.next();
     }
-    // Transfer Hub balance to caller (Ether should not be in this contract)
-    msg.sender.transfer(address(this).balance);
+    // If there is Ether in this contract, transfer back to caller
+    if (address(this).balance != 0)
+      msg.sender.transfer(address(this).balance);
     // Return data to caller and end execution
     return list.toArray();
   }
