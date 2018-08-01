@@ -1,6 +1,6 @@
 pragma solidity ^0.4.23;
 
-import "../interfaces/StorageInterface.sol";
+import '../interfaces/StorageInterface.sol';
 
 contract Proxy {
 
