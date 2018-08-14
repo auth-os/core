@@ -1,16 +1,22 @@
-![auth_os](https://uploads-ssl.webflow.com/59fdc220cd54e70001a36846/5ac504590012b0bc9d789ab8_auth_os%20Logo%20Blue.png)
+![auth-os](https://uploads-ssl.webflow.com/59fdc220cd54e70001a36846/5ac504590012b0bc9d789ab8_auth_os%20Logo%20Blue.png)
 
-# auth_os core:
+# auth-os core:
 
-**This project has not been audited - please do not use this in production!**
-
-This package contains a set of contracts, libraries, and interfaces used in the development of auth_os applications. auth_os utilizes a unique application architecture to facilitate the building of contracts that are truly modular, as well as interoperable.
+This package contains a set of contracts, libraries, and interfaces used in the development of auth-os applications. auth-os utilizes a unique application architecture to facilitate the building of contracts that are truly modular, as well as interoperable.
 
 ### Install:
 
 `npm install authos-solidity`
 
-### Using auth_os applications:
+### Deployment Process:
+
+Deployment of an auth-os application begins with the storage contract and script registry application. Deploy the following files: `AbstractStorage.sol`, `RegistryIdx.sol`, `Provider.sol`, `RegistryExec.sol`. Use `RegistryExec.configure` to configure the registry executor to use the deployed storage contract, as well as provide an interface for a provider address to register applications within the registry app. The provider and exec admin addresses will be able to register apps.
+
+Once the above core files are deployed, deploy the files for an application, including its index file (contains an init function as well as several getters). Deployed applications can be registered in the RegistryExec contract by calling `RegistryExec.registerApp`, and passing in the name of the application (hex), the app's index address, all of the function selectors the app exposes, and the corresponding addresses that expose those selectors.
+
+Apps deployed in this manner are now able to be initialized and used by anyone - through a `Proxy` file, or through the `RegistryExec` file itself.
+
+### Using auth-os applications:
 
 When using auth_os applications, it is important to note that for each transaction made within auth_os, at least 1 `revert` instruction will be executed. When using sites like etherscan, it may appear that several calls are failing - the differentiator between a successful and failed call is whether or not `AbstractStorage` reverted. In this case, `ScriptExec` and variants will emit a `StorageException` event with a message describing the error that occured. In the event of successful execution, `AbstractStorage` will emit an `ApplicationExecution` event.
 
