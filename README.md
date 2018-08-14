@@ -16,6 +16,30 @@ Once the above core files are deployed, deploy the files for an application, inc
 
 Apps deployed in this manner are now able to be initialized and used by anyone - through a `Proxy` file, or through the `RegistryExec` file itself.
 
+Several of these contracts have already been deployed on Ropsten, as well as the mainnet - 
+
+#### Ropsten:
+
+`AbstractStorage`: https://ropsten.etherscan.io/address/0x7815b0f22c1444ad56e6d207c1c58e8b8bd17931#code
+
+`Provider`: https://ropsten.etherscan.io/address/0xfbfb8f79ca2c6c7af3c6a38d1c2feacefd140b07#code
+
+`RegistryIdx`: https://ropsten.etherscan.io/address/0x2e6e81016eb1e63d972133d823a6759a6e2737b5#code
+
+`RegistryExec`: https://ropsten.etherscan.io/address/0xf1abf2cfe9cecf189fdab4e26e8da6ed587f11d1#code
+
+
+#### Mainnet:
+
+`AbstractStorage`: 
+
+`Provider`: 
+
+`RegistryIdx`: 
+
+`RegistryExec`: 
+
+
 ### Using auth-os applications:
 
 When using auth_os applications, it is important to note that for each transaction made within auth_os, at least 1 `revert` instruction will be executed. When using sites like etherscan, it may appear that several calls are failing - the differentiator between a successful and failed call is whether or not `AbstractStorage` reverted. In this case, `ScriptExec` and variants will emit a `StorageException` event with a message describing the error that occured. In the event of successful execution, `AbstractStorage` will emit an `ApplicationExecution` event.
