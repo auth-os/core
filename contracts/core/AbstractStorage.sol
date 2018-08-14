@@ -41,7 +41,7 @@ contract AbstractStorage {
   bytes4 internal constant UPDATE_EXEC_SEL
       = bytes4(keccak256('updateExec(address)'));
   bytes4 internal constant UPDATE_INST_SEL
-      = bytes4(keccak256('updateInstance(bytes32,bytes32,address)'));
+      = bytes4(keccak256('updateInstance(bytes32,bytes32,bytes32)'));
 
   // Creates an instance of a registry application and returns the execution id
   function createRegistry(address _registry_idx, address _implementation) external returns (bytes32) {
@@ -333,8 +333,10 @@ contract AbstractStorage {
     assembly {
       // returndatasize must be minimum 96 bytes (offset, length, and requestor)
       if lt(returndatasize, 0x60) {
-        mstore(0, 'Insufficient return size')
-        revert(0, 0x20)
+        mstore(0, 0x20)
+        mstore(0x20, 24)
+        mstore(0x40, 'Insufficient return size')
+        revert(0, 0x60)
       }
       // Get memory location to which returndata will be copied
       _returndata_ptr := msize

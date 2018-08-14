@@ -1,6 +1,6 @@
 {
   "name": "authos-solidity",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Core contract library for auth-os",
   "files": [
     "contracts",
@@ -13,7 +13,6 @@
     "chai-bignumber": "^2.0.2",
     "coveralls": "^3.0.0",
     "ethereumjs-abi": "^0.6.5",
-    "solidity-coverage": "^0.4.15",
     "truffle": "^4.1.5",
     "web3": "^0.18.4",
     "mocha": "^3.5.3",
