@@ -31,13 +31,13 @@ Several of these contracts have already been deployed on Ropsten, as well as the
 
 #### Mainnet:
 
-`AbstractStorage`: 
+`AbstractStorage`: https://etherscan.io/address/0xb1d914e7c55f16c2bacac11af6b3e011aee38caf#code
 
-`Provider`: 
+`Provider`: https://etherscan.io/address/0x9ca096ea086e6c27d3b69d1f8ba4278502815fa1#code
 
-`RegistryIdx`: 
+`RegistryIdx`: https://etherscan.io/address/0xbc25d8c026ef18ca00bfa328a2c03c54af3c3e95#code
 
-`RegistryExec`: 
+`RegistryExec`: https://etherscan.io/address/0xa609f05557d458727c90603adad436041915a0ca#code
 
 
 ### Using auth-os applications:
